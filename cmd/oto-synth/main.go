@@ -21,6 +21,7 @@ func main() {
         outPath   string
         gapMs     float64
         crossMs   float64
+        pitch     float64
     )
 
     flag.StringVar(&otoPath, "oto", "", "path to oto.ini")
@@ -28,10 +29,14 @@ func main() {
     flag.StringVar(&outPath, "out", "", "output wav path")
     flag.Float64Var(&gapMs, "gap", 40, "silence gap between samples (ms)")
     flag.Float64Var(&crossMs, "cross", 10, "crossfade length (ms)")
+    flag.Float64Var(&pitch, "pitch", 1.0, "pitch scale (1.0 = no change)")
     flag.Parse()
 
     if otoPath == "" || aliasText == "" || outPath == "" {
         log.Fatal("-oto, -text, -out are required")
+    }
+    if pitch <= 0 {
+        log.Fatal("-pitch must be > 0")
     }
 
     otoIni, err := oto.ReadIni(otoPath)
@@ -44,7 +49,7 @@ func main() {
         log.Fatal("no aliases provided")
     }
 
-    samples, err := loadSamples(otoIni, aliases)
+    samples, err := loadSamples(otoIni, aliases, pitch)
     if err != nil {
         log.Fatal(err)
     }
@@ -86,14 +91,7 @@ func splitAliases(text string) []string {
         return out
     }
 
-    runes := []rune(text)
-    out := make([]string, 0, len(runes))
-    for _, r := range runes {
-        if !isIgnorableRune(r) {
-            out = append(out, string(r))
-        }
-    }
-    return out
+    return splitKanaAliases(text)
 }
 
 func isIgnorableRune(r rune) bool {
@@ -105,7 +103,35 @@ func isIgnorableRune(r rune) bool {
     }
 }
 
-func loadSamples(otoIni *oto.Ini, aliases []string) ([]sample, error) {
+func splitKanaAliases(text string) []string {
+    runes := []rune(text)
+    out := make([]string, 0, len(runes))
+    for i := 0; i < len(runes); i++ {
+        r := runes[i]
+        if isIgnorableRune(r) {
+            continue
+        }
+        if i+1 < len(runes) && isSmallKana(runes[i+1]) {
+            out = append(out, string([]rune{r, runes[i+1]}))
+            i++
+            continue
+        }
+        out = append(out, string(r))
+    }
+    return out
+}
+
+func isSmallKana(r rune) bool {
+    switch r {
+    case 'ゃ', 'ゅ', 'ょ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ゎ',
+        'ャ', 'ュ', 'ョ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ', 'ヮ':
+        return true
+    default:
+        return false
+    }
+}
+
+func loadSamples(otoIni *oto.Ini, aliases []string, pitch float64) ([]sample, error) {
     samples := make([]sample, 0, len(aliases))
     for i, alias := range aliases {
         prev := ""
@@ -120,9 +146,12 @@ func loadSamples(otoIni *oto.Ini, aliases []string) ([]sample, error) {
         if err != nil {
             return nil, fmt.Errorf("read wav for %s: %w", alias, err)
         }
-        trimmed, err := trimPCM(pcm, entry.Offset, entry.Fixed, entry.Blank)
+        trimmed, err := audio.TrimPCM(pcm, entry.Offset, entry.Fixed, entry.Blank)
         if err != nil {
             return nil, fmt.Errorf("trim wav for %s: %w", alias, err)
+        }
+        if pitch != 1.0 {
+            trimmed = pitchShift(trimmed, pitch)
         }
         samples = append(samples, sample{pcm: trimmed, name: entry.Alias, entry: entry})
     }
@@ -146,6 +175,7 @@ func concatSamples(samples []sample, gapMs float64, crossMs float64) (*audio.PCM
 
     var output []int16
     prevEnd := 0
+    noteStart := 0
     for _, item := range samples {
         data := applyEnvelope(item.pcm.Data, sampleRate, channels, 5, 8)
 
@@ -154,8 +184,15 @@ func concatSamples(samples []sample, gapMs float64, crossMs float64) (*audio.PCM
         if overlapFrames <= 0 {
             overlapFrames = fallbackOverlapFrames
         }
+        if preutterFrames > 0 && overlapFrames > preutterFrames {
+            overlapFrames = preutterFrames
+        }
 
-        noteStart := prevEnd + gapFrames
+        sampleFrames := len(data) / channels
+        if sampleFrames == 0 {
+            continue
+        }
+
         sampleStart := noteStart - preutterFrames
         if sampleStart < 0 {
             sampleStart = 0
@@ -169,11 +206,6 @@ func concatSamples(samples []sample, gapMs float64, crossMs float64) (*audio.PCM
                 sampleStart += shift
                 actualOverlap = overlapFrames
             }
-        }
-
-        sampleFrames := len(data) / channels
-        if sampleFrames == 0 {
-            continue
         }
 
         sampleOffset := 0
@@ -213,6 +245,12 @@ func concatSamples(samples []sample, gapMs float64, crossMs float64) (*audio.PCM
         if endFrame > prevEnd {
             prevEnd = endFrame
         }
+
+        noteLength := noteLengthFrames(item.entry, sampleFrames+sampleOffset, sampleRate)
+        if noteLength < 1 {
+            noteLength = 1
+        }
+        noteStart += noteLength + gapFrames
     }
 
     return &audio.PCM{
@@ -299,6 +337,46 @@ func applyEnvelope(data []int16, sampleRate int, channels int, attackMs float64,
     return out
 }
 
+func pitchShift(pcm *audio.PCM, factor float64) *audio.PCM {
+    if factor == 1.0 {
+        return pcm
+    }
+    frames := len(pcm.Data) / pcm.Channels
+    if frames == 0 {
+        return pcm
+    }
+    newFrames := int(math.Round(float64(frames) / factor))
+    if newFrames < 1 {
+        newFrames = 1
+    }
+
+    out := make([]int16, newFrames*pcm.Channels)
+    for i := 0; i < newFrames; i++ {
+        src := float64(i) * factor
+        srcIndex := int(math.Floor(src))
+        frac := src - float64(srcIndex)
+        if srcIndex >= frames-1 {
+            srcIndex = frames - 1
+            frac = 0
+        }
+        nextIndex := srcIndex + 1
+        if nextIndex >= frames {
+            nextIndex = frames - 1
+        }
+        for ch := 0; ch < pcm.Channels; ch++ {
+            a := float64(pcm.Data[srcIndex*pcm.Channels+ch])
+            b := float64(pcm.Data[nextIndex*pcm.Channels+ch])
+            out[i*pcm.Channels+ch] = clampInt16(a*(1.0-frac) + b*frac)
+        }
+    }
+
+    return &audio.PCM{
+        SampleRate: pcm.SampleRate,
+        Channels:   pcm.Channels,
+        Data:       out,
+    }
+}
+
 func ensureLength(data []int16, length int) []int16 {
     if len(data) >= length {
         return data
@@ -306,6 +384,21 @@ func ensureLength(data []int16, length int) []int16 {
     extended := make([]int16, length)
     copy(extended, data)
     return extended
+}
+
+func noteLengthFrames(entry oto.Entry, totalFrames int, sampleRate int) int {
+    fixedFrames := msToFrames(entry.Fixed, sampleRate)
+    offsetFrames := msToFrames(entry.Offset, sampleRate)
+    blankFrames := msToFramesAllowNegative(entry.Blank, sampleRate)
+
+    effective := totalFrames - offsetFrames - blankFrames
+    if effective < fixedFrames {
+        effective = fixedFrames
+    }
+    if effective < 1 {
+        effective = 1
+    }
+    return effective
 }
 
 func selectEntry(otoIni *oto.Ini, alias string, prev string, isFirst bool) (oto.Entry, error) {
@@ -391,52 +484,6 @@ func isVowelEnding(alias string) bool {
     default:
         return false
     }
-}
-
-func trimPCM(pcm *audio.PCM, offsetMs float64, fixedMs float64, blankMs float64) (*audio.PCM, error) {
-    if pcm.Channels <= 0 {
-        return nil, errors.New("invalid channel count")
-    }
-    frames := len(pcm.Data) / pcm.Channels
-    if frames == 0 {
-        return nil, errors.New("empty pcm data")
-    }
-
-    start := msToFrames(offsetMs, pcm.SampleRate)
-    if start < 0 {
-        start = 0
-    }
-    blankFrames := msToFramesAllowNegative(blankMs, pcm.SampleRate)
-    end := frames - blankFrames
-    if end > frames {
-        end = frames
-    }
-    if end < 0 {
-        end = 0
-    }
-    if fixedMs > 0 {
-        fixedFrames := msToFrames(fixedMs, pcm.SampleRate)
-        if fixedFrames > 0 && end-start < fixedFrames {
-            end = start + fixedFrames
-            if end > frames {
-                end = frames
-            }
-        }
-    }
-    if start >= end {
-        return nil, errors.New("invalid trim range")
-    }
-
-    startIndex := start * pcm.Channels
-    endIndex := end * pcm.Channels
-    trimmed := make([]int16, endIndex-startIndex)
-    copy(trimmed, pcm.Data[startIndex:endIndex])
-
-    return &audio.PCM{
-        SampleRate: pcm.SampleRate,
-        Channels:   pcm.Channels,
-        Data:       trimmed,
-    }, nil
 }
 
 func ensureParentDir(path string) error {
