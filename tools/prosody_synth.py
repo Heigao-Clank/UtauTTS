@@ -134,6 +134,15 @@ def main() -> None:
 
     merged_f0 = smooth_f0(merged_f0, window=5)
 
+    voiced_mask = merged_f0 > 0
+    if np.any(voiced_mask):
+        jitter = np.random.normal(0, 1.5, merged_f0.shape).astype(np.float64)
+        merged_f0 = np.where(voiced_mask, merged_f0 + jitter, merged_f0)
+        merged_f0 = np.maximum(merged_f0, 0.0)
+
+    sp_noise = np.random.normal(1.0, 0.008, merged_sp.shape).astype(np.float64)
+    merged_sp *= sp_noise
+
     y_out = pw.synthesize(merged_f0, merged_sp, merged_ap, sr)
     peak = np.abs(y_out).max()
     if peak > 0:

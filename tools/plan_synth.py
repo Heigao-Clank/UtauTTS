@@ -39,14 +39,12 @@ def main() -> None:
                 k_idx += 1
                 continue
 
-            # Duration: base ± 30% depending on position
             dur = args.base_dur
             if m == 0:
                 dur *= 0.85
             elif m == mora_count - 1:
                 dur *= 1.15
 
-            # Pitch factor from accent
             pf = 1.0
             if acc_pos > 0:
                 if m < acc_pos - 1:

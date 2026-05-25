@@ -78,7 +78,6 @@ def main():
     oto_dir = os.path.dirname(os.path.abspath(args.oto))
     entries = load_oto(args.oto)
 
-    # Build DNN input features
     scalar = []
     for i in range(n):
         acc_val = kana_acc[i]
@@ -100,62 +99,31 @@ def main():
         dur_p = model(k_ids, scalar_t, lengths)
     dur_p = dur_p[0].cpu().numpy()
 
-    # Generate F0 from accent rules (same logic as plan_synth.py)
-    phrase_boundaries = []
-    for i in range(n):
-        if i == n - 1:
-            phrase_boundaries.append(i + 1)
-        elif i + 1 < n:
-            w_cur = _word_idx_for_pos(i, w_info, kana_mora)
-            w_next = _word_idx_for_pos(i + 1, w_info, kana_mora)
-            if w_cur != w_next:
-                phrase_boundaries.append(i + 1)
+    pitch_factors = compute_pitch_factors(kanas, kana_acc, kana_mora, w_info, args.f0_base, args.f0_range)
 
     records = []
-    phrase_start = 0
-    pi = 0
-    for phrase_end in phrase_boundaries:
-        if phrase_end >= n:
-            phrase_end = n
-        phrase_kanas = kanas[phrase_start:phrase_end]
-        phrase_acc = kana_acc[phrase_start:phrase_end]
-        phrase_mora = kana_mora[phrase_start:phrase_end]
-        phrase_n = len(phrase_kanas)
-        phrase_mora_count = sum(1 for m in phrase_mora if m == 0)
+    for i, k in enumerate(kanas):
+        prev_k = kanas[i - 1] if i > 0 else ""
+        entry = find_entry(entries, k, prev_k)
+        if entry is None:
+            continue
 
-        for j in range(phrase_n):
-            idx = phrase_start + j
-            k = kanas[idx]
-            prev_k = kanas[idx - 1] if idx > 0 else ""
-            entry = find_entry(entries, k, prev_k)
-            if entry is None:
-                continue
+        dur_log = float(dur_p[i][0])
+        dur_ms = max(float(math.exp(dur_log)) * 1000.0 * args.dur_scale, 30.0)
+        dur_ms = min(dur_ms, 500.0)
+        dur_ms *= 1.0 + np.random.normal(0, 0.04)
+        pf = pitch_factors[i]
 
-            dur_log = float(dur_p[idx][0])
-            dur_ms = max(float(math.exp(dur_log)) * 1000.0 * args.dur_scale, 30.0)
-            dur_ms = min(dur_ms, 500.0)
-
-            pf = compute_pitch_factor(
-                phrase_acc[j], phrase_mora[j], phrase_mora_count,
-                position_in_phrase=j, phrase_len=phrase_n,
-                is_utterance_final=(idx == n - 1),
-                is_utterance_initial=(idx == 0),
-                f0_base=args.f0_base, f0_range=args.f0_range,
-            )
-
-            records.append({
-                "kana": k,
-                "file": os.path.join(oto_dir, entry["file"]),
-                "alias": entry["alias"],
-                "offset_ms": entry["offset"],
-                "fixed_ms": entry["fixed"],
-                "blank_ms": entry["blank"],
-                "target_dur_ms": round(dur_ms, 1),
-                "pitch_factor": round(pf, 3),
-            })
-
-        phrase_start = phrase_end if phrase_end < n else n
-        pi += 1
+        records.append({
+            "kana": k,
+            "file": os.path.join(oto_dir, entry["file"]),
+            "alias": entry["alias"],
+            "offset_ms": entry["offset"],
+            "fixed_ms": entry["fixed"],
+            "blank_ms": entry["blank"],
+            "target_dur_ms": round(dur_ms, 1),
+            "pitch_factor": round(pf, 3),
+        })
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
@@ -179,37 +147,91 @@ def _word_idx_for_pos(pos: int, w_info: list[dict], kana_mora: list[int]) -> int
     return -1
 
 
-def compute_pitch_factor(acc, mora_idx, mora_count, position_in_phrase, phrase_len, is_utterance_final, is_utterance_initial, f0_base=260.0, f0_range=60.0):
-    pf = 1.0
+def compute_pitch_factors(kanas, kana_acc, kana_mora, w_info, f0_base=260.0, f0_range=70.0):
+    n = len(kanas)
 
-    if acc == 0:
-        if position_in_phrase < phrase_len * 0.3:
-            pf = 0.92 + 0.08 * (position_in_phrase / max(phrase_len * 0.3, 1))
-        else:
-            pf = 1.0
-    elif acc == 1:
-        pf = 1.12 - 0.12 * (position_in_phrase / max(phrase_len - 1, 1))
-    else:
-        kernel_pos = acc - 1
-        if mora_idx < kernel_pos:
-            frac = mora_idx / max(kernel_pos, 1)
-            pf = 0.88 + 0.24 * frac
-        elif mora_idx == kernel_pos:
-            pf = 1.12
-        else:
-            frac = (mora_idx - kernel_pos) / max(mora_count - kernel_pos, 1)
-            pf = 1.12 - 0.30 * frac
+    phrase_starts = [0]
+    for i in range(1, n):
+        w_cur = _word_idx_for_pos(i - 1, w_info, kana_mora)
+        w_next = _word_idx_for_pos(i, w_info, kana_mora)
+        if w_cur != w_next:
+            phrase_starts.append(i)
 
-    if is_utterance_initial and position_in_phrase < 0.15:
-        pf -= 0.05
+    total_mora_positions = []
+    for start, end in zip(phrase_starts, phrase_starts[1:] + [n]):
+        phrase_kanas = kanas[start:end]
+        phrase_acc = kana_acc[start:end]
+        phrase_mora = kana_mora[start:end]
 
-    if is_utterance_final:
-        pf -= 0.05 * (position_in_phrase / max(phrase_len - 1, 1))
+        mora_count = 1
+        for j in range(1, len(phrase_mora)):
+            if phrase_mora[j] == 0:
+                mora_count += 1
 
-    if is_utterance_final and position_in_phrase == phrase_len - 1:
-        pf -= 0.10
+        for j in range(len(phrase_kanas)):
+            global_idx = start + j
+            acc = phrase_acc[j] if j < len(phrase_acc) else 0
+            mora_idx = phrase_mora[j] if j < len(phrase_mora) else 0
+            total_mora_positions.append({
+                'idx': global_idx,
+                'acc': acc,
+                'mora_idx': mora_idx,
+                'mora_count': mora_count,
+                'phrase_start': start,
+                'phrase_end': end,
+                'phrase_len': end - start,
+                'is_first': global_idx == 0,
+                'is_last': global_idx == n - 1,
+            })
 
-    return float(np.clip(pf, 0.6, 1.3))
+    result = [1.0] * n
+    utterance_len = n
+
+    for tp in total_mora_positions:
+        i = tp['idx']
+        acc = tp['acc']
+        mora_idx = tp['mora_idx']
+        mora_count = tp['mora_count']
+        phrase_len = tp['phrase_len']
+
+        utt_pos = i / max(utterance_len - 1, 1)
+
+        pf = 1.0
+
+        if acc == 0:
+            phrase_progress = (i - tp['phrase_start']) / max(phrase_len - 1, 1)
+            if phrase_progress < 0.25:
+                pf = 0.93 + 0.07 * (phrase_progress / 0.25)
+            else:
+                pf = 1.0
+        elif acc == 1:
+            pf = 1.08 - 0.08 * (mora_idx / max(mora_count - 1, 1))
+        elif acc >= 2:
+            kernel = acc - 1
+            if mora_idx < kernel:
+                frac = mora_idx / max(kernel, 1)
+                pf = 0.90 + 0.18 * frac
+            elif mora_idx == kernel:
+                pf = 1.08
+            else:
+                frac = (mora_idx - kernel) / max(mora_count - kernel, 1)
+                pf = 1.08 - 0.22 * frac
+
+        declination = 1.0 - 0.06 * utt_pos
+        pf *= declination
+
+        if tp['is_last']:
+            pf *= 0.94
+
+        if tp['is_first']:
+            pf *= 0.96
+
+        if i == tp['phrase_start'] and i > 0:
+            pf *= 0.97
+
+        result[i] = round(float(np.clip(pf, 0.65, 1.25)), 3)
+
+    return result
 
 
 def load_oto(path: str) -> list[dict]:

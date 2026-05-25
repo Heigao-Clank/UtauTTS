@@ -42,7 +42,6 @@ def main() -> None:
             f0 = pw.stonemask(y, f0, t, sr)
             rms = np.sqrt(np.mean(pw.cheaptrick(y, f0, t, sr) ** 2, axis=1))
 
-            # Summary stats
             f0_valid = f0[f0 > 0]
             f0_mean = float(np.mean(f0_valid)) if f0_valid.size else 0.0
             f0_std = float(np.std(f0_valid)) if f0_valid.size else 0.0
