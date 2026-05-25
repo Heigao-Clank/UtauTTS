@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>UtauTTS - テスト</title>
+</head>
+
+<body>
+    <h1>UtauTTS - テスト</h1>
+    <p>テキスト</p>
+    <textarea id="text" placeholder="こんにちは" rows="3" cols="40"></textarea>
+    <p>ボイスバンク</p>
+    <select id="voicebank"></select>
+    <br>
+    <br>
+    <button id="synth" onclick="synthesize()">合成</button>
+    <p id="status"></p>
+    <audio id="player" controls style="display:none"></audio>
+    <script>
+        async function loadVoicebanks() {
+            const r = await fetch('/voicebanks');
+            const data = await r.json();
+            const sel = document.getElementById('voicebank');
+            data.voicebanks.forEach(vb => {
+                const opt = document.createElement('option');
+                opt.value = vb.id;
+                opt.textContent = vb.name;
+                sel.appendChild(opt);
+            });
+        }
+
+        async function synthesize() {
+            const text = document.getElementById('text').value.trim();
+            if (!text) return;
+            const btn = document.getElementById('synth');
+            const status = document.getElementById('status');
+            const player = document.getElementById('player');
+            btn.disabled = true;
+            status.textContent = '合成中...';
+            try {
+                const r = await fetch('/synthesize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: text,
+                        voicebank_id: document.getElementById('voicebank').value
+                    })
+                });
+                const data = await r.json();
+                if (data.error) { status.textContent = 'error: ' + data.error; return; }
+                const blob = new Blob(
+                    [Uint8Array.from(atob(data.wav_base64), c => c.charCodeAt(0))],
+                    { type: 'audio/wav' }
+                );
+                player.src = URL.createObjectURL(blob);
+                player.style.display = 'block';
+                player.play();
+                status.textContent = '完了';
+            } catch (e) {
+                status.textContent = 'error: ' + e.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        loadVoicebanks();
+    </script>
+</body>
+
+</html>

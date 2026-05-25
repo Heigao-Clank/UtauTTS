@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -14,6 +15,9 @@ import (
 
 	"utautts/internal/engine"
 )
+
+//go:embed index.html
+var webFiles embed.FS
 
 type Voicebank struct {
 	ID           string `json:"id"`
@@ -59,12 +63,15 @@ func main() {
 	}
 
 	if voicebankPath != "" {
-		if _, err := srv.registerVoicebank(voicebankPath); err != nil {
+		if vb, err := srv.registerVoicebank(voicebankPath); err != nil {
 			log.Printf("register voicebank: %v", err)
+		} else {
+			srv.voicebanks[vb.ID] = vb
 		}
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", srv.handleIndex)
 	mux.HandleFunc("POST /synthesize", srv.handleSynthesize)
 	mux.HandleFunc("GET /voicebanks", srv.handleListVoicebanks)
 	mux.HandleFunc("POST /voicebanks", srv.handleRegisterVoicebank)
@@ -227,3 +234,10 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
 }
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	data, _ := webFiles.ReadFile("index.html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
+}
+
