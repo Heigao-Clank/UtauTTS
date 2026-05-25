@@ -36,12 +36,12 @@ type Server struct {
 
 func main() {
 	var (
-		port          int
-		host          string
-		voicebankPath string
-		modelPath     string
-		pythonPath    string
-		toolsDir      string
+		port       int
+		host       string
+		voiceDir   string
+		modelPath  string
+		pythonPath string
+		toolsDir   string
 	)
 
 	exe, _ := os.Executable()
@@ -49,7 +49,7 @@ func main() {
 
 	flag.IntVar(&port, "port", 8080, "port")
 	flag.StringVar(&host, "host", "127.0.0.1", "host")
-	flag.StringVar(&voicebankPath, "voicebank", "", "default voicebank path")
+	flag.StringVar(&voiceDir, "voice-dir", "voice", "voicebank directory")
 	flag.StringVar(&modelPath, "model", "", "DNN model path (.pth)")
 	flag.StringVar(&pythonPath, "python", "python", "python executable")
 	flag.StringVar(&toolsDir, "tools", defaultTools, "tools directory")
@@ -62,12 +62,34 @@ func main() {
 		toolsDir:   toolsDir,
 	}
 
-	if voicebankPath != "" {
-		if vb, err := srv.registerVoicebank(voicebankPath); err != nil {
-			log.Printf("register voicebank: %v", err)
-		} else {
-			srv.voicebanks[vb.ID] = vb
+	if info, err := os.Stat(voiceDir); err == nil && info.IsDir() {
+		entries, _ := os.ReadDir(voiceDir)
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			vbPath := filepath.Join(voiceDir, e.Name())
+			if vb, err := srv.registerVoicebank(vbPath); err == nil {
+				srv.voicebanks[vb.ID] = vb
+				log.Printf("voicebank: %s (%d entries)", vb.ID, vb.PhonemeCount)
+				continue
+			}
+			subEntries, _ := os.ReadDir(vbPath)
+			for _, se := range subEntries {
+				if !se.IsDir() {
+					continue
+				}
+				subPath := filepath.Join(vbPath, se.Name())
+				if vb, err := srv.registerVoicebank(subPath); err == nil {
+					srv.voicebanks[vb.ID] = vb
+					log.Printf("voicebank: %s (%d entries)", vb.ID, vb.PhonemeCount)
+				}
+			}
 		}
+	}
+
+	if len(srv.voicebanks) == 0 {
+		log.Printf("warning: no voicebanks found in %s", voiceDir)
 	}
 
 	mux := http.NewServeMux()

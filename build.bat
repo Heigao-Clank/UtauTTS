@@ -17,7 +17,7 @@ mkdir "%REL%\UtauTTS\core"
 mkdir "%REL%\UtauTTS\models"
 mkdir "%REL%\UtauTTS\voice"
 copy utautts.exe "%REL%\UtauTTS\"
-copy engine.exe "%REL%\UtauTTS\core\"
+copy engine.exe "%REL%\UtauTTS\core\" 2>nul
 copy utautts-core.exe "%REL%\UtauTTS\core\"
 
 rmdir /s /q "%REL%\UtauTTS-Server" 2>nul
@@ -25,7 +25,7 @@ mkdir "%REL%\UtauTTS-Server\core"
 mkdir "%REL%\UtauTTS-Server\models"
 mkdir "%REL%\UtauTTS-Server\voice"
 copy utautts-server.exe "%REL%\UtauTTS-Server\"
-copy engine.exe "%REL%\UtauTTS-Server\core\"
+copy engine.exe "%REL%\UtauTTS-Server\core\" 2>nul
 copy utautts-core.exe "%REL%\UtauTTS-Server\core\"
 
 echo === Done ===

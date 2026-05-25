@@ -84,14 +84,25 @@ def find_entry(entries: list[dict], kana: str, prev_kana: str = "") -> dict | No
         for e in entries:
             if _ctx_match(e["alias"], "* ", kana):
                 return e
+
     for e in entries:
-        ac = strip_alias(e["alias"])
-        if ac == kana:
+        if strip_alias(e["alias"]) == kana:
             return e
+
     for e in entries:
         ac = strip_alias(e["alias"])
         if ac.endswith(kana) and len(ac) <= len(kana) + 3:
             return e
+
+    for e in entries:
+        ac = strip_alias(e["alias"])
+        if ac.startswith(kana) and len(ac) <= len(kana) + 3:
+            return e
+
+    for e in entries:
+        if kana in strip_alias(e["alias"]):
+            return e
+
     return None
 
 
@@ -120,50 +131,52 @@ def compute_pitch_factors(kanas, kana_acc, kana_mora, w_info):
             phrase_starts.append(i)
 
     result = [1.0] * n
-    utterance_len = n
 
-    for start, end in zip(phrase_starts, phrase_starts[1:] + [n]):
+    for pi, (start, end) in enumerate(zip(phrase_starts, phrase_starts[1:] + [n])):
         phrase_len = end - start
         phrase_acc = kana_acc[start:end]
         phrase_mora = kana_mora[start:end]
-        mora_count = 1
-        for j in range(1, len(phrase_mora)):
-            if phrase_mora[j] == 0:
-                mora_count += 1
+
+        mora_count = sum(1 for m in phrase_mora if m == 0)
 
         for j, global_idx in enumerate(range(start, end)):
-            acc = phrase_acc[j] if j < len(phrase_acc) else 0
-            mora_idx = phrase_mora[j] if j < len(phrase_mora) else 0
-            utt_pos = global_idx / max(utterance_len - 1, 1)
+            acc = phrase_acc[j]
+            mora_idx = phrase_mora[j]
+            phrase_progress = j / max(phrase_len - 1, 1)
+            utt_pos = global_idx / max(n - 1, 1)
 
             pf = 1.0
 
             if acc == 0:
-                phrase_progress = j / max(phrase_len - 1, 1)
-                if phrase_progress < 0.25:
-                    pf = 0.93 + 0.07 * (phrase_progress / 0.25)
+                if phrase_progress < 0.2:
+                    pf = 0.95 + 0.05 * (phrase_progress / 0.2)
             elif acc == 1:
-                pf = 1.08 - 0.08 * (mora_idx / max(mora_count - 1, 1))
+                fall = 0.08 * (mora_idx / max(mora_count - 1, 1))
+                pf = 1.06 - fall
             elif acc >= 2:
                 kernel = acc - 1
                 if mora_idx < kernel:
-                    frac = mora_idx / max(kernel, 1)
-                    pf = 0.90 + 0.18 * frac
+                    frac = mora_idx / kernel
+                    pf = 0.92 + 0.14 * frac
                 elif mora_idx == kernel:
-                    pf = 1.08
+                    pf = 1.06
                 else:
                     frac = (mora_idx - kernel) / max(mora_count - kernel, 1)
-                    pf = 1.08 - 0.22 * frac
+                    pf = 1.06 - 0.20 * frac
 
-            declination = 1.0 - 0.06 * utt_pos
-            pf *= declination
+            phrase_decl = 1.0 - 0.04 * phrase_progress
+            pf *= phrase_decl
 
-            if global_idx == utterance_len - 1:
+            utt_decl = 1.0 - 0.08 * utt_pos
+            pf *= utt_decl
+
+            if global_idx == end - 1 and end < n:
+                pf *= 0.95
+            if global_idx == n - 1:
+                pf *= 0.88
+
+            if global_idx == start and start > 0:
                 pf *= 0.94
-            if global_idx == 0:
-                pf *= 0.96
-            if global_idx == start and global_idx > 0:
-                pf *= 0.97
 
             result[global_idx] = round(float(np.clip(pf, 0.65, 1.25)), 3)
 
@@ -321,8 +334,23 @@ def synthesize(text: str, oto_path: str, model_path: str, out_path: str, dur_sca
         y = y[offset_s:end]
 
         dur_log = float(dur_p[i][0])
-        dur_ms = max(float(math.exp(dur_log)) * 1000.0 * dur_scale, 30.0)
-        dur_ms = min(dur_ms, 500.0)
+        dur_ms_dnn = float(math.exp(dur_log)) * 1000.0 * dur_scale
+
+        base_dur = 100.0
+        if kana_mora[i] == 0:
+            base_dur *= 1.15
+        if i == n - 1:
+            base_dur *= 1.3
+        dur_ms_rule = base_dur * dur_scale
+
+        if 40 < dur_ms_dnn < 400:
+            dur_ms = dur_ms_dnn
+        elif 40 < dur_ms_dnn < 600:
+            dur_ms = dur_ms_dnn * 0.7 + dur_ms_rule * 0.3
+        else:
+            dur_ms = dur_ms_rule
+
+        dur_ms = float(np.clip(dur_ms, 30.0, 500.0))
         dur_ms *= 1.0 + np.random.normal(0, 0.04)
 
         segments.append(y)

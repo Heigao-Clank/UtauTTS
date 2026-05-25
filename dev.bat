@@ -18,4 +18,4 @@ echo.
 echo Open http://127.0.0.1:8080
 echo.
 
-go run ./cmd/utautts-server --voicebank sample/uta --model %MODEL% --python %PYTHON% --tools tools
+go run ./cmd/utautts-server --voice-dir sample --model %MODEL% --python %PYTHON% --tools tools
