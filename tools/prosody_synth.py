@@ -26,8 +26,7 @@ def main() -> None:
 
     segments = []
     seg_dur_ms = []
-    seg_f0_pred_hz = []
-    seg_rms_scale = []
+    seg_pf = []
 
     sr = None
     for item in plan:
@@ -55,8 +54,7 @@ def main() -> None:
 
         segments.append(y)
         seg_dur_ms.append(float(item.get("target_dur_ms", 0)))
-        seg_f0_pred_hz.append(float(item.get("f0_pred_hz", 0)))
-        seg_rms_scale.append(float(item.get("rms_scale", 1.0)))
+        seg_pf.append(float(item.get("pitch_factor", 1.0)))
 
     if not segments:
         raise ValueError("no valid segments")
@@ -67,7 +65,6 @@ def main() -> None:
     sp_list = []
     ap_list = []
     f0_list = []
-    f0_orig_means = []
 
     for y in segments:
         f0, t = pw.dio(y, sr, f0_floor=60.0, f0_ceil=800.0)
@@ -75,13 +72,9 @@ def main() -> None:
         sp = pw.cheaptrick(y, f0, t, sr)
         ap = pw.d4c(y, f0, t, sr)
 
-        f0v = f0[f0 > 0]
-        f0_orig_mean = float(np.mean(f0v)) if f0v.size > 0 else 200.0
-
         sp_list.append(sp)
         ap_list.append(ap)
         f0_list.append(f0)
-        f0_orig_means.append(f0_orig_mean)
 
     for i in range(n):
         target_frames = f0_list[i].shape[0]
@@ -95,21 +88,10 @@ def main() -> None:
             ap_list[i] = resize_matrix(ap_list[i], target_frames)
             f0_list[i] = resize_f0(f0_list[i], target_frames)
 
-        f0_pred = seg_f0_pred_hz[i]
-        f0_orig = f0_orig_means[i]
-        if f0_pred > 0 and f0_orig > 0:
-            ratio = f0_pred / f0_orig
-            ratio = np.clip(ratio, 0.7, 1.4)
+        pf = seg_pf[i]
+        if pf != 1.0:
             voiced = f0_list[i] > 0
-            f0_list[i] = np.where(voiced, f0_list[i] * ratio, f0_list[i])
-        elif f0_pred <= 0:
-            f0_list[i][:] = 0.0
-
-        rms_scale = seg_rms_scale[i]
-        rms_scale = float(np.clip(rms_scale, 0.3, 3.0))
-        if rms_scale != 1.0:
-            sp_list[i] *= rms_scale
-            ap_list[i] *= rms_scale
+            f0_list[i] = np.where(voiced, f0_list[i] * pf, f0_list[i])
 
     total_frames = sum(f.shape[0] for f in f0_list)
     sp_dim = sp_list[0].shape[1]
