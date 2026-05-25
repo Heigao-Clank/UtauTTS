@@ -5,3 +5,6 @@ data/
 __pycache__/
 .venv/
 document/
+release/
+build/
+dist/
