@@ -226,3 +226,28 @@ func readUint32(reader *bufio.Reader) (uint32, error) {
     err := binary.Read(reader, binary.LittleEndian, &value)
     return value, err
 }
+
+func PCMToWavBytes(pcm *PCM) []byte {
+    dataSize := uint32(len(pcm.Data) * 2)
+    riffSize := 4 + (8 + 16) + (8 + dataSize)
+    buf := make([]byte, 44+dataSize)
+    copy(buf[0:4], "RIFF")
+    binary.LittleEndian.PutUint32(buf[4:8], riffSize)
+    copy(buf[8:12], "WAVE")
+    copy(buf[12:16], "fmt ")
+    binary.LittleEndian.PutUint32(buf[16:20], 16)
+    binary.LittleEndian.PutUint16(buf[20:22], 1)
+    binary.LittleEndian.PutUint16(buf[22:24], uint16(pcm.Channels))
+    binary.LittleEndian.PutUint32(buf[24:28], uint32(pcm.SampleRate))
+    byteRate := uint32(pcm.SampleRate * pcm.Channels * 2)
+    binary.LittleEndian.PutUint32(buf[28:32], byteRate)
+    blockAlign := uint16(pcm.Channels * 2)
+    binary.LittleEndian.PutUint16(buf[32:34], blockAlign)
+    binary.LittleEndian.PutUint16(buf[34:36], 16)
+    copy(buf[36:40], "data")
+    binary.LittleEndian.PutUint32(buf[40:44], dataSize)
+    for i, sample := range pcm.Data {
+        binary.LittleEndian.PutUint16(buf[44+i*2:], uint16(sample))
+    }
+    return buf
+}
