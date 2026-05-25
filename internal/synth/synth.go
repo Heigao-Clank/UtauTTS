@@ -1,17 +1,17 @@
 package synth
 
 import (
-    "bufio"
-    "encoding/json"
-    "errors"
-    "fmt"
-    "math"
-    "os"
-    "path/filepath"
-    "strings"
+	"bufio"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
 
-    "utautts/internal/audio"
-    "utautts/internal/oto"
+	"utautts/internal/audio"
+	"utautts/internal/oto"
 )
 
 type Config struct {
@@ -72,8 +72,6 @@ func Synthesize(cfg Config) (*audio.PCM, error) {
     return concatSamples(samples, cfg.GapMs, cfg.CrossMs)
 }
 
-// -- alias splitting
-
 func splitAliases(text string) []string {
     text = strings.TrimSpace(text)
     if text == "" {
@@ -129,8 +127,6 @@ func isSmallKana(r rune) bool {
     }
 }
 
-// -- sample loading
-
 func loadSamples(otoIni *oto.Ini, aliases []string, pitch float64, predMap map[string]PredictedParams, noCurve bool) ([]Sample, error) {
     samples := make([]Sample, 0, len(aliases))
     for i, alias := range aliases {
@@ -170,8 +166,6 @@ func loadSamples(otoIni *oto.Ini, aliases []string, pitch float64, predMap map[s
     }
     return samples, nil
 }
-
-// -- alias selection
 
 func selectEntry(otoIni *oto.Ini, alias string, prev string, isFirst bool) (oto.Entry, error) {
     alias = strings.TrimSpace(alias)
@@ -253,8 +247,6 @@ func isVowelEnding(alias string) bool {
     }
 }
 
-// -- prediction loading
-
 func loadPredictions(path string) (map[string]PredictedParams, error) {
     file, err := os.Open(path)
     if err != nil {
@@ -332,8 +324,6 @@ func applyPredictions(entry oto.Entry, pred PredictedParams) oto.Entry {
     }
     return entry
 }
-
-// -- concatenation
 
 func concatSamples(samples []Sample, gapMs float64, crossMs float64) (*audio.PCM, error) {
     if len(samples) == 0 {
@@ -450,8 +440,6 @@ func noteLengthFrames(entry oto.Entry, totalFrames int, sampleRate int) int {
     }
     return effective
 }
-
-// -- audio processing
 
 func applyEnvelope(data []int16, sampleRate int, channels int, attackMs float64, releaseMs float64) []int16 {
     frames := len(data) / channels
@@ -713,8 +701,6 @@ func ensureLength(data []int16, length int) []int16 {
     return extended
 }
 
-// -- math helpers
-
 func msToFrames(ms float64, sampleRate int) int {
     if ms <= 0 {
         return 0
@@ -738,8 +724,6 @@ func clampInt16(value float64) int16 {
     }
     return int16(math.Round(value))
 }
-
-// Plan-based synthesis
 
 type PlanEntry struct {
     File            string  `json:"file"`
