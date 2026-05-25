@@ -100,24 +100,48 @@ def load_oto(oto_path: str) -> list[dict]:
     return entries
 
 
+def _is_kana_char(c: str) -> bool:
+    o = ord(c)
+    return (0x3040 <= o <= 0x309F) or (0x30A0 <= o <= 0x30FF)
+
+
+def strip_alias(alias: str) -> str:
+    alias = alias.strip()
+    alias = alias.replace("- ", "").replace("* ", "")
+    while alias and not _is_kana_char(alias[-1]):
+        alias = alias[:-1]
+    return alias.strip()
+
+
+def _ctx_match(alias: str, prefix: str, kana: str) -> bool:
+    a = alias.strip()
+    if a.startswith(prefix):
+        base = a[len(prefix):]
+        base = base.strip()
+        while base and not _is_kana_char(base[-1]):
+            base = base[:-1]
+        return base == kana
+    return False
+
+
 def find_entry(entries: list[dict], kana: str, prev_kana: str = "", is_first: bool = True) -> dict | None:
     if not is_first and prev_kana:
         if is_vowel(prev_kana):
             for e in entries:
-                if e["alias"].strip() == f"- {kana}":
+                if _ctx_match(e["alias"], "- ", kana):
                     return e
         else:
             for e in entries:
-                if e["alias"].strip() == f"* {kana}":
+                if _ctx_match(e["alias"], "* ", kana):
                     return e
 
     for e in entries:
-        alias_clean = e["alias"].replace("- ", "").replace("* ", "").strip()
-        if alias_clean == kana:
+        ac = strip_alias(e["alias"])
+        if ac == kana:
             return e
     for e in entries:
-        alias_clean = e["alias"].replace("- ", "").replace("* ", "").strip()
-        if alias_clean.startswith(kana):
+        ac = strip_alias(e["alias"])
+        if ac.startswith(kana):
             return e
     return None
 

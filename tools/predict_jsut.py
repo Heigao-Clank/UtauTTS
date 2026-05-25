@@ -36,7 +36,7 @@ def main():
     parser.add_argument("--model", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--base-dur", type=float, default=100.0, help="base duration in ms (fallback)")
-    parser.add_argument("--dur-scale", type=float, default=0.55, help="duration scale factor (tune for speed)")
+    parser.add_argument("--dur-scale", type=float, default=0.45, help="duration scale factor (lower=faster)")
     parser.add_argument("--f0-base", type=float, default=260.0, help="base F0 Hz for pitch rule")
     parser.add_argument("--f0-range", type=float, default=60.0, help="F0 variation range")
     args = parser.parse_args()
@@ -148,6 +148,7 @@ def main():
                 "file": os.path.join(oto_dir, entry["file"]),
                 "alias": entry["alias"],
                 "offset_ms": entry["offset"],
+                "fixed_ms": entry["fixed"],
                 "blank_ms": entry["blank"],
                 "target_dur_ms": round(dur_ms, 1),
                 "pitch_factor": round(pf, 3),
@@ -233,22 +234,46 @@ def load_oto(path: str) -> list[dict]:
     return entries
 
 
+def _is_kana_char(c: str) -> bool:
+    o = ord(c)
+    return (0x3040 <= o <= 0x309F) or (0x30A0 <= o <= 0x30FF)
+
+
+def strip_alias(alias: str) -> str:
+    alias = alias.strip()
+    alias = alias.replace("- ", "").replace("* ", "")
+    while alias and not _is_kana_char(alias[-1]):
+        alias = alias[:-1]
+    return alias.strip()
+
+
+def _ctx_match(alias: str, prefix: str, kana: str) -> bool:
+    a = alias.strip()
+    if a.startswith(prefix):
+        base = a[len(prefix):]
+        base = base.strip()
+        while base and not _is_kana_char(base[-1]):
+            base = base[:-1]
+        return base == kana
+    return False
+
+
 def find_entry(entries: list[dict], kana: str, prev_kana: str = "") -> dict | None:
     if prev_kana and is_vowel(prev_kana):
         for e in entries:
-            if e["alias"].strip() == f"- {kana}":
+            if _ctx_match(e["alias"], "- ", kana):
                 return e
     elif prev_kana:
         for e in entries:
-            if e["alias"].strip() == f"* {kana}":
+            if _ctx_match(e["alias"], "* ", kana):
                 return e
     for e in entries:
-        alias_clean = e["alias"].replace("- ", "").replace("* ", "").strip()
-        if alias_clean == kana:
+        ac = strip_alias(e["alias"])
+        if ac == kana:
             return e
     for e in entries:
-        alias_clean = e["alias"].replace("- ", "").replace("* ", "").strip()
-        if alias_clean.endswith(kana) and len(alias_clean) <= len(kana) + 3:
+        ac = strip_alias(e["alias"])
+        if ac.endswith(kana) and len(ac) <= len(kana) + 3:
             return e
     return None
 

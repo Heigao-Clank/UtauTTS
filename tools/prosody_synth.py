@@ -48,8 +48,13 @@ def main() -> None:
         blank_ms = float(item.get("blank_ms", 0))
         offset_s = max(0, int(offset_ms * sr / 1000))
         blank_s = int(blank_ms * sr / 1000)
-        end = max(offset_s + 1, len(y) - blank_s)
-        end = min(end, len(y))
+        end = len(y) - blank_s
+        if end <= offset_s:
+            end = offset_s + int(100 * sr / 1000)
+        if end > len(y):
+            end = len(y)
+        if end <= offset_s:
+            end = offset_s + 1
         y = y[offset_s:end]
 
         segments.append(y)
@@ -93,13 +98,14 @@ def main() -> None:
             voiced = f0_list[i] > 0
             f0_list[i] = np.where(voiced, f0_list[i] * pf, f0_list[i])
 
+    cf_frames = max(2, int(args.crossfade_ms / hop_ms))
+
     total_frames = sum(f.shape[0] for f in f0_list)
     sp_dim = sp_list[0].shape[1]
     merged_sp = np.zeros((total_frames, sp_dim), dtype=np.float64)
     merged_ap = np.zeros((total_frames, sp_dim), dtype=np.float64)
     merged_f0 = np.zeros(total_frames, dtype=np.float64)
 
-    cf_frames = max(2, int(args.crossfade_ms / hop_ms))
     offset = 0
 
     for i in range(n):
