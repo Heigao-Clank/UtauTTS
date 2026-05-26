@@ -11,7 +11,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
 
 	"utautts/internal/engine"
 )
@@ -69,21 +73,9 @@ func main() {
 				continue
 			}
 			vbPath := filepath.Join(voiceDir, e.Name())
-			if vb, err := srv.registerVoicebank(vbPath); err == nil {
-				srv.voicebanks[vb.ID] = vb
-				log.Printf("voicebank: %s (%d entries)", vb.ID, vb.PhonemeCount)
-				continue
-			}
-			subEntries, _ := os.ReadDir(vbPath)
-			for _, se := range subEntries {
-				if !se.IsDir() {
-					continue
-				}
-				subPath := filepath.Join(vbPath, se.Name())
-				if vb, err := srv.registerVoicebank(subPath); err == nil {
-					srv.voicebanks[vb.ID] = vb
-					log.Printf("voicebank: %s (%d entries)", vb.ID, vb.PhonemeCount)
-				}
+			found := srv.scanVoicebanks(vbPath, 0)
+			if !found {
+				log.Printf("warning: no oto.ini found in %s", vbPath)
 			}
 		}
 	}
@@ -235,16 +227,63 @@ func (s *Server) registerVoicebank(vbPath string) (Voicebank, error) {
 	}, nil
 }
 
+func (s *Server) scanVoicebanks(dir string, depth int) bool {
+	if depth > 3 {
+		return false
+	}
+	foundAny := false
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	hasOto := false
+	for _, e := range entries {
+		if e.Name() == "oto.ini" && !e.IsDir() {
+			hasOto = true
+			break
+		}
+	}
+	if hasOto {
+		vb, err := s.registerVoicebank(dir)
+		if err == nil {
+			vb.ID = filepath.Base(dir)
+			vb.Name = vb.ID
+			s.voicebanks[vb.ID] = vb
+			log.Printf("voicebank: %s (%d entries)", vb.ID, vb.PhonemeCount)
+			foundAny = true
+		}
+	}
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			if s.scanVoicebanks(filepath.Join(dir, e.Name()), depth+1) {
+				foundAny = true
+			}
+		}
+	}
+	return foundAny
+}
+
 func countOtoEntries(path string) int {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0
 	}
 	defer f.Close()
-	data, _ := io.ReadAll(f)
+	decoder := japanese.ShiftJIS.NewDecoder()
+	reader := transform.NewReader(f, decoder)
+	data, _ := io.ReadAll(reader)
 	lines := 0
-	for _, b := range data {
-		if b == '\n' {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		fields := strings.Split(parts[1], ",")
+		if len(fields) >= 6 {
 			lines++
 		}
 	}

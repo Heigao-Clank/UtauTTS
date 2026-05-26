@@ -59,6 +59,8 @@ def _is_kana_char(c: str) -> bool:
 def strip_alias(alias: str) -> str:
     alias = alias.strip()
     alias = alias.replace("- ", "").replace("* ", "")
+    if len(alias) >= 2 and alias[1] == ' ' and alias[0] in 'aiueon' and _is_kana_char(alias[2]):
+        alias = alias[2:]
     while alias and not _is_kana_char(alias[-1]):
         alias = alias[:-1]
     return alias.strip()
@@ -76,6 +78,13 @@ def _ctx_match(alias: str, prefix: str, kana: str) -> bool:
 
 
 def find_entry(entries: list[dict], kana: str, prev_kana: str = "") -> dict | None:
+    if prev_kana:
+        prev_vowel = kana_to_vowel(prev_kana)
+        if prev_vowel:
+            for e in entries:
+                if _ctx_match(e["alias"], prev_vowel + " ", kana):
+                    return e
+
     if prev_kana and is_vowel(prev_kana):
         for e in entries:
             if _ctx_match(e["alias"], "- ", kana):
@@ -83,6 +92,26 @@ def find_entry(entries: list[dict], kana: str, prev_kana: str = "") -> dict | No
     elif prev_kana:
         for e in entries:
             if _ctx_match(e["alias"], "* ", kana):
+                return e
+
+    if prev_kana:
+        for e in entries:
+            if _ctx_match(e["alias"], "a ", kana):
+                return e
+        for e in entries:
+            if _ctx_match(e["alias"], "i ", kana):
+                return e
+        for e in entries:
+            if _ctx_match(e["alias"], "u ", kana):
+                return e
+        for e in entries:
+            if _ctx_match(e["alias"], "e ", kana):
+                return e
+        for e in entries:
+            if _ctx_match(e["alias"], "o ", kana):
+                return e
+        for e in entries:
+            if _ctx_match(e["alias"], "n ", kana):
                 return e
 
     for e in entries:
@@ -110,6 +139,35 @@ def is_vowel(kana: str) -> bool:
     return bool(kana) and kana[-1] in "あいうえおぁぃぅぇぉアイウエオァィゥェォー"
 
 
+_VOWEL_MAP = {
+    'あ': 'a', 'い': 'i', 'う': 'u', 'え': 'e', 'お': 'o',
+    'ぁ': 'a', 'ぃ': 'i', 'ぅ': 'u', 'ぇ': 'e', 'ぉ': 'o',
+    'ア': 'a', 'イ': 'i', 'ウ': 'u', 'エ': 'e', 'オ': 'o',
+    'ァ': 'a', 'ィ': 'i', 'ゥ': 'u', 'ェ': 'e', 'ォ': 'o',
+    'か': 'a', 'が': 'a', 'き': 'i', 'ぎ': 'i', 'く': 'u', 'ぐ': 'u',
+    'け': 'e', 'げ': 'e', 'こ': 'o', 'ご': 'o',
+    'さ': 'a', 'ざ': 'a', 'し': 'i', 'じ': 'i', 'す': 'u', 'ず': 'u',
+    'せ': 'e', 'ぜ': 'e', 'そ': 'o', 'ぞ': 'o',
+    'た': 'a', 'だ': 'a', 'ち': 'i', 'ぢ': 'i', 'つ': 'u', 'づ': 'u',
+    'て': 'e', 'で': 'e', 'と': 'o', 'ど': 'o',
+    'な': 'a', 'に': 'i', 'ぬ': 'u', 'ね': 'e', 'の': 'o',
+    'は': 'a', 'ば': 'a', 'ぱ': 'a', 'ひ': 'i', 'び': 'i', 'ぴ': 'i',
+    'ふ': 'u', 'ぶ': 'u', 'ぷ': 'u', 'へ': 'e', 'べ': 'e', 'ぺ': 'e',
+    'ほ': 'o', 'ぼ': 'o', 'ぽ': 'o',
+    'ま': 'a', 'み': 'i', 'む': 'u', 'め': 'e', 'も': 'o',
+    'や': 'a', 'ゆ': 'u', 'よ': 'o',
+    'ら': 'a', 'り': 'i', 'る': 'u', 'れ': 'e', 'ろ': 'o',
+    'わ': 'a', 'を': 'o', 'ん': 'n',
+    'ャ': 'a', 'ュ': 'u', 'ョ': 'o',
+}
+
+
+def kana_to_vowel(kana: str) -> str:
+    if not kana:
+        return ""
+    return _VOWEL_MAP.get(kana[-1], "")
+
+
 def kata_to_hira(s: str) -> str:
     result = []
     for c in s:
@@ -119,6 +177,53 @@ def kata_to_hira(s: str) -> str:
         else:
             result.append(c)
     return "".join(result)
+
+
+def normalize_kanas(kanas: list[str]) -> list[str]:
+    result = []
+    for k in kanas:
+        k = kata_to_hira(k)
+        if k in ('゛', '\u309b'):
+            if result:
+                prev = result[-1]
+                merged = _add_dakuten(prev)
+                if merged:
+                    result[-1] = merged
+            continue
+        if k in ('゜', '\u309c'):
+            if result:
+                prev = result[-1]
+                merged = _add_handakuten(prev)
+                if merged:
+                    result[-1] = merged
+            continue
+        result.append(k)
+    return result
+
+
+def _add_dakuten(kana: str) -> str | None:
+    m = {
+        'か': 'が', 'き': 'ぎ', 'く': 'ぐ', 'け': 'げ', 'こ': 'ご',
+        'さ': 'ざ', 'し': 'じ', 'す': 'ず', 'せ': 'ぜ', 'そ': 'ぞ',
+        'た': 'だ', 'ち': 'ぢ', 'つ': 'づ', 'て': 'で', 'と': 'ど',
+        'は': 'ば', 'ひ': 'び', 'ふ': 'ぶ', 'へ': 'べ', 'ほ': 'ぼ',
+        'う': 'ゔ',
+    }
+    return m.get(kana)
+
+
+def _add_handakuten(kana: str) -> str | None:
+    m = {
+        'は': 'ぱ', 'ひ': 'ぴ', 'ふ': 'ぷ', 'へ': 'ぺ', 'ほ': 'ぽ',
+    }
+    return m.get(kana)
+
+
+def _fallback_kana(kana: str) -> str | None:
+    sokuon = {'っ': 'つ', 'ッ': 'ツ'}
+    if kana in sokuon:
+        return sokuon[kana]
+    return None
 
 def compute_pitch_factors(kanas, kana_acc, kana_mora, w_info):
     n = len(kanas)
@@ -132,53 +237,81 @@ def compute_pitch_factors(kanas, kana_acc, kana_mora, w_info):
 
     result = [1.0] * n
 
-    for pi, (start, end) in enumerate(zip(phrase_starts, phrase_starts[1:] + [n])):
+    for start, end in zip(phrase_starts, phrase_starts[1:] + [n]):
         phrase_len = end - start
         phrase_acc = kana_acc[start:end]
         phrase_mora = kana_mora[start:end]
-
         mora_count = sum(1 for m in phrase_mora if m == 0)
+        if mora_count == 0:
+            mora_count = phrase_len
+
+        mora_pos: list[int] = [-1] * phrase_len
+        mi = 0
+        for j in range(phrase_len):
+            if phrase_mora[j] == 0:
+                mora_pos[j] = mi
+                mi += 1
+            else:
+                mora_pos[j] = mi
+        total_mora = mi
+        if total_mora == 0:
+            total_mora = phrase_len
+
+        acc_type = phrase_acc[0]
+        is_heiban = (acc_type == 0)
+        is_odaka = (acc_type > 0 and acc_type == total_mora)
+        kernel = acc_type if acc_type > 0 and acc_type < total_mora else (-1 if is_heiban else total_mora)
 
         for j, global_idx in enumerate(range(start, end)):
-            acc = phrase_acc[j]
-            mora_idx = phrase_mora[j]
-            phrase_progress = j / max(phrase_len - 1, 1)
+            mp = mora_pos[j] if j < len(mora_pos) else j
             utt_pos = global_idx / max(n - 1, 1)
+            phrase_progress = mp / max(total_mora - 1, 1)
 
-            pf = 1.0
-
-            if acc == 0:
-                if phrase_progress < 0.2:
-                    pf = 0.95 + 0.05 * (phrase_progress / 0.2)
-            elif acc == 1:
-                fall = 0.08 * (mora_idx / max(mora_count - 1, 1))
-                pf = 1.06 - fall
-            elif acc >= 2:
-                kernel = acc - 1
-                if mora_idx < kernel:
-                    frac = mora_idx / kernel
-                    pf = 0.92 + 0.14 * frac
-                elif mora_idx == kernel:
-                    pf = 1.06
+            if is_heiban:
+                if mp == 0:
+                    pf = 0.94
+                elif mp < total_mora - 1:
+                    pf = 0.94 + 0.08 * min((mp / max(total_mora - 2, 1)), 1.0)
                 else:
-                    frac = (mora_idx - kernel) / max(mora_count - kernel, 1)
-                    pf = 1.06 - 0.20 * frac
+                    pf = 1.02 - 0.04 * phrase_progress
+            elif kernel <= 0:
+                pf = 1.0
+            else:
+                km = kernel
+                if mp == 0:
+                    pf = 0.94
+                elif mp < km:
+                    frac = (mp - 1) / max(km - 1, 1)
+                    pf = 0.94 + 0.10 * frac
+                elif mp == km:
+                    pf = 1.04
+                else:
+                    after = mp - km
+                    remain = total_mora - km
+                    if remain <= 1:
+                        pf = 1.04
+                    else:
+                        frac = after / max(remain, 1)
+                        pf = 1.04 - 0.12 * frac
 
-            phrase_decl = 1.0 - 0.04 * phrase_progress
+            phrase_decl = 1.0 - 0.025 * phrase_progress
             pf *= phrase_decl
 
-            utt_decl = 1.0 - 0.08 * utt_pos
+            utt_decl = 1.0 - 0.06 * utt_pos
             pf *= utt_decl
 
-            if global_idx == end - 1 and end < n:
-                pf *= 0.95
-            if global_idx == n - 1:
-                pf *= 0.88
-
-            if global_idx == start and start > 0:
+            if is_odaka and mp == total_mora - 1:
                 pf *= 0.94
 
-            result[global_idx] = round(float(np.clip(pf, 0.65, 1.25)), 3)
+            if global_idx == end - 1 and end < n:
+                pf *= 0.96
+            if global_idx == n - 1:
+                pf *= 0.86
+
+            if global_idx == start and start > 0:
+                pf *= 0.96
+
+            result[global_idx] = round(float(np.clip(pf, 0.80, 1.18)), 3)
 
     return result
 
@@ -250,7 +383,7 @@ def synthesize(text: str, oto_path: str, model_path: str, out_path: str, dur_sca
         return vocab.get(kana, 0)
 
     kana_text = pyopenjtalk.g2p(text, kana=True)
-    kanas = [kata_to_hira(k) for k in kana_text]
+    kanas = normalize_kanas(kana_text)
     if not kanas:
         raise ValueError("empty kana sequence")
     n = len(kanas)
@@ -302,14 +435,29 @@ def synthesize(text: str, oto_path: str, model_path: str, out_path: str, dur_sca
     seg_pf = []
 
     sr = None
+    skipped = 0
     for i, k in enumerate(kanas):
         prev_k = kanas[i - 1] if i > 0 else ""
         entry = find_entry(entries, k, prev_k)
         if entry is None:
+            fallback_k = _fallback_kana(k)
+            if fallback_k and fallback_k != k:
+                entry = find_entry(entries, fallback_k, prev_k)
+                if entry is not None:
+                    k = fallback_k
+        if entry is None:
+            skipped += 1
+            if skipped <= 3:
+                sys.stderr.write(f"WARNING: no oto entry for kana='{k}' (prev='{prev_k}') pos={i}\n")
+                sys.stderr.flush()
             continue
 
         wav_path = os.path.join(oto_dir, entry["file"])
         if not os.path.exists(wav_path):
+            skipped += 1
+            if skipped <= 3:
+                sys.stderr.write(f"WARNING: wav not found: {wav_path}\n")
+                sys.stderr.flush()
             continue
 
         y, sr_file = sf.read(wav_path, dtype="float64")
@@ -318,6 +466,10 @@ def synthesize(text: str, oto_path: str, model_path: str, out_path: str, dur_sca
         if sr is None:
             sr = sr_file
         if sr_file != sr:
+            skipped += 1
+            if skipped <= 3:
+                sys.stderr.write(f"WARNING: sample rate mismatch for kana='{k}': expected {sr}, got {sr_file}\n")
+                sys.stderr.flush()
             continue
 
         offset_ms = float(entry["offset"])
@@ -325,12 +477,12 @@ def synthesize(text: str, oto_path: str, model_path: str, out_path: str, dur_sca
         offset_s = max(0, int(offset_ms * sr / 1000))
         blank_s = int(blank_ms * sr / 1000)
         end = len(y) - blank_s
-        if end <= offset_s:
-            end = offset_s + int(100 * sr / 1000)
         if end > len(y):
             end = len(y)
         if end <= offset_s:
-            end = offset_s + 1
+            end = min(offset_s + int(100 * sr / 1000), len(y))
+        if end <= offset_s:
+            end = min(offset_s + 1, len(y))
         y = y[offset_s:end]
 
         dur_log = float(dur_p[i][0])
@@ -343,15 +495,22 @@ def synthesize(text: str, oto_path: str, model_path: str, out_path: str, dur_sca
             base_dur *= 1.3
         dur_ms_rule = base_dur * dur_scale
 
-        if 40 < dur_ms_dnn < 400:
-            dur_ms = dur_ms_dnn
-        elif 40 < dur_ms_dnn < 600:
-            dur_ms = dur_ms_dnn * 0.7 + dur_ms_rule * 0.3
-        else:
-            dur_ms = dur_ms_rule
+        dnn_conf = 1.0
+        if dur_ms_dnn < 30 or dur_ms_dnn > 500:
+            dnn_conf = 0.0
+        elif dur_ms_dnn < 50 or dur_ms_dnn > 350:
+            dnn_conf = (dur_ms_dnn - 30) / 20.0 if dur_ms_dnn < 50 else (500 - dur_ms_dnn) / 150.0
 
-        dur_ms = float(np.clip(dur_ms, 30.0, 500.0))
-        dur_ms *= 1.0 + np.random.normal(0, 0.04)
+        if n > 30:
+            dnn_conf *= 0.7
+        elif n > 15:
+            dnn_conf *= 0.85
+
+        dur_ms = dur_ms_dnn * dnn_conf + dur_ms_rule * (1.0 - dnn_conf)
+
+        dur_ms = float(np.clip(dur_ms, 25.0, 500.0))
+        if dnn_conf > 0.4:
+            dur_ms *= 1.0 + np.random.normal(0, 0.03)
 
         segments.append(y)
         seg_dur_ms.append(dur_ms)
@@ -359,6 +518,9 @@ def synthesize(text: str, oto_path: str, model_path: str, out_path: str, dur_sca
 
     if not segments:
         raise ValueError("no valid segments")
+    if skipped > 3:
+        sys.stderr.write(f"WARNING: skipped {skipped} segments total (of {len(kanas)} kana)\n")
+        sys.stderr.flush()
 
     n_seg = len(segments)
     hop_ms = 5.0
