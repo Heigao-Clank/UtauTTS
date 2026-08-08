@@ -41,9 +41,10 @@ type Target struct {
 }
 
 type Prediction struct {
-	DurationMS   float64
-	PitchFactor  float64
-	EnergyFactor float64
+	DurationMS     float64
+	DurationFactor float64
+	PitchFactor    float64
+	EnergyFactor   float64
 }
 
 func LoadJSONL(path string) ([]Record, error) {

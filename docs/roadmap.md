@@ -2,26 +2,29 @@
 
 ## Milestone 1: voicebank model
 
-- Recursively load and merge `oto.ini` files.
-- Preserve every candidate for duplicate aliases.
-- Detect metadata encoding and report malformed entries.
-- Classify alias patterns as CV, VCV and VC.
-- Produce a coverage report for a representative Japanese sentence set.
+- [x] Recursively load and merge `oto.ini` files.
+- [x] Preserve every candidate for duplicate aliases.
+- [x] Detect metadata encoding and report malformed entries.
+- [x] Classify alias patterns as CV, VCV and VC.
+- [ ] Produce a coverage report for a representative Japanese sentence set.
 
 ## Milestone 2: deterministic renderer
 
-- Define a synthesis-plan format independent of WAV processing.
-- Resolve phonetic context without silently dropping morae.
-- Implement `preutterance`, `overlap`, consonant and cutoff timing correctly.
-- Add pitch-synchronous duration and F0 transformation.
-- Verify placement and crossfades with generated test signals.
+- [x] Define a synthesis-plan format independent of WAV processing.
+- [x] Resolve phonetic context without silently dropping morae.
+- [x] Implement `preutterance`, `overlap`, consonant and cutoff timing.
+- [ ] Add pitch-synchronous F0 transformation.
+- [x] Verify placement and crossfades with generated test signals.
+- [x] Normalize pathological long-VCV timing without changing ordinary banks.
+- [x] Record original and effective timing values in the synthesis plan.
 
 ## Milestone 3: corpus prosody
 
 - [x] Extract auditable weak mora alignment from JSUT speech and transcripts.
-- [x] Train duration, relative F0, relative energy and pause baselines.
+- [x] Train conservative speech-duration residuals around the fixed baseline.
 - [x] Keep speaker normalization separate from voicebank rendering.
-- [x] Report held-out duration, pitch and energy metrics.
+- [x] Report held-out, speaking-rate-normalized duration metrics.
+- [ ] Reintroduce pause, F0 and energy only after their targets are reliable.
 - [ ] Replace weak timing with a forced aligner and add fixed listening samples.
 
 ## Milestone 4: learned joins

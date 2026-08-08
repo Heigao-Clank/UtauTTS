@@ -1,8 +1,9 @@
 # Prosody training pipeline
 
-This pipeline learns timing, relative pitch and relative energy from natural
-speech. It does **not** learn the corpus speaker's waveform or absolute pitch;
-the UTAU voicebank remains the sound source.
+This pipeline learns only local speech-duration corrections around the fixed
+renderer baseline. It does **not** transfer the corpus speaker's waveform,
+global speaking rate, pitch, energy, or pauses; the UTAU voicebank and baseline
+renderer remain the sound source and timing anchor.
 
 ## 1. Build an auditable dataset
 
@@ -14,7 +15,7 @@ go run ./cmd/prosody-dataset --jsut data/jsut/basic5000 --out out/prosody/jsut.j
 ```
 
 Each JSONL row contains the text, Kagome reading, speech range, mora boundaries,
-duration, F0, energy, and utterance-normalized ratios. Output order is stable
+duration, F0, and energy. Output order is stable
 even though extraction runs in parallel. Rejected utterances and their reasons
 are written to `<out>.report.json`.
 
@@ -33,11 +34,12 @@ go run ./cmd/prosody-train --dataset out/prosody/jsut.jsonl --out out/prosody/mo
 ```
 
 The deterministic trainer holds out whole utterances by a stable hash of their
-IDs. It fits sparse contextual models to log duration, log F0 ratio and log
-energy ratio using Adam with a Huber-style clipped gradient. The model JSON
-contains the split's duration MAE (ms), pitch MAE (cents), and energy-ratio MAE.
-Because the split is by utterance, adjacent morae from one recording cannot
-leak into both training and validation.
+IDs. It divides each speech duration by the fixed mora baseline, removes the
+utterance's median speaking rate, and fits a sparse contextual model to the
+remaining log-duration residual using Adam with a Huber-style clipped gradient.
+The model JSON contains speaking-rate-normalized duration MAE. Because the
+split is by utterance, adjacent morae from one recording cannot leak into both
+training and validation.
 
 ## 3. Synthesize with the model
 
@@ -51,8 +53,9 @@ For the browser/API server:
 go run ./cmd/utautts-server --voice-dir sample --prosody out/prosody/model.json
 ```
 
-Omitting `--prosody` keeps the fixed deterministic baseline. A plan generated
-with a model records every predicted duration, pitch factor, and energy factor.
+Omitting `--prosody` keeps the fixed deterministic baseline. With a model,
+speech factors are centered to a median of 1.0 and clamped to 0.8--1.25. Pitch
+and energy factors remain 1.0, and pauses remain at the configured baseline.
 
 ## Known limitations
 
@@ -60,7 +63,7 @@ with a model records every predicted duration, pitch factor, and energy factor.
   labels. Validation loss measures agreement with those extracted labels.
 - The compact contextual regressor is deliberately a baseline. It does not yet
   model Japanese accent phrases or long-range sentence context.
-- Pitch shifting is deterministic WSOLA plus resampling, not a vocoder. Large
-  shifts are clamped to protect voice identity and audio quality.
+- F0, energy, and pause learning are intentionally disabled until stronger
+  alignment and accent targets are available.
 - Naturalness must ultimately be checked with fixed listening tests, alongside
   objective prosody metrics and boundary discontinuity measurements.

@@ -35,6 +35,6 @@ func main() {
 	if err := model.Save(output); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("wrote %s (train %d records/%d tokens, validation %d records; duration MAE %.1fms, pitch MAE %.1f cents, energy MAE %.3f)\n",
-		output, model.Training.Records, model.Training.Tokens, model.Metrics.Records, model.Metrics.DurationMAEMS, model.Metrics.PitchMAECents, model.Metrics.EnergyRatioMAE)
+	fmt.Printf("wrote %s (duration-residual; train %d records/%d tokens, validation %d records; normalized duration MAE %.1fms)\n",
+		output, model.Training.Records, model.Training.Tokens, model.Metrics.Records, model.Metrics.DurationMAEMS)
 }

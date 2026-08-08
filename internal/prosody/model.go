@@ -11,17 +11,15 @@ import (
 	"utautts/internal/frontend"
 )
 
-const ModelVersion = 1
+const ModelVersion = 2
 
-// Model predicts speaker-independent, relative prosody. Pitch and energy are
-// ratios around an utterance median, so it does not copy the corpus speaker's
-// absolute voice into a UTAU voicebank.
+// Model predicts only conservative duration corrections around the deterministic
+// renderer's baseline. Source pitch and energy remain untouched.
 type Model struct {
 	Version         int                `json:"version"`
 	FeatureVersion  int                `json:"feature_version"`
+	Mode            string             `json:"mode"`
 	DurationWeights map[string]float64 `json:"duration_weights"`
-	PitchWeights    map[string]float64 `json:"pitch_weights"`
-	EnergyWeights   map[string]float64 `json:"energy_weights"`
 	Metrics         Metrics            `json:"metrics"`
 	Training        TrainingInfo       `json:"training"`
 }
@@ -35,11 +33,9 @@ type TrainingInfo struct {
 }
 
 type Metrics struct {
-	Records        int     `json:"records"`
-	Tokens         int     `json:"tokens"`
-	DurationMAEMS  float64 `json:"duration_mae_ms"`
-	PitchMAECents  float64 `json:"pitch_mae_cents"`
-	EnergyRatioMAE float64 `json:"energy_ratio_mae"`
+	Records       int     `json:"records"`
+	Tokens        int     `json:"tokens"`
+	DurationMAEMS float64 `json:"normalized_duration_mae_ms"`
 }
 
 func LoadModel(path string) (*Model, error) {
@@ -51,7 +47,7 @@ func LoadModel(path string) (*Model, error) {
 	if err := json.Unmarshal(data, &model); err != nil {
 		return nil, err
 	}
-	if model.Version != ModelVersion || model.FeatureVersion != 1 {
+	if model.Version != ModelVersion || model.FeatureVersion != 1 || model.Mode != "speech_duration_residual" {
 		return nil, fmt.Errorf("unsupported prosody model version %d/%d", model.Version, model.FeatureVersion)
 	}
 	return &model, nil
@@ -73,18 +69,25 @@ func (m *Model) Save(path string) error {
 
 func (m *Model) Predict(morae []frontend.Mora) []Prediction {
 	result := make([]Prediction, len(morae))
+	logFactors := make([]float64, len(morae))
+	var speechFactors []float64
 	for i := range morae {
-		features := featuresFor(morae, i)
-		duration := math.Exp(dot(m.DurationWeights, features))
-		pitch, energy := 1.0, 1.0
+		if morae[i].Pause {
+			continue
+		}
+		logFactors[i] = dot(m.DurationWeights, featuresFor(morae, i))
+		speechFactors = append(speechFactors, logFactors[i])
+	}
+	center := median(speechFactors)
+	for i := range morae {
+		factor := 1.0
 		if !morae[i].Pause {
-			pitch = math.Exp(dot(m.PitchWeights, features))
-			energy = math.Exp(dot(m.EnergyWeights, features))
+			factor = clamp(math.Exp(logFactors[i]-center), 0.8, 1.25)
 		}
 		result[i] = Prediction{
-			DurationMS:   clamp(duration, 25, 800),
-			PitchFactor:  clamp(pitch, 0.75, 1.35),
-			EnergyFactor: clamp(energy, 0.35, 2.0),
+			DurationFactor: factor,
+			PitchFactor:    1,
+			EnergyFactor:   1,
 		}
 	}
 	return result

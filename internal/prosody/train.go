@@ -38,30 +38,25 @@ func Train(records []Record, cfg TrainConfig) (*Model, error) {
 		cfg.Seed = 1
 	}
 
-	var duration, pitch, energy []example
+	var duration []example
 	trainRecords, validation := splitRecords(records)
 	for _, record := range trainRecords {
 		morae := targetsToMorae(record.Tokens)
+		center := speechRateCenter(record.Tokens)
 		for i, target := range record.Tokens {
-			if target.DurationMS > 0 {
-				duration = append(duration, example{featuresFor(morae, i), math.Log(target.DurationMS)})
-			}
-			if !target.Pause && target.PitchRatio > 0 {
-				pitch = append(pitch, example{featuresFor(morae, i), math.Log(target.PitchRatio)})
-			}
-			if !target.Pause && target.EnergyRatio > 0 {
-				energy = append(energy, example{featuresFor(morae, i), math.Log(target.EnergyRatio)})
+			if !target.Pause && target.DurationMS > 0 {
+				ratio := target.DurationMS / baselineDuration(target)
+				ratio /= center
+				duration = append(duration, example{featuresFor(morae, i), math.Log(clamp(ratio, 0.5, 2.0))})
 			}
 		}
 	}
-	if len(duration) == 0 || len(pitch) == 0 || len(energy) == 0 {
-		return nil, fmt.Errorf("dataset has insufficient duration, pitch, or energy targets")
+	if len(duration) == 0 {
+		return nil, fmt.Errorf("dataset has insufficient duration targets")
 	}
 	model := &Model{
-		Version: ModelVersion, FeatureVersion: 1,
+		Version: ModelVersion, FeatureVersion: 1, Mode: "speech_duration_residual",
 		DurationWeights: fit(duration, cfg, cfg.Seed),
-		PitchWeights:    fit(pitch, cfg, cfg.Seed+1),
-		EnergyWeights:   fit(energy, cfg, cfg.Seed+2),
 		Training:        TrainingInfo{Records: len(trainRecords), Tokens: len(duration), Epochs: cfg.Epochs, Rate: cfg.LearningRate, Seed: cfg.Seed},
 	}
 	model.Metrics = Evaluate(model, validation)
@@ -127,22 +122,17 @@ func fit(examples []example, cfg TrainConfig, seed int64) map[string]float64 {
 
 func Evaluate(model *Model, records []Record) Metrics {
 	result := Metrics{Records: len(records)}
-	var durationN, pitchN, energyN int
+	var durationN int
 	for _, record := range records {
 		morae := targetsToMorae(record.Tokens)
 		predicted := model.Predict(morae)
+		center := speechRateCenter(record.Tokens)
 		for i, target := range record.Tokens {
-			if target.DurationMS > 0 {
-				result.DurationMAEMS += math.Abs(predicted[i].DurationMS - target.DurationMS)
+			if !target.Pause && target.DurationMS > 0 {
+				expected := baselineDuration(target) * predicted[i].DurationFactor
+				actual := target.DurationMS / center
+				result.DurationMAEMS += math.Abs(expected - actual)
 				durationN++
-			}
-			if !target.Pause && target.PitchRatio > 0 {
-				result.PitchMAECents += 1200 * math.Abs(math.Log2(predicted[i].PitchFactor/target.PitchRatio))
-				pitchN++
-			}
-			if !target.Pause && target.EnergyRatio > 0 {
-				result.EnergyRatioMAE += math.Abs(predicted[i].EnergyFactor - target.EnergyRatio)
-				energyN++
 			}
 		}
 	}
@@ -150,13 +140,37 @@ func Evaluate(model *Model, records []Record) Metrics {
 	if durationN > 0 {
 		result.DurationMAEMS /= float64(durationN)
 	}
-	if pitchN > 0 {
-		result.PitchMAECents /= float64(pitchN)
-	}
-	if energyN > 0 {
-		result.EnergyRatioMAE /= float64(energyN)
-	}
 	return result
+}
+
+func speechRateCenter(targets []Target) float64 {
+	var ratios []float64
+	for _, target := range targets {
+		if !target.Pause && target.DurationMS > 0 {
+			ratios = append(ratios, target.DurationMS/baselineDuration(target))
+		}
+	}
+	value := median(ratios)
+	if value <= 0 {
+		return 1
+	}
+	return value
+}
+
+func baselineDuration(target Target) float64 {
+	if target.Pause {
+		return 180
+	}
+	switch target.Vowel {
+	case "cl":
+		return 140 * 0.65
+	case "n":
+		return 140 * 0.9
+	}
+	if target.Mora == "ー" {
+		return 140 * 1.2
+	}
+	return 140
 }
 
 func targetsToMorae(targets []Target) []frontend.Mora {

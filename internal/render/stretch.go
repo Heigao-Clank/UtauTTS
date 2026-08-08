@@ -38,6 +38,84 @@ func stretchPreservingPrefix(source []float64, targetFrames, prefixFrames, sampl
 	return result
 }
 
+func retimeWithCompressedPrefix(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) []float64 {
+	if targetFrames <= 0 || len(source) == 0 {
+		return nil
+	}
+	sourcePrefixFrames = max(0, min(sourcePrefixFrames, len(source)))
+	targetPrefixFrames = max(0, min(targetPrefixFrames, targetFrames))
+	if sourcePrefixFrames == targetPrefixFrames {
+		return stretchPreservingPrefix(source, targetFrames, sourcePrefixFrames, sampleRate)
+	}
+
+	tailFrames := targetFrames - targetPrefixFrames
+	crossfade := min(msToFrames(4, sampleRate), targetPrefixFrames, tailFrames, sourcePrefixFrames, len(source)-sourcePrefixFrames)
+	if crossfade < 2 {
+		result := make([]float64, targetFrames)
+		copy(result[:targetPrefixFrames], retimeRegion(source[:sourcePrefixFrames], targetPrefixFrames, sampleRate))
+		copy(result[targetPrefixFrames:], retimeRegion(source[sourcePrefixFrames:], tailFrames, sampleRate))
+		return result
+	}
+
+	// Both regions include samples on the other side of the landmark. Blending
+	// this shared source neighborhood avoids a phase discontinuity at the join.
+	prefix := retimeRegion(source[:sourcePrefixFrames+crossfade], targetPrefixFrames+crossfade, sampleRate)
+	tail := retimeRegion(source[sourcePrefixFrames-crossfade:], tailFrames+crossfade, sampleRate)
+	overlap := crossfade * 2
+	prefixOnly := targetPrefixFrames - crossfade
+	result := make([]float64, targetFrames)
+	copy(result[:prefixOnly], prefix[:prefixOnly])
+	for i := 0; i < overlap; i++ {
+		alpha := 0.5 - 0.5*math.Cos(math.Pi*float64(i+1)/float64(overlap+1))
+		result[prefixOnly+i] = prefix[prefixOnly+i]*(1-alpha) + tail[i]*alpha
+	}
+	copy(result[targetPrefixFrames+crossfade:], tail[overlap:])
+	declickJoin(result, targetPrefixFrames, msToFrames(2, sampleRate))
+	return result
+}
+
+func retimeRegion(source []float64, targetFrames, sampleRate int) []float64 {
+	if targetFrames <= 0 {
+		return nil
+	}
+	if len(source) == 0 {
+		return make([]float64, targetFrames)
+	}
+	if len(source) == targetFrames {
+		return append([]float64(nil), source...)
+	}
+	return wsola(source, targetFrames, sampleRate)
+}
+
+func declickJoin(wave []float64, position, radius int) {
+	if position <= 0 || position >= len(wave) || radius < 1 {
+		return
+	}
+	left := max(0, position-radius)
+	right := min(len(wave)-1, position+radius)
+	if right-left < 3 {
+		return
+	}
+	localDelta := 0.0
+	count := 0
+	for i := left + 1; i <= right; i++ {
+		if i == position {
+			continue
+		}
+		localDelta += math.Abs(wave[i] - wave[i-1])
+		count++
+	}
+	localDelta /= float64(max(1, count))
+	if math.Abs(wave[position]-wave[position-1]) <= math.Max(0.08, localDelta*4) {
+		return
+	}
+	start, end := wave[left], wave[right]
+	for i := left + 1; i < right; i++ {
+		alpha := float64(i-left) / float64(right-left)
+		wave[i] = start*(1-alpha) + end*alpha
+	}
+}
+
 // wsola is a compact waveform-similarity overlap-add implementation. It is
 // deterministic and preserves local periodicity better than linear resampling.
 func wsola(source []float64, targetFrames, sampleRate int) []float64 {

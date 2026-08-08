@@ -8,13 +8,22 @@ The system is split into four layers:
 1. **Frontend** uses the embedded Kagome IPA dictionary to convert Japanese
    text into a pronunciation, then splits it into morae and pauses. Accent
    phrases remain a future layer.
-2. **Prosody** predicts duration and utterance-normalized F0/energy ratios from
-   natural speech corpora. The training dataset and held-out metrics are
-   inspectable JSON, and the model does not contain voicebank waveforms.
+2. **Prosody** predicts conservative, utterance-normalized duration residuals
+   around the deterministic baseline. F0, energy, pauses, and the corpus
+   speaker's global speaking rate are deliberately not transferred. The
+   training dataset and held-out metrics are inspectable JSON.
 3. **Voicebank** loads all `oto.ini` files in a bank and resolves the requested
    phonetic context to candidate recordings.
 4. **Renderer** places and transforms recorded units according to the prosody
    plan. A later boundary model may correct only the joins between units.
+
+For ordinary CV/VCV timing, the renderer preserves the original `oto.ini`
+values. If preutterance is clearly longer than the target note, it compresses
+preutterance, overlap, and the fixed prefix as one region, guarantees a vowel
+tail, crossfades the compressed-prefix/vowel landmark, and uses a weighted
+rather than additive mix for the affected joins. A short local de-click bridge
+is applied only when the landmark discontinuity is an outlier.
+Original and effective timing values are both recorded in synthesis-plan v3.
 
 The old JSUT/WORLD and experimental VITS pipelines were removed from the
 working tree. They remain available through Git history for comparison only.

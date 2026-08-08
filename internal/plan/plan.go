@@ -8,7 +8,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 2
+const Version = 3
 
 type Config struct {
 	MoraDurationMS  float64
@@ -26,21 +26,25 @@ type Plan struct {
 }
 
 type Unit struct {
-	Position       int     `json:"position"`
-	Mora           string  `json:"mora"`
-	Alias          string  `json:"alias"`
-	Source         string  `json:"source"`
-	OtoPath        string  `json:"oto_path"`
-	OtoLine        int     `json:"oto_line"`
-	NoteStartMS    float64 `json:"note_start_ms"`
-	DurationMS     float64 `json:"duration_ms"`
-	OffsetMS       float64 `json:"offset_ms"`
-	ConsonantMS    float64 `json:"consonant_ms"`
-	CutoffMS       float64 `json:"cutoff_ms"`
-	PreutteranceMS float64 `json:"preutterance_ms"`
-	OverlapMS      float64 `json:"overlap_ms"`
-	PitchFactor    float64 `json:"pitch_factor"`
-	EnergyFactor   float64 `json:"energy_factor"`
+	Position                int     `json:"position"`
+	Mora                    string  `json:"mora"`
+	Alias                   string  `json:"alias"`
+	Source                  string  `json:"source"`
+	OtoPath                 string  `json:"oto_path"`
+	OtoLine                 int     `json:"oto_line"`
+	NoteStartMS             float64 `json:"note_start_ms"`
+	DurationMS              float64 `json:"duration_ms"`
+	OffsetMS                float64 `json:"offset_ms"`
+	ConsonantMS             float64 `json:"consonant_ms"`
+	CutoffMS                float64 `json:"cutoff_ms"`
+	PreutteranceMS          float64 `json:"preutterance_ms"`
+	OverlapMS               float64 `json:"overlap_ms"`
+	PitchFactor             float64 `json:"pitch_factor"`
+	EnergyFactor            float64 `json:"energy_factor"`
+	TimingScale             float64 `json:"timing_scale"`
+	EffectivePreutteranceMS float64 `json:"effective_preutterance_ms"`
+	EffectiveConsonantMS    float64 `json:"effective_consonant_ms"`
+	EffectiveOverlapMS      float64 `json:"effective_overlap_ms"`
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {
@@ -72,6 +76,8 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 			duration := cfg.PauseDurationMS
 			if prediction.DurationMS > 0 {
 				duration = prediction.DurationMS
+			} else if prediction.DurationFactor > 0 {
+				duration *= prediction.DurationFactor
 			}
 			cursor += duration
 			continue
@@ -83,6 +89,8 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 		duration := durationFor(mora, cfg.MoraDurationMS)
 		if prediction.DurationMS > 0 {
 			duration = prediction.DurationMS
+		} else if prediction.DurationFactor > 0 {
+			duration *= prediction.DurationFactor
 		}
 		entry := selection.Entry
 		result.Units = append(result.Units, Unit{
