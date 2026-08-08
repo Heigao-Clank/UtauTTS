@@ -1,32 +1,26 @@
 @echo off
+setlocal
 cd /d "%~dp0"
+set "GOCACHE=%CD%\.tmp-go-cache"
 
-echo === Building Go executables ===
-go build -o utautts-core.exe ./cmd/utautts-core
-go build -o utautts-server.exe ./cmd/utautts-server
-go build -o utautts.exe ./cmd/utautts
+echo === Testing ===
+go test ./...
+if errorlevel 1 exit /b 1
 
-echo === Building Python engine (PyInstaller) ===
-call build_engine.bat
-
-echo === Creating release directories ===
-set REL=release
-
-rmdir /s /q "%REL%\UtauTTS" 2>nul
-mkdir "%REL%\UtauTTS\core"
-mkdir "%REL%\UtauTTS\models"
-mkdir "%REL%\UtauTTS\voice"
-copy utautts.exe "%REL%\UtauTTS\"
-copy engine.exe "%REL%\UtauTTS\core\" 2>nul
-copy utautts-core.exe "%REL%\UtauTTS\core\"
-
-rmdir /s /q "%REL%\UtauTTS-Server" 2>nul
-mkdir "%REL%\UtauTTS-Server\core"
-mkdir "%REL%\UtauTTS-Server\models"
-mkdir "%REL%\UtauTTS-Server\voice"
-copy utautts-server.exe "%REL%\UtauTTS-Server\"
-copy engine.exe "%REL%\UtauTTS-Server\core\" 2>nul
-copy utautts-core.exe "%REL%\UtauTTS-Server\core\"
+echo === Building ===
+if not exist "release\UtauTTS" mkdir "release\UtauTTS"
+go build -trimpath -o "release\UtauTTS\utautts.exe" ./cmd/utautts
+if errorlevel 1 exit /b 1
+go build -trimpath -o "release\UtauTTS\utautts-server.exe" ./cmd/utautts-server
+if errorlevel 1 exit /b 1
+go build -trimpath -o "release\UtauTTS\oto-inspect.exe" ./cmd/oto-inspect
+if errorlevel 1 exit /b 1
+go build -trimpath -o "release\UtauTTS\prosody-dataset.exe" ./cmd/prosody-dataset
+if errorlevel 1 exit /b 1
+go build -trimpath -o "release\UtauTTS\prosody-train.exe" ./cmd/prosody-train
+if errorlevel 1 exit /b 1
+copy /y README.md "release\UtauTTS\README.md" >nul
+copy /y THIRD_PARTY_NOTICES.txt "release\UtauTTS\THIRD_PARTY_NOTICES.txt" >nul
 
 echo === Done ===
-dir /s /b "%REL%"
+dir /b "release\UtauTTS"

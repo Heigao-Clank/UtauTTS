@@ -6,128 +6,138 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"sort"
 	"sync"
 
-	"golang.org/x/text/encoding/japanese"
-	"golang.org/x/text/transform"
-
-	"utautts/internal/engine"
+	"utautts/internal/audio"
+	"utautts/internal/tts"
+	"utautts/internal/voicebank"
 )
 
 //go:embed index.html
 var webFiles embed.FS
 
 type Voicebank struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	PhonemeCount int    `json:"phoneme_count"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Path            string `json:"path"`
+	OtoFileCount    int    `json:"oto_file_count"`
+	PhonemeCount    int    `json:"phoneme_count"`
+	DiagnosticCount int    `json:"diagnostic_count"`
 }
 
 type Server struct {
-	mu         sync.RWMutex
-	voicebanks map[string]Voicebank
-	modelPath  string
-	python     string
-	toolsDir   string
+	mu               sync.RWMutex
+	voicebanks       map[string]Voicebank
+	prosodyModelPath string
 }
 
 func main() {
-	var (
-		port       int
-		host       string
-		voiceDir   string
-		modelPath  string
-		pythonPath string
-		toolsDir   string
-	)
-
-	exe, _ := os.Executable()
-	defaultTools := filepath.Dir(exe)
-
+	var port int
+	var host, voiceDir, prosodyPath string
 	flag.IntVar(&port, "port", 8080, "port")
 	flag.StringVar(&host, "host", "127.0.0.1", "host")
-	flag.StringVar(&voiceDir, "voice-dir", "voice", "voicebank directory")
-	flag.StringVar(&modelPath, "model", "", "DNN model path (.pth)")
-	flag.StringVar(&pythonPath, "python", "python", "python executable")
-	flag.StringVar(&toolsDir, "tools", defaultTools, "tools directory")
+	flag.StringVar(&voiceDir, "voice-dir", "voice", "directory containing voicebanks")
+	flag.StringVar(&prosodyPath, "prosody", "", "optional learned prosody model JSON")
 	flag.Parse()
 
-	srv := &Server{
-		voicebanks: map[string]Voicebank{},
-		modelPath:  modelPath,
-		python:     pythonPath,
-		toolsDir:   toolsDir,
-	}
-
-	if info, err := os.Stat(voiceDir); err == nil && info.IsDir() {
-		entries, _ := os.ReadDir(voiceDir)
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			vbPath := filepath.Join(voiceDir, e.Name())
-			found := srv.scanVoicebanks(vbPath, 0)
-			if !found {
-				log.Printf("warning: no oto.ini found in %s", vbPath)
-			}
-		}
-	}
-
+	srv := &Server{voicebanks: map[string]Voicebank{}, prosodyModelPath: prosodyPath}
+	srv.loadVoiceDirectory(voiceDir)
 	if len(srv.voicebanks) == 0 {
 		log.Printf("warning: no voicebanks found in %s", voiceDir)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", srv.handleIndex)
-	mux.HandleFunc("POST /synthesize", srv.handleSynthesize)
-	mux.HandleFunc("GET /voicebanks", srv.handleListVoicebanks)
-	mux.HandleFunc("POST /voicebanks", srv.handleRegisterVoicebank)
-	mux.HandleFunc("GET /health", srv.handleHealth)
-
 	addr := fmt.Sprintf("%s:%d", host, port)
-	log.Printf("listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	log.Printf("listening on http://%s", addr)
+	if err := http.ListenAndServe(addr, srv.routes()); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+func (s *Server) routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", s.handleIndex)
+	mux.HandleFunc("POST /synthesize", s.handleSynthesize)
+	mux.HandleFunc("GET /voicebanks", s.handleListVoicebanks)
+	mux.HandleFunc("POST /voicebanks", s.handleRegisterVoicebank)
+	mux.HandleFunc("GET /health", s.handleHealth)
+	return mux
 }
 
-func (s *Server) handleListVoicebanks(w http.ResponseWriter, r *http.Request) {
+func (s *Server) loadVoiceDirectory(root string) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		vb, err := inspectVoicebank(path)
+		if err != nil {
+			continue
+		}
+		s.voicebanks[vb.ID] = vb
+		log.Printf("voicebank: %s (%d oto files, %d entries)", vb.Name, vb.OtoFileCount, vb.PhonemeCount)
+	}
+	if len(s.voicebanks) == 0 {
+		if vb, err := inspectVoicebank(root); err == nil {
+			s.voicebanks[vb.ID] = vb
+		}
+	}
+}
+
+func inspectVoicebank(path string) (Voicebank, error) {
+	bank, err := voicebank.Load(path)
+	if err != nil {
+		return Voicebank{}, err
+	}
+	return Voicebank{
+		ID:              filepath.Base(bank.Root),
+		Name:            bank.Name,
+		Path:            bank.Root,
+		OtoFileCount:    len(bank.OtoFiles),
+		PhonemeCount:    bank.EntryCount(),
+		DiagnosticCount: len(bank.Diagnostics),
+	}, nil
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "engine": "deterministic-v1"})
+}
+
+func (s *Server) handleListVoicebanks(w http.ResponseWriter, _ *http.Request) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	list := make([]Voicebank, 0, len(s.voicebanks))
 	for _, vb := range s.voicebanks {
 		list = append(list, vb)
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"voicebanks": list})
+	s.mu.RUnlock()
+	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	writeJSON(w, http.StatusOK, map[string]any{"voicebanks": list})
 }
 
 func (s *Server) handleRegisterVoicebank(w http.ResponseWriter, r *http.Request) {
-	var req struct {
+	var request struct {
 		Name string `json:"name"`
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	vb, err := s.registerVoicebank(req.Path)
+	vb, err := inspectVoicebank(request.Path)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.Name != "" {
-		vb.Name = req.Name
+	if request.Name != "" {
+		vb.Name = request.Name
 	}
 	s.mu.Lock()
 	s.voicebanks[vb.ID] = vb
@@ -136,169 +146,82 @@ func (s *Server) handleRegisterVoicebank(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleSynthesize(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Text        string `json:"text"`
-		VoicebankID string `json:"voicebank_id"`
+	var request struct {
+		Kana            string  `json:"kana"`
+		Text            string  `json:"text"`
+		VoicebankID     string  `json:"voicebank_id"`
+		Tone            string  `json:"tone"`
+		MoraDurationMS  float64 `json:"mora_duration_ms"`
+		PauseDurationMS float64 `json:"pause_duration_ms"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if req.Text == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text is required"})
+	if request.Kana == "" && request.Text == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text or kana is required"})
+		return
+	}
+	vb, ok := s.resolveVoicebank(request.VoicebankID)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "voicebank not found"})
 		return
 	}
 
-	vbPath := s.resolveVoicebank(req.VoicebankID)
-	if vbPath == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no voicebank available"})
-		return
-	}
-	if s.modelPath == "" {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "model path not configured"})
-		return
-	}
-
-	tmpDir, err := os.MkdirTemp("", "utautts-server-*")
+	result, err := tts.Synthesize(tts.Config{
+		VoicebankPath:    vb.Path,
+		Text:             request.Text,
+		Reading:          request.Kana,
+		Tone:             request.Tone,
+		MoraDurationMS:   request.MoraDurationMS,
+		PauseDurationMS:  request.PauseDurationMS,
+		ProsodyModelPath: s.prosodyModelPath,
+	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
 	}
-	defer os.RemoveAll(tmpDir)
-
-	cfg := engine.Config{
-		OtoPath:   filepath.Join(vbPath, "oto.ini"),
-		Text:      req.Text,
-		OutPath:   filepath.Join(tmpDir, "out.wav"),
-		ModelPath: s.modelPath,
-		Python:    s.python,
-		ToolsDir:  s.toolsDir,
-	}
-
-	if err := engine.Synthesize(cfg); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-
-	wavBytes, err := os.ReadFile(cfg.OutPath)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"wav_base64": base64.StdEncoding.EncodeToString(wavBytes),
+	wav := audio.PCMToWavBytes(result.Audio)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"wav_base64":  base64.StdEncoding.EncodeToString(wav),
+		"sample_rate": result.Audio.SampleRate,
+		"duration_ms": float64(len(result.Audio.Data)) * 1000 / float64(result.Audio.SampleRate),
+		"unit_count":  len(result.Plan.Units),
+		"engine":      "deterministic-v1",
+		"reading":     result.Plan.Reading,
 	})
 }
 
-func (s *Server) resolveVoicebank(id string) string {
-	if id != "" {
-		s.mu.RLock()
-		vb, ok := s.voicebanks[id]
-		s.mu.RUnlock()
-		if ok {
-			return vb.Path
-		}
-	}
+func (s *Server) resolveVoicebank(id string) (Voicebank, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	for _, vb := range s.voicebanks {
-		return vb.Path
+	if id != "" {
+		vb, ok := s.voicebanks[id]
+		return vb, ok
 	}
-	return ""
+	ids := make([]string, 0, len(s.voicebanks))
+	for candidate := range s.voicebanks {
+		ids = append(ids, candidate)
+	}
+	if len(ids) == 0 {
+		return Voicebank{}, false
+	}
+	sort.Strings(ids)
+	return s.voicebanks[ids[0]], true
 }
 
-func (s *Server) registerVoicebank(vbPath string) (Voicebank, error) {
-	info, err := os.Stat(vbPath)
-	if err != nil || !info.IsDir() {
-		return Voicebank{}, fmt.Errorf("voicebank not found: %s", vbPath)
-	}
-	otoPath := filepath.Join(vbPath, "oto.ini")
-	if _, err := os.Stat(otoPath); err != nil {
-		return Voicebank{}, fmt.Errorf("oto.ini not found in %s", vbPath)
-	}
-	entryCount := countOtoEntries(otoPath)
-	id := filepath.Base(vbPath)
-	return Voicebank{
-		ID:           id,
-		Name:         id,
-		Path:         vbPath,
-		PhonemeCount: entryCount,
-	}, nil
-}
-
-func (s *Server) scanVoicebanks(dir string, depth int) bool {
-	if depth > 3 {
-		return false
-	}
-	foundAny := false
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	hasOto := false
-	for _, e := range entries {
-		if e.Name() == "oto.ini" && !e.IsDir() {
-			hasOto = true
-			break
-		}
-	}
-	if hasOto {
-		vb, err := s.registerVoicebank(dir)
-		if err == nil {
-			vb.ID = filepath.Base(dir)
-			vb.Name = vb.ID
-			s.voicebanks[vb.ID] = vb
-			log.Printf("voicebank: %s (%d entries)", vb.ID, vb.PhonemeCount)
-			foundAny = true
-		}
-	}
-	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			if s.scanVoicebanks(filepath.Join(dir, e.Name()), depth+1) {
-				foundAny = true
-			}
-		}
-	}
-	return foundAny
-}
-
-func countOtoEntries(path string) int {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0
-	}
-	defer f.Close()
-	decoder := japanese.ShiftJIS.NewDecoder()
-	reader := transform.NewReader(f, decoder)
-	data, _ := io.ReadAll(reader)
-	lines := 0
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		fields := strings.Split(parts[1], ",")
-		if len(fields) >= 6 {
-			lines++
-		}
-	}
-	return lines
-}
-
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
+func writeJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	data, _ := webFiles.ReadFile("index.html")
+func (s *Server) handleIndex(w http.ResponseWriter, _ *http.Request) {
+	data, err := webFiles.ReadFile("index.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
+	_, _ = w.Write(data)
 }
-

@@ -1,0 +1,261 @@
+package prosody
+
+import (
+	"fmt"
+	"math"
+
+	"utautts/internal/audio"
+	"utautts/internal/frontend"
+)
+
+type ExtractConfig struct {
+	MinDurationMS float64
+	MaxDurationMS float64
+}
+
+func ExtractRecord(id, text, audioPath string, cfg ExtractConfig) (Record, error) {
+	if cfg.MinDurationMS <= 0 {
+		cfg.MinDurationMS = 25
+	}
+	if cfg.MaxDurationMS <= 0 {
+		cfg.MaxDurationMS = 800
+	}
+	reading, err := frontend.ToKana(text)
+	if err != nil {
+		return Record{}, err
+	}
+	morae, err := frontend.ParseKana(reading)
+	if err != nil {
+		return Record{}, err
+	}
+	if len(morae) == 0 {
+		return Record{}, fmt.Errorf("empty mora sequence")
+	}
+	pcm, err := audio.ReadWav(audioPath)
+	if err != nil {
+		return Record{}, err
+	}
+	wave := monoFloats(pcm)
+	start, end := voicedRange(wave, pcm.SampleRate)
+	if end-start < len(morae)*msFrames(cfg.MinDurationMS, pcm.SampleRate) {
+		return Record{}, fmt.Errorf("voiced range is too short for %d tokens", len(morae))
+	}
+	boundaries := alignBoundaries(wave, pcm.SampleRate, start, end, len(morae), cfg.MinDurationMS)
+	targets := make([]Target, len(morae))
+	for i, mora := range morae {
+		segmentStart, segmentEnd := boundaries[i], boundaries[i+1]
+		duration := framesMS(segmentEnd-segmentStart, pcm.SampleRate)
+		if duration > cfg.MaxDurationMS && !mora.Pause {
+			return Record{}, fmt.Errorf("token %d duration %.1fms exceeds limit", i, duration)
+		}
+		segment := wave[segmentStart:segmentEnd]
+		targets[i] = Target{
+			Position:   i,
+			Mora:       mora.Text,
+			Vowel:      mora.Vowel,
+			Pause:      mora.Pause,
+			StartMS:    framesMS(segmentStart, pcm.SampleRate),
+			EndMS:      framesMS(segmentEnd, pcm.SampleRate),
+			DurationMS: duration,
+			F0Hz:       estimateMedianF0(segment, pcm.SampleRate),
+			Energy:     rms(segment),
+		}
+	}
+	medianF0, medianEnergy := finalizeRatios(targets)
+	return Record{
+		Version:      DatasetVersion,
+		ID:           id,
+		Text:         text,
+		Reading:      reading,
+		AudioPath:    audioPath,
+		SampleRate:   pcm.SampleRate,
+		StartMS:      framesMS(start, pcm.SampleRate),
+		EndMS:        framesMS(end, pcm.SampleRate),
+		MedianF0Hz:   medianF0,
+		MedianEnergy: medianEnergy,
+		Tokens:       targets,
+	}, nil
+}
+
+func monoFloats(pcm *audio.PCM) []float64 {
+	frames := len(pcm.Data) / pcm.Channels
+	result := make([]float64, frames)
+	for frame := 0; frame < frames; frame++ {
+		sum := 0.0
+		for channel := 0; channel < pcm.Channels; channel++ {
+			sum += float64(pcm.Data[frame*pcm.Channels+channel]) / 32768
+		}
+		result[frame] = sum / float64(pcm.Channels)
+	}
+	return result
+}
+
+func voicedRange(wave []float64, sampleRate int) (int, int) {
+	frame := max(1, msFrames(10, sampleRate))
+	values := make([]float64, 0, len(wave)/frame+1)
+	peak := 0.0
+	for start := 0; start < len(wave); start += frame {
+		end := min(len(wave), start+frame)
+		value := rms(wave[start:end])
+		values = append(values, value)
+		peak = max(peak, value)
+	}
+	if peak == 0 {
+		return 0, len(wave)
+	}
+	noiseCount := max(1, min(len(values)/10, 10))
+	noise := median(append(append([]float64(nil), values[:noiseCount]...), values[len(values)-noiseCount:]...))
+	threshold := max(noise*3, peak*0.035)
+	first, last := 0, len(values)-1
+	for first < len(values) && values[first] < threshold {
+		first++
+	}
+	for last > first && values[last] < threshold {
+		last--
+	}
+	padding := msFrames(20, sampleRate)
+	start := max(0, first*frame-padding)
+	end := min(len(wave), (last+1)*frame+padding)
+	return start, end
+}
+
+func alignBoundaries(wave []float64, sampleRate, start, end, count int, minDurationMS float64) []int {
+	boundaries := make([]int, count+1)
+	boundaries[0], boundaries[count] = start, end
+	minimum := max(1, msFrames(minDurationMS, sampleRate))
+	average := float64(end-start) / float64(count)
+	search := min(msFrames(100, sampleRate), int(average*0.55))
+	step := max(1, msFrames(2.5, sampleRate))
+	window := max(4, msFrames(10, sampleRate))
+	globalRMS := rms(wave[start:end]) + 1e-9
+
+	for index := 1; index < count; index++ {
+		expected := start + int(math.Round(float64(index)*average))
+		low := max(boundaries[index-1]+minimum, expected-search)
+		high := min(end-(count-index)*minimum, expected+search)
+		best, bestScore := max(low, min(expected, high)), math.Inf(-1)
+		for candidate := low; candidate <= high; candidate += step {
+			leftStart := max(start, candidate-window)
+			rightEnd := min(end, candidate+window)
+			if candidate-leftStart < 4 || rightEnd-candidate < 4 {
+				continue
+			}
+			localRMS := rms(wave[leftStart:rightEnd]) / globalRMS
+			correlation := normalizedCorrelation(wave[leftStart:candidate], wave[candidate:rightEnd])
+			timingPenalty := math.Abs(float64(candidate-expected)) / float64(max(1, search))
+			score := 0.65*(1-math.Min(localRMS, 1.5)) + 0.35*(1-correlation) - 0.25*timingPenalty
+			if score > bestScore {
+				best, bestScore = candidate, score
+			}
+		}
+		boundaries[index] = best
+	}
+	return boundaries
+}
+
+func normalizedCorrelation(left, right []float64) float64 {
+	length := min(len(left), len(right))
+	if length == 0 {
+		return 0
+	}
+	left = left[len(left)-length:]
+	right = right[:length]
+	numerator, leftEnergy, rightEnergy := 0.0, 0.0, 0.0
+	for i := 0; i < length; i++ {
+		numerator += left[i] * right[i]
+		leftEnergy += left[i] * left[i]
+		rightEnergy += right[i] * right[i]
+	}
+	return numerator / (math.Sqrt(leftEnergy*rightEnergy) + 1e-12)
+}
+
+func estimateMedianF0(segment []float64, sampleRate int) float64 {
+	window := msFrames(40, sampleRate)
+	hop := max(1, msFrames(10, sampleRate))
+	if len(segment) < window {
+		return estimateF0(segment, sampleRate)
+	}
+	var values []float64
+	for start := 0; start+window <= len(segment); start += hop {
+		if value := estimateF0(segment[start:start+window], sampleRate); value > 0 {
+			values = append(values, value)
+		}
+	}
+	return median(values)
+}
+
+func estimateF0(frame []float64, sampleRate int) float64 {
+	if len(frame) < 16 || rms(frame) < 0.003 {
+		return 0
+	}
+	mean := 0.0
+	for _, value := range frame {
+		mean += value
+	}
+	mean /= float64(len(frame))
+	minLag, maxLag := max(2, sampleRate/500), min(len(frame)/2, sampleRate/60)
+	if minLag >= maxLag {
+		return 0
+	}
+	// YIN's cumulative mean normalized difference is less prone to selecting
+	// harmonics than taking the largest raw autocorrelation peak.
+	difference := make([]float64, maxLag+1)
+	for lag := 1; lag <= maxLag; lag++ {
+		sum := 0.0
+		for i := 0; i+lag < len(frame); i++ {
+			left, right := frame[i]-mean, frame[i+lag]-mean
+			delta := left - right
+			sum += delta * delta
+		}
+		difference[lag] = sum
+	}
+	cumulative := 0.0
+	for lag := 1; lag <= maxLag; lag++ {
+		cumulative += difference[lag]
+		if lag < minLag || cumulative == 0 {
+			continue
+		}
+		difference[lag] = difference[lag] * float64(lag) / cumulative
+	}
+	bestValue, bestLag := math.Inf(1), 0
+	for lag := minLag; lag <= maxLag; lag++ {
+		if difference[lag] < bestValue {
+			bestValue, bestLag = difference[lag], lag
+		}
+		if difference[lag] < 0.15 && (lag == maxLag || difference[lag+1] >= difference[lag]) {
+			bestLag, bestValue = lag, difference[lag]
+			break
+		}
+	}
+	if bestLag == 0 || bestValue > 0.35 {
+		return 0
+	}
+	refined := float64(bestLag)
+	if bestLag > minLag && bestLag < maxLag {
+		left, center, right := difference[bestLag-1], difference[bestLag], difference[bestLag+1]
+		denominator := left - 2*center + right
+		if math.Abs(denominator) > 1e-12 {
+			refined += 0.5 * (left - right) / denominator
+		}
+	}
+	return float64(sampleRate) / refined
+}
+
+func rms(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, value := range values {
+		sum += value * value
+	}
+	return math.Sqrt(sum / float64(len(values)))
+}
+
+func msFrames(ms float64, sampleRate int) int {
+	return int(math.Round(ms * float64(sampleRate) / 1000))
+}
+
+func framesMS(frames, sampleRate int) float64 {
+	return float64(frames) * 1000 / float64(sampleRate)
+}
