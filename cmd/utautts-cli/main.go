@@ -13,17 +13,21 @@ import (
 
 func main() {
 	var (
-		voicebankPath string
-		otoPath       string
-		reading       string
-		text          string
-		tone          string
-		outPath       string
-		planPath      string
-		moraMS        float64
-		pauseMS       float64
-		releaseMS     float64
-		prosodyPath   string
+		voicebankPath       string
+		otoPath             string
+		reading             string
+		text                string
+		tone                string
+		outPath             string
+		planPath            string
+		moraMS              float64
+		pauseMS             float64
+		releaseMS           float64
+		prosodyPath         string
+		intonationStrength  float64
+		renderer            string
+		worldlinePath       string
+		worldlineBridgePath string
 	)
 	flag.StringVar(&voicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&otoPath, "oto", "", "deprecated alias for --voicebank")
@@ -36,6 +40,10 @@ func main() {
 	flag.Float64Var(&pauseMS, "pause-ms", 180, "punctuation pause in milliseconds")
 	flag.Float64Var(&releaseMS, "release-ms", 20, "unit release envelope in milliseconds")
 	flag.StringVar(&prosodyPath, "prosody", "", "optional learned prosody model JSON")
+	flag.Float64Var(&intonationStrength, "intonation-strength", 0, "source-pitch stabilization and phrase contour strength (0..1)")
+	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend: waveform, worldline, or worldline-hybrid")
+	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
+	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
 	flag.Parse()
 
 	if voicebankPath == "" {
@@ -47,14 +55,18 @@ func main() {
 	}
 
 	result, err := tts.Synthesize(tts.Config{
-		VoicebankPath:    voicebankPath,
-		Text:             text,
-		Reading:          reading,
-		Tone:             tone,
-		MoraDurationMS:   moraMS,
-		PauseDurationMS:  pauseMS,
-		ReleaseMS:        releaseMS,
-		ProsodyModelPath: prosodyPath,
+		VoicebankPath:       voicebankPath,
+		Text:                text,
+		Reading:             reading,
+		Tone:                tone,
+		MoraDurationMS:      moraMS,
+		PauseDurationMS:     pauseMS,
+		ReleaseMS:           releaseMS,
+		ProsodyModelPath:    prosodyPath,
+		IntonationStrength:  intonationStrength,
+		Renderer:            renderer,
+		WorldlinePath:       worldlinePath,
+		WorldlineBridgePath: worldlineBridgePath,
 	})
 	if err != nil {
 		log.Fatal(err)

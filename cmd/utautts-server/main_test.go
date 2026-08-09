@@ -13,7 +13,7 @@ import (
 	"utautts/internal/audio"
 )
 
-func TestSynthesizeEndpointUsesDeterministicEngine(t *testing.T) {
+func TestSynthesizeEndpointReportsWaveformRenderer(t *testing.T) {
 	root := t.TempDir()
 	wavPath := filepath.Join(root, "a.wav")
 	samples := make([]int16, 400)
@@ -51,7 +51,7 @@ func TestSynthesizeEndpointUsesDeterministicEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(wav[:4]) != "RIFF" || payload.Engine != "deterministic-v1" || payload.UnitCount != 1 {
+	if string(wav[:4]) != "RIFF" || payload.Engine != "waveform" || payload.UnitCount != 1 {
 		t.Fatalf("unexpected response: %+v", payload)
 	}
 }
@@ -69,5 +69,23 @@ func TestSynthesizeEndpointRejectsUnknownText(t *testing.T) {
 	server.routes().ServeHTTP(response, request)
 	if response.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestHealthReportsConfiguredRenderer(t *testing.T) {
+	server := &Server{renderer: "worldline-hybrid"}
+	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["status"] != "ok" || payload["engine"] != "worldline-hybrid" {
+		t.Fatalf("unexpected response: %#v", payload)
 	}
 }
