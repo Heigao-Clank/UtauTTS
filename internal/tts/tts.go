@@ -12,14 +12,18 @@ import (
 )
 
 type Config struct {
-	VoicebankPath    string
-	Text             string
-	Reading          string
-	Tone             string
-	MoraDurationMS   float64
-	PauseDurationMS  float64
-	ReleaseMS        float64
-	ProsodyModelPath string
+	VoicebankPath       string
+	Text                string
+	Reading             string
+	Tone                string
+	MoraDurationMS      float64
+	PauseDurationMS     float64
+	ReleaseMS           float64
+	ProsodyModelPath    string
+	IntonationStrength  float64
+	Renderer            string
+	WorldlinePath       string
+	WorldlineBridgePath string
 }
 
 type Result struct {
@@ -65,7 +69,13 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("build synthesis plan: %w", err)
 	}
 	synthesisPlan.Text = cfg.Text
-	pcm, err := render.Render(synthesisPlan, render.Config{ReleaseMS: cfg.ReleaseMS})
+	pcm, err := render.Render(synthesisPlan, render.Config{
+		ReleaseMS:           cfg.ReleaseMS,
+		IntonationStrength:  cfg.IntonationStrength,
+		Backend:             cfg.Renderer,
+		WorldlinePath:       cfg.WorldlinePath,
+		WorldlineBridgePath: cfg.WorldlineBridgePath,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}

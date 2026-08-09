@@ -8,7 +8,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 3
+const Version = 4
 
 type Config struct {
 	MoraDurationMS  float64
@@ -45,6 +45,9 @@ type Unit struct {
 	EffectivePreutteranceMS float64 `json:"effective_preutterance_ms"`
 	EffectiveConsonantMS    float64 `json:"effective_consonant_ms"`
 	EffectiveOverlapMS      float64 `json:"effective_overlap_ms"`
+	SourceF0Hz              float64 `json:"source_f0_hz,omitempty"`
+	TargetF0Hz              float64 `json:"target_f0_hz,omitempty"`
+	IntonationFactor        float64 `json:"intonation_factor"`
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {

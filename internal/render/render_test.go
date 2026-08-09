@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"utautts/internal/audio"
+	"utautts/internal/pitch"
 	"utautts/internal/plan"
 )
 
@@ -39,6 +40,43 @@ func TestRenderIsDeterministicAndUsesAbsolutePlacement(t *testing.T) {
 	}
 	if first.Data[0] != 0 || first.Data[100] == 0 || first.Data[len(first.Data)-1] != 0 {
 		t.Fatalf("unexpected envelope: first=%d middle=%d last=%d", first.Data[0], first.Data[100], first.Data[len(first.Data)-1])
+	}
+}
+
+func TestRenderRejectsUnknownBackend(t *testing.T) {
+	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "missing"})
+	if err == nil {
+		t.Fatal("unknown backend was accepted")
+	}
+}
+
+func TestWorldlineF0CurveInterpolatesInLogFrequency(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{NoteStartMS: 0}, {NoteStartMS: 100}}}
+	curve := worldlineF0Curve(p, []float64{200, 400}, []float64{1, 1}, 220, 11)
+	if math.Abs(curve[0]-200) > 0.01 || math.Abs(curve[10]-400) > 0.01 {
+		t.Fatalf("curve endpoints = %.2f..%.2f", curve[0], curve[10])
+	}
+	if math.Abs(curve[5]-math.Sqrt(200*400)) > 0.1 {
+		t.Fatalf("log midpoint = %.2f", curve[5])
+	}
+}
+
+func TestDirectConsonantWeightsRestoreOnlyAperiodicFixedRegion(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{
+		Position: 0, NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 80, DurationMS: 140,
+	}}}
+	baseline := make([]float64, 300)
+	state := uint32(1)
+	for i := range baseline {
+		state = state*1664525 + 1013904223
+		baseline[i] = (float64(state>>8)/float64(1<<24) - 0.5) * 0.4
+	}
+	weights := directConsonantWeights(p, 20, 1000, len(baseline), baseline, make([]float64, len(baseline)))
+	if weights[20] != 0 || weights[200] != 0 {
+		t.Fatalf("direct audio leaked outside fixed region: %.2f %.2f", weights[20], weights[200])
+	}
+	if weights[100] == 0 {
+		t.Fatal("aperiodic consonant was not restored")
 	}
 }
 
@@ -123,6 +161,96 @@ func TestRenderLongVCVUsesWeightedCrossfade(t *testing.T) {
 	}
 	if p.Units[1].EffectivePreutteranceMS != 105 || p.Units[1].EffectiveOverlapMS != 35 {
 		t.Fatalf("effective timing not recorded: %#v", p.Units[1])
+	}
+}
+
+func TestConnectedUnitsUseComplementaryHandoff(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/unit.wav"
+	data := make([]int16, 400)
+	for i := range data {
+		data[i] = 10000
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{DurationMS: 280, Units: []plan.Unit{
+		{Position: 0, Alias: "a", Source: path, NoteStartMS: 0, DurationMS: 140, PreutteranceMS: 60, OverlapMS: 20, ConsonantMS: 100},
+		{Position: 1, Alias: "b", Source: path, NoteStartMS: 140, DurationMS: 140, PreutteranceMS: 60, OverlapMS: 20, ConsonantMS: 100},
+	}}
+	pcm, err := Render(p, Config{ReleaseMS: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peak := int16(0)
+	for _, value := range pcm.Data {
+		if value > peak {
+			peak = value
+		}
+	}
+	if peak > 10010 {
+		t.Fatalf("connected units were layered: peak=%d", peak)
+	}
+	for frame := 85; frame < 120; frame++ {
+		if pcm.Data[frame] < 9500 {
+			t.Fatalf("handoff dipped at frame %d: %d", frame, pcm.Data[frame])
+		}
+	}
+}
+
+func TestAnalyzeIntonationMeasuresAndLimitsCorrection(t *testing.T) {
+	dir := t.TempDir()
+	paths := make([]string, 3)
+	for index, hz := range []float64{200, 220, 240} {
+		paths[index] = dir + "/tone" + string(rune('0'+index)) + ".wav"
+		data := make([]int16, 8000)
+		for i := range data {
+			data[i] = int16(6000 * math.Sin(2*math.Pi*hz*float64(i)/16000))
+		}
+		if err := audio.WriteWav(paths[index], &audio.PCM{SampleRate: 16000, Channels: 1, Data: data}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &plan.Plan{Units: []plan.Unit{
+		{Position: 0, Source: paths[0]}, {Position: 1, Source: paths[1]}, {Position: 2, Source: paths[2]},
+	}}
+	timings := []effectiveTiming{{scale: 1}, {scale: 1}, {scale: 1}}
+	factors := analyzeIntonation(p, timings, sourceCache{}, 1)
+	if len(factors) != 3 {
+		t.Fatalf("factor count = %d", len(factors))
+	}
+	for i, factor := range factors {
+		if factor < 0.92 || factor > 1.08 {
+			t.Fatalf("factor %d out of bounds: %f", i, factor)
+		}
+		if p.Units[i].SourceF0Hz == 0 || p.Units[i].TargetF0Hz == 0 {
+			t.Fatalf("missing F0 audit at %d: %#v", i, p.Units[i])
+		}
+	}
+	if p.Units[2].TargetF0Hz >= p.Units[1].TargetF0Hz {
+		t.Fatalf("phrase does not fall: %#v", p.Units)
+	}
+}
+
+func TestRenderPitchFactorChangesF0(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/tone.wav"
+	data := make([]int16, 8000)
+	for i := range data {
+		data[i] = int16(6000 * math.Sin(2*math.Pi*200*float64(i)/16000))
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 16000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{DurationMS: 300, Units: []plan.Unit{{Position: 0, Source: path, DurationMS: 300, PitchFactor: 1.05, EnergyFactor: 1}}}
+	pcm, err := Render(p, Config{ReleaseMS: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wave := pcmFloats(pcm.Data[1600:4000])
+	got := pitch.EstimateMedian(wave, pcm.SampleRate)
+	if math.Abs(got-210) > 5 {
+		t.Fatalf("shifted F0 = %.2f, want about 210", got)
 	}
 }
 

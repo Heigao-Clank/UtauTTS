@@ -6,6 +6,7 @@ import (
 
 	"utautts/internal/audio"
 	"utautts/internal/frontend"
+	"utautts/internal/pitch"
 )
 
 type ExtractConfig struct {
@@ -170,75 +171,7 @@ func normalizedCorrelation(left, right []float64) float64 {
 }
 
 func estimateMedianF0(segment []float64, sampleRate int) float64 {
-	window := msFrames(40, sampleRate)
-	hop := max(1, msFrames(10, sampleRate))
-	if len(segment) < window {
-		return estimateF0(segment, sampleRate)
-	}
-	var values []float64
-	for start := 0; start+window <= len(segment); start += hop {
-		if value := estimateF0(segment[start:start+window], sampleRate); value > 0 {
-			values = append(values, value)
-		}
-	}
-	return median(values)
-}
-
-func estimateF0(frame []float64, sampleRate int) float64 {
-	if len(frame) < 16 || rms(frame) < 0.003 {
-		return 0
-	}
-	mean := 0.0
-	for _, value := range frame {
-		mean += value
-	}
-	mean /= float64(len(frame))
-	minLag, maxLag := max(2, sampleRate/500), min(len(frame)/2, sampleRate/60)
-	if minLag >= maxLag {
-		return 0
-	}
-	// YIN's cumulative mean normalized difference is less prone to selecting
-	// harmonics than taking the largest raw autocorrelation peak.
-	difference := make([]float64, maxLag+1)
-	for lag := 1; lag <= maxLag; lag++ {
-		sum := 0.0
-		for i := 0; i+lag < len(frame); i++ {
-			left, right := frame[i]-mean, frame[i+lag]-mean
-			delta := left - right
-			sum += delta * delta
-		}
-		difference[lag] = sum
-	}
-	cumulative := 0.0
-	for lag := 1; lag <= maxLag; lag++ {
-		cumulative += difference[lag]
-		if lag < minLag || cumulative == 0 {
-			continue
-		}
-		difference[lag] = difference[lag] * float64(lag) / cumulative
-	}
-	bestValue, bestLag := math.Inf(1), 0
-	for lag := minLag; lag <= maxLag; lag++ {
-		if difference[lag] < bestValue {
-			bestValue, bestLag = difference[lag], lag
-		}
-		if difference[lag] < 0.15 && (lag == maxLag || difference[lag+1] >= difference[lag]) {
-			bestLag, bestValue = lag, difference[lag]
-			break
-		}
-	}
-	if bestLag == 0 || bestValue > 0.35 {
-		return 0
-	}
-	refined := float64(bestLag)
-	if bestLag > minLag && bestLag < maxLag {
-		left, center, right := difference[bestLag-1], difference[bestLag], difference[bestLag+1]
-		denominator := left - 2*center + right
-		if math.Abs(denominator) > 1e-12 {
-			refined += 0.5 * (left - right) / denominator
-		}
-	}
-	return float64(sampleRate) / refined
+	return pitch.EstimateMedian(segment, sampleRate)
 }
 
 func rms(values []float64) float64 {
