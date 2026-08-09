@@ -84,8 +84,6 @@ func splitRecords(records []Record) (train, validation []Record) {
 	return train, validation
 }
 
-// fit uses deterministic Adam on log targets. A Huber derivative limits the
-// influence of occasional weak-alignment mistakes.
 func fit(examples []example, cfg TrainConfig, seed int64) map[string]float64 {
 	weights, first, second := map[string]float64{}, map[string]float64{}, map[string]float64{}
 	mean := 0.0

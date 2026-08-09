@@ -99,9 +99,6 @@ func finalizeRatios(targets []Target) (float64, float64) {
 		}
 	}
 	medianF0 := median(f0Values)
-	// Autocorrelation/YIN can still return an octave harmonic on short or
-	// consonant-heavy morae. Fold those isolated estimates toward the robust
-	// utterance median before forming speaker-normalized targets.
 	if medianF0 > 0 {
 		for i := range targets {
 			if targets[i].Pause || targets[i].F0Hz <= 0 {

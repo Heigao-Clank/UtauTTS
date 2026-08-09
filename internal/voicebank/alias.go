@@ -14,8 +14,6 @@ const (
 	AliasOther AliasKind = "other"
 )
 
-// ClassifyAlias performs structural classification only. Prefix-map suffixes
-// and pitches are deliberately left for the alias resolver.
 func ClassifyAlias(alias string) AliasKind {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {

@@ -14,9 +14,6 @@ type Mora struct {
 	Pause bool
 }
 
-// ParseKana converts a kana reading into mora-sized tokens. Text-to-reading
-// conversion belongs to a separate Japanese frontend; this function rejects
-// unknown characters instead of guessing or dropping them.
 func ParseKana(reading string) ([]Mora, error) {
 	reading = norm.NFC.String(reading)
 	var result []Mora

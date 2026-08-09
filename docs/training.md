@@ -1,69 +1,40 @@
-# Prosody training pipeline
+# モーラ長の学習
 
-This pipeline learns only local speech-duration corrections around the fixed
-renderer baseline. It does **not** transfer the corpus speaker's waveform,
-global speaking rate, pitch, energy, or pauses; the UTAU voicebank and baseline
-renderer remain the sound source and timing anchor.
+この学習ラインは固定規則に対する局所的なモーラ長補正だけを学習します。コーパス話者の声質、発話全体の速度、F0、音量、ポーズは転写しません。
 
-## 1. Build an auditable dataset
+## データセット作成
 
-Place JSUT `basic5000` at `data/jsut/basic5000`, including
-`transcript_utf8.txt` and `wav/*.wav`, then run:
+JSUT `basic5000`を`data/jsut/basic5000`へ配置します。`transcript_utf8.txt`と`wav/*.wav`が必要です。
 
 ```powershell
-go run ./cmd/prosody-dataset --jsut data/jsut/basic5000 --out out/prosody/jsut.jsonl
+go run ./cmd/prosody-dataset `
+  --jsut data/jsut/basic5000 `
+  --out out/prosody/jsut.jsonl
 ```
 
-Each JSONL row contains the text, Kagome reading, speech range, mora boundaries,
-duration, F0, and energy. Output order is stable
-even though extraction runs in parallel. Rejected utterances and their reasons
-are written to `<out>.report.json`.
+JSONLには読み、発話範囲、モーラ境界、長さ、F0、音量を保存します。不採用データと理由は`<出力名>.report.json`へ記録します。`--limit 100`で件数、`--workers N`で並列数を制限できます。
 
-JSUT does not include phoneme timings. The current extractor therefore uses a
-weak monotonic alignment based on expected mora timing, local energy minima and
-waveform correlation. These boundaries are inspectable intermediate data, not
-hidden training state. A later forced aligner can replace extraction without
-changing the model or renderer interfaces.
+JSUTには音素時刻がないため、現在は予想時刻・音量谷・波形相関を使った弱アラインメントです。境界は確認可能な中間データであり、正確な音素ラベルではありません。
 
-Use `--limit 100` for a quick experiment and `--workers N` to control CPU use.
-
-## 2. Train and evaluate
+## 学習
 
 ```powershell
-go run ./cmd/prosody-train --dataset out/prosody/jsut.jsonl --out out/prosody/model.json --epochs 30
+go run ./cmd/prosody-train `
+  --dataset out/prosody/jsut.jsonl `
+  --out out/prosody/model.json `
+  --epochs 30
 ```
 
-The deterministic trainer holds out whole utterances by a stable hash of their
-IDs. It divides each speech duration by the fixed mora baseline, removes the
-utterance's median speaking rate, and fits a sparse contextual model to the
-remaining log-duration residual using Adam with a Huber-style clipped gradient.
-The model JSON contains speaking-rate-normalized duration MAE. Because the
-split is by utterance, adjacent morae from one recording cannot leak into both
-training and validation.
+発話単位で学習・検証を分離し、発話速度を正規化した対数モーラ長の残差を学習します。弱アラインメントの外れ値はHuber勾配で抑えます。
 
-## 3. Synthesize with the model
+## 使用
 
 ```powershell
-go run ./cmd/utautts --voicebank sample/uta --text "こんにちは。" --prosody out/prosody/model.json --out out.wav --plan-out plan.json
+go run ./cmd/utautts-cli `
+  --voicebank sample/uta `
+  --text "こんにちは。" `
+  --prosody out/prosody/model.json `
+  --out out.wav
 ```
 
-For the browser/API server:
-
-```powershell
-go run ./cmd/utautts-server --voice-dir sample --prosody out/prosody/model.json
-```
-
-Omitting `--prosody` keeps the fixed deterministic baseline. With a model,
-speech factors are centered to a median of 1.0 and clamped to 0.8--1.25. Pitch
-and energy factors remain 1.0, and pauses remain at the configured baseline.
-
-## Known limitations
-
-- Weak boundaries are useful for bootstrapping, but are not accurate phoneme
-  labels. Validation loss measures agreement with those extracted labels.
-- The compact contextual regressor is deliberately a baseline. It does not yet
-  model Japanese accent phrases or long-range sentence context.
-- F0, energy, and pause learning are intentionally disabled until stronger
-  alignment and accent targets are available.
-- Naturalness must ultimately be checked with fixed listening tests, alongside
-  objective prosody metrics and boundary discontinuity measurements.
+モデル適用時も補正倍率は発話内中央値1.0へ揃え、`0.8`から`1.25`へ制限します。`--prosody`を省略すると固定規則を使います。

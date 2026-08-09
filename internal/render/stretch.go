@@ -26,8 +26,6 @@ func stretchPreservingPrefix(source []float64, targetFrames, prefixFrames, sampl
 	stretched := wsola(remainingSource, remainingTarget, sampleRate)
 	copy(result[prefixFrames:], stretched)
 
-	// Smooth only the protected/unprotected boundary; the protected samples
-	// themselves remain unchanged before this short transition.
 	crossfade := min(msToFrames(3, sampleRate), prefixFrames, remainingTarget)
 	for i := 0; i < crossfade; i++ {
 		position := prefixFrames + i
@@ -57,8 +55,7 @@ func retimeWithCompressedPrefix(source []float64, targetFrames, sourcePrefixFram
 		return result
 	}
 
-	// Both regions include samples on the other side of the landmark. Blending
-	// this shared source neighborhood avoids a phase discontinuity at the join.
+	// 境界の両側を含む共通区間を混合し、接続点の位相不連続を防ぐ。
 	prefix := retimeRegion(source[:sourcePrefixFrames+crossfade], targetPrefixFrames+crossfade, sampleRate)
 	tail := retimeRegion(source[sourcePrefixFrames-crossfade:], tailFrames+crossfade, sampleRate)
 	overlap := crossfade * 2
@@ -116,8 +113,6 @@ func declickJoin(wave []float64, position, radius int) {
 	}
 }
 
-// wsola is a compact waveform-similarity overlap-add implementation. It is
-// deterministic and preserves local periodicity better than linear resampling.
 func wsola(source []float64, targetFrames, sampleRate int) []float64 {
 	if targetFrames <= 0 || len(source) == 0 {
 		return nil

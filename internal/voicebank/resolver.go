@@ -26,8 +26,6 @@ func (e *MissingAliasError) Error() string {
 	return fmt.Sprintf("no voicebank entry for mora %q at position %d (tried: %s)", e.Mora, e.Position, strings.Join(e.Candidates, ", "))
 }
 
-// Resolve chooses exactly one recording for each non-pause mora. Candidate
-// order is stable and favors context-bearing VCV aliases over CV fallbacks.
 func (b *Bank) Resolve(morae []frontend.Mora) ([]Selection, error) {
 	return b.ResolveAtTone(morae, "")
 }

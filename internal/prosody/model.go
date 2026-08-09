@@ -13,8 +13,6 @@ import (
 
 const ModelVersion = 2
 
-// Model predicts only conservative duration corrections around the deterministic
-// renderer's baseline. Source pitch and energy remain untouched.
 type Model struct {
 	Version         int                `json:"version"`
 	FeatureVersion  int                `json:"feature_version"`

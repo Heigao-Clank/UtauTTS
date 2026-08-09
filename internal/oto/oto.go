@@ -37,8 +37,6 @@ type Ini struct {
 	Diagnostics []Diagnostic
 }
 
-// ReadIni reads an oto.ini encoded as UTF-8 or Shift_JIS. Malformed lines are
-// retained as diagnostics so one bad entry does not make an entire bank fail.
 func ReadIni(otoPath string) (*Ini, error) {
 	data, err := os.ReadFile(otoPath)
 	if err != nil {
@@ -87,7 +85,6 @@ func ReadIni(otoPath string) (*Ini, error) {
 	return result, nil
 }
 
-// Decode decodes UTF-8 or Shift_JIS metadata used by UTAU voicebanks.
 func Decode(data []byte) (string, string, error) {
 	data = []byte(strings.TrimPrefix(string(data), "\ufeff"))
 	if utf8.Valid(data) {

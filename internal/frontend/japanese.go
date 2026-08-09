@@ -16,9 +16,6 @@ var (
 	japaneseError     error
 )
 
-// ToKana converts Japanese text to its dictionary pronunciation. Unknown
-// non-kana tokens are errors because silently spelling or dropping them would
-// make the synthesis plan misleading.
 func ToKana(text string) (string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {

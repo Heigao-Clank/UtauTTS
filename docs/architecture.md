@@ -1,50 +1,35 @@
-# UtauTTS architecture
+# 構成
 
-UtauTTS aims to synthesize Japanese speech from an existing UTAU voicebank
-without training a new acoustic model for that voicebank.
+UtauTTSはボイスバンク自体を学習せず、既存原音の選択・時間配置・接続方法を改善します。
 
-The system is split into four layers:
+1. `frontend`: 日本語文をKagome辞書で読みに変換し、モーラとポーズへ分割
+2. `voicebank`: `oto.ini`を読み、VCVを優先して原音を選択
+3. `prosody`: 固定規則または学習モデルでモーラ長を決定
+4. `render`: 合成計画に従って波形を生成
 
-1. **Frontend** uses the embedded Kagome IPA dictionary to convert Japanese
-   text into a pronunciation, then splits it into morae and pauses. Accent
-   phrases remain a future layer.
-2. **Prosody** predicts conservative, utterance-normalized duration residuals
-   around the deterministic baseline. F0, energy, pauses, and the corpus
-   speaker's global speaking rate are deliberately not transferred. The
-   training dataset and held-out metrics are inspectable JSON.
-3. **Voicebank** loads all `oto.ini` files in a bank and resolves the requested
-   phonetic context to candidate recordings.
-4. **Renderer** places and transforms recorded units according to the prosody
-   plan. A later boundary model may correct only the joins between units.
+Windows GUIはGoからWin32 APIを直接呼び、標準の`EDIT`・`BUTTON`・`COMBOBOX`だけを使用します。合成は別ゴルーチンで実行し、既存の`tts`パッケージを直接呼びます。
 
-For ordinary CV/VCV timing, the renderer preserves the original `oto.ini`
-values. If preutterance is clearly longer than the target note, it compresses
-preutterance, overlap, and the fixed prefix as one region, guarantees a vowel
-tail, crossfades the compressed-prefix/vowel landmark, and uses a weighted
-rather than additive mix for the affected joins. A short local de-click bridge
-is applied only when the landmark discontinuity is an outlier.
-Original and effective timing values are both recorded in synthesis-plan v3.
+合成計画v4には原音と実効タイミング、原音F0、目標F0、適用したイントネーション係数を記録します。
 
-The old JSUT/WORLD and experimental VITS pipelines were removed from the
-working tree. They remain available through Git history for comparison only.
+## レンダラ
 
-## Initial supported scope
+### waveform
 
-- Japanese voicebanks using CV or VCV aliases (CVVC metadata can be loaded,
-  but VC insertion is not implemented yet)
-- one or more recursively discovered `oto.ini` files
-- UTF-8 or Shift_JIS metadata
-- PCM WAV source files
-- deterministic synthesis for identical inputs and settings
+原音をWSOLAで時間伸縮し、絶対時刻へ配置します。隣接ユニットは相補的にクロスフェードし、三重以上の重なりだけを正規化します。長すぎるVCVの発声先行は、母音末尾を残す範囲で圧縮します。
 
-The deterministic renderer and initial JSUT prosody-training baseline are now
-implemented. Neural boundary correction comes only after the renderer has
-objective tests.
+外部依存がなく、同じ入力から同じWAVを生成する比較基準です。
 
-## Quality gates
+### worldline
 
-- Missing and malformed entries are reported, never silently skipped.
-- The same input produces byte-identical output.
-- Unit placement is tested using synthetic impulses before subjective listening.
-- Evaluation keeps prosody error, boundary discontinuity and voice similarity as
-  separate measurements.
+OpenUtau由来のWORLDフレーズ合成を別プロセスの.NETブリッジから呼び出します。各原音をF0・スペクトル包絡・非周期成分へ分解し、フレーズ単位で合成します。利用可能な`.frq`は自動的に渡します。
+
+### worldline-hybrid
+
+WORLD合成を土台にします。各`oto.ini`固定範囲を30ms窓で調べ、周期を検出できない区間、または波形版より28%以上減衰した区間だけを原波形から復元します。切り替えは4msで行い、母音持続部の波形伸縮ノイズを戻さないようにします。
+
+## 品質条件
+
+- 不足原音や不正設定を黙って無視しない
+- 同じ入力と設定から同じ結果を生成する
+- 波形版を残し、レンダラ間を同一条件で比較できる
+- 韻律誤差、接続ノイズ、声質を別々に評価する

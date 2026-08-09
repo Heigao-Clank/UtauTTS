@@ -20,10 +20,8 @@ func TrimPCM(pcm *PCM, offsetMs float64, fixedMs float64, blankMs float64) (*PCM
 	}
 	var end int
 	if blankMs < 0 {
-		// A negative cutoff specifies the usable length measured from offset.
 		end = start + msToFrames(-blankMs, pcm.SampleRate)
 	} else {
-		// A positive cutoff specifies the amount removed from the right edge.
 		end = frames - msToFrames(blankMs, pcm.SampleRate)
 	}
 	if end > frames {
@@ -32,7 +30,6 @@ func TrimPCM(pcm *PCM, offsetMs float64, fixedMs float64, blankMs float64) (*PCM
 	if end < 0 {
 		end = 0
 	}
-	// fixedMs is the non-stretchable consonant length, not a trimming bound.
 	_ = fixedMs
 	if start >= end {
 		return nil, errors.New("invalid trim range")

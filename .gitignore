@@ -8,3 +8,6 @@ release/
 build/
 dist/
 .tmp-go-cache/
+.tmp-*/
+tools/worldline-bridge/bin/
+tools/worldline-bridge/obj/

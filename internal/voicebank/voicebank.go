@@ -20,8 +20,6 @@ type Diagnostic struct {
 	Message string
 }
 
-// Bank is a complete UTAU voicebank. Entries with the same alias remain in
-// source order because unit selection will need all of them later.
 type Bank struct {
 	Root        string
 	Name        string
@@ -31,7 +29,6 @@ type Bank struct {
 	Diagnostics []Diagnostic
 }
 
-// Load recursively loads every oto.ini below root as one voicebank.
 func Load(root string) (*Bank, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -96,7 +93,6 @@ func Load(root string) (*Bank, error) {
 	return bank, nil
 }
 
-// Aliases returns a stable list suitable for diagnostics and tests.
 func (b *Bank) Aliases() []string {
 	aliases := make([]string, 0, len(b.Entries))
 	for alias := range b.Entries {
