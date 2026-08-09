@@ -144,7 +144,7 @@ func main() {
 
 	flag.StringVar(&initialVoicebank, "voicebank", "", "initial voicebank directory")
 	flag.StringVar(&voiceDirectory, "voice-dir", "voice", "directory containing voicebanks")
-	flag.StringVar(&initialText, "text", "こんにちは、今日はいい天気です。", "initial text")
+	flag.StringVar(&initialText, "text", "あらゆる現実をすべて自分のほうへねじ曲げたのだ。", "initial text")
 	flag.StringVar(&initialOutput, "out", "output.wav", "initial output WAV")
 	flag.Parse()
 	closeLog := initializeLog()
@@ -215,6 +215,7 @@ func createControls(parent, instance uintptr) error {
 	rendererCombo := control(0, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|cbsDropdownList, 110, 308, 200, 200, parent, idRenderer, instance)
 	comboAdd(rendererCombo, "worldline-hybrid")
 	comboAdd(rendererCombo, "waveform")
+	comboAdd(rendererCombo, "waveform-long (実験的)")
 	sendMessage.Call(rendererCombo, cbSetCurSel, 0, 0)
 
 	label(parent, instance, "イントネーション", 340, 312, 120, 22)
@@ -312,6 +313,8 @@ func startSynthesis(hwnd uintptr) {
 	renderer := "worldline-hybrid"
 	if selected, _, _ := sendMessage.Call(child(hwnd, idRenderer), cbGetCurSel, 0, 0); selected == 1 {
 		renderer = "waveform"
+	} else if selected == 2 {
+		renderer = "waveform-long"
 	}
 
 	enableWindow.Call(generateButton, 0)

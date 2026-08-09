@@ -46,7 +46,7 @@ func main() {
 	flag.StringVar(&host, "host", "127.0.0.1", "host")
 	flag.StringVar(&voiceDir, "voice-dir", "voice", "directory containing voicebanks")
 	flag.StringVar(&prosodyPath, "prosody", "", "optional learned prosody model JSON")
-	flag.StringVar(&renderer, "renderer", "waveform", "renderer: waveform, worldline, or worldline-hybrid")
+	flag.StringVar(&renderer, "renderer", "waveform", "renderer: waveform, waveform-long, worldline, or worldline-hybrid")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to worldline bridge (default: next to executable)")
 	flag.Parse()
