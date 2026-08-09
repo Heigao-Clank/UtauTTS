@@ -8,7 +8,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 4
+const Version = 5
 
 type Config struct {
 	MoraDurationMS  float64
@@ -48,6 +48,7 @@ type Unit struct {
 	SourceF0Hz              float64 `json:"source_f0_hz,omitempty"`
 	TargetF0Hz              float64 `json:"target_f0_hz,omitempty"`
 	IntonationFactor        float64 `json:"intonation_factor"`
+	SelectionScore          float64 `json:"selection_score"`
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {
@@ -112,6 +113,7 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 			OverlapMS:      entry.Overlap,
 			PitchFactor:    prediction.PitchFactor,
 			EnergyFactor:   prediction.EnergyFactor,
+			SelectionScore: selection.Score,
 		})
 		cursor += duration
 	}

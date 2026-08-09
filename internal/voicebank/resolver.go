@@ -2,6 +2,8 @@ package voicebank
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 
 	"utautts/internal/frontend"
@@ -14,7 +16,10 @@ type Selection struct {
 	Alias      string
 	Entry      oto.Entry
 	Candidates []string
+	Score      float64
 }
+
+const maxCandidatesPerPosition = 32
 
 type MissingAliasError struct {
 	Position   int
@@ -31,12 +36,13 @@ func (b *Bank) Resolve(morae []frontend.Mora) ([]Selection, error) {
 }
 
 func (b *Bank) ResolveAtTone(morae []frontend.Mora, tone string) ([]Selection, error) {
-	selections := make([]Selection, 0, len(morae))
+	layers := make([][]Selection, 0, len(morae))
 	affix, hasAffix := b.AffixForTone(tone)
 	previousVowel := ""
 	phraseStart := true
 	for position, mora := range morae {
 		if mora.Pause {
+			layers = append(layers, nil)
 			previousVowel = ""
 			phraseStart = true
 			continue
@@ -46,29 +52,58 @@ func (b *Bank) ResolveAtTone(morae []frontend.Mora, tone string) ([]Selection, e
 		if hasAffix {
 			candidates = affixCandidates(candidates, affix)
 		}
-		var selected *Selection
-		for _, candidate := range candidates {
+		var candidatesAtPosition []Selection
+		for candidateIndex, candidate := range candidates {
 			entries := b.Entries[candidate]
-			if len(entries) == 0 {
-				continue
+			for _, entry := range entries {
+				candidatesAtPosition = append(candidatesAtPosition, Selection{
+					Position: position, Mora: mora, Alias: candidate, Entry: entry,
+					Candidates: candidates, Score: candidateScore(candidateIndex, entry),
+				})
 			}
-			selected = &Selection{
-				Position:   position,
-				Mora:       mora,
-				Alias:      candidate,
-				Entry:      entries[0],
-				Candidates: candidates,
-			}
-			break
 		}
-		if selected == nil {
+		if len(candidatesAtPosition) == 0 {
 			return nil, &MissingAliasError{Position: position, Mora: mora.Text, Candidates: candidates}
 		}
-		selections = append(selections, *selected)
+		if len(candidatesAtPosition) > maxCandidatesPerPosition {
+			sort.SliceStable(candidatesAtPosition, func(i, j int) bool {
+				return candidatesAtPosition[i].Score > candidatesAtPosition[j].Score
+			})
+			candidatesAtPosition = candidatesAtPosition[:maxCandidatesPerPosition]
+		}
+		layers = append(layers, candidatesAtPosition)
 		previousVowel = mora.Vowel
 		phraseStart = false
 	}
-	return selections, nil
+	return selectBestPaths(layers), nil
+}
+
+// candidateScore combines linguistic candidate priority with basic oto.ini
+// consistency. It mainly chooses between duplicate recordings, while allowing
+// a badly configured VCV entry to lose to a usable fallback.
+func candidateScore(candidateIndex int, entry oto.Entry) float64 {
+	score := 100 - float64(candidateIndex)*10
+	if entry.Preutterance >= 0 {
+		score += 4
+	} else {
+		score -= 30 + math.Abs(entry.Preutterance)
+	}
+	if entry.Fixed >= entry.Preutterance && entry.Fixed >= 0 {
+		score += 4
+	} else {
+		score -= 20 + math.Abs(entry.Preutterance-entry.Fixed)
+	}
+	if entry.Overlap <= entry.Preutterance {
+		score += 4
+	} else {
+		score -= 20 + math.Abs(entry.Overlap-entry.Preutterance)
+	}
+	if entry.Offset >= 0 {
+		score += 2
+	} else {
+		score -= 20
+	}
+	return score
 }
 
 func affixCandidates(base []string, affix Affix) []string {
