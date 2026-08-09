@@ -7,13 +7,30 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"utautts/internal/voicebank"
 )
 
+type voicebankScanResult struct {
+	root         string
+	previousPath string
+	banks        []voicebank.Summary
+	err          error
+}
+
+var (
+	voicebankScanInProgress bool
+	voicebankScanMutex      sync.Mutex
+	completedVoicebankScan  voicebankScanResult
+)
+
 func refreshVoicebanks(hwnd uintptr) {
+	if voicebankScanInProgress {
+		return
+	}
 	root := voicebank.ResolveDirectory(voiceDirectory)
 	started := time.Now()
 	log.Printf("voicebank scan started: configured=%q resolved=%q", voiceDirectory, root)
@@ -25,43 +42,67 @@ func refreshVoicebanks(hwnd uintptr) {
 	if selected, _, _ := sendMessage.Call(combo, cbGetCurSel, 0, 0); int(selected) >= 0 && int(selected) < len(availableBanks) {
 		previousPath = availableBanks[int(selected)].Path
 	}
-	banks, err := voicebank.Discover(root)
-	if initialVoicebank != "" {
-		if bank, inspectErr := voicebank.Inspect(initialVoicebank); inspectErr == nil {
-			found := false
-			for _, candidate := range banks {
-				if samePath(candidate.Path, bank.Path) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				banks = append(banks, bank)
-			}
+	voicebankScanInProgress = true
+	configuredInitial := initialVoicebank
+	go func() {
+		result := voicebankScanResult{root: root, previousPath: previousPath}
+		result.err = runSafely("音源検索", func() error {
+			result.banks, result.err = discoverVoicebanks(root, configuredInitial)
+			return result.err
+		})
+		voicebankScanMutex.Lock()
+		completedVoicebankScan = result
+		voicebankScanMutex.Unlock()
+		log.Printf("voicebank scan finished: count=%d elapsed=%s error=%v", len(result.banks), time.Since(started).Round(time.Millisecond), result.err)
+		postMessage.Call(hwnd, wmVoicebanksDone, 0, 0)
+	}()
+}
+
+func discoverVoicebanks(root, configuredInitial string) ([]voicebank.Summary, error) {
+	banks, discoverErr := voicebank.Discover(root)
+	if configuredInitial == "" {
+		return banks, discoverErr
+	}
+	bank, inspectErr := voicebank.Inspect(configuredInitial)
+	if inspectErr != nil {
+		return banks, discoverErr
+	}
+	for _, candidate := range banks {
+		if samePath(candidate.Path, bank.Path) {
+			return banks, discoverErr
 		}
 	}
-	availableBanks = banks
+	return append(banks, bank), discoverErr
+}
+
+func finishVoicebankRefresh(hwnd uintptr) {
+	voicebankScanMutex.Lock()
+	result := completedVoicebankScan
+	completedVoicebankScan = voicebankScanResult{}
+	voicebankScanMutex.Unlock()
+	voicebankScanInProgress = false
+	availableBanks = result.banks
+	combo := child(hwnd, idVoicebank)
 	sendMessage.Call(combo, cbResetContent, 0, 0)
 	selected := 0
-	for index, bank := range banks {
+	for index, bank := range result.banks {
 		comboAdd(combo, voicebankDisplayName(index))
-		if previousPath != "" && samePath(bank.Path, previousPath) {
+		if result.previousPath != "" && samePath(bank.Path, result.previousPath) {
 			selected = index
-		} else if previousPath == "" && initialVoicebank != "" && samePath(bank.Path, initialVoicebank) {
+		} else if result.previousPath == "" && initialVoicebank != "" && samePath(bank.Path, initialVoicebank) {
 			selected = index
 		}
 	}
 	enableWindow.Call(reloadButton, 1)
 	enableWindow.Call(combo, 1)
-	if len(banks) > 0 {
+	if len(result.banks) > 0 {
 		sendMessage.Call(combo, cbSetCurSel, uintptr(selected), 0)
-		setText(statusLabel, fmt.Sprintf("%d音源を読込: %s", len(banks), root))
-	} else if err != nil {
-		setText(statusLabel, "音源がありません: "+root)
+		setText(statusLabel, fmt.Sprintf("%d音源を読込: %s", len(result.banks), result.root))
+	} else if result.err != nil {
+		setText(statusLabel, "音源がありません: "+result.root)
 	} else {
 		setText(statusLabel, "音源がありません")
 	}
-	log.Printf("voicebank scan finished: count=%d elapsed=%s error=%v", len(banks), time.Since(started).Round(time.Millisecond), err)
 }
 
 func voicebankDisplayName(index int) string {

@@ -26,6 +26,7 @@ const (
 	wmSetFont              = 0x0030
 	wmSynthesisDone        = 0x8001
 	wmInitializeVoicebanks = 0x8002
+	wmVoicebanksDone       = 0x8003
 
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
@@ -98,6 +99,7 @@ var (
 	controls         []uintptr
 	completionMutex  sync.Mutex
 	completionError  error
+	synthesisRunning bool
 	lastOutput       string
 	initialVoicebank string
 	voiceDirectory   string
@@ -137,6 +139,9 @@ type windowClassEx struct {
 }
 
 func main() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	flag.StringVar(&initialVoicebank, "voicebank", "", "initial voicebank directory")
 	flag.StringVar(&voiceDirectory, "voice-dir", "voice", "directory containing voicebanks")
 	flag.StringVar(&initialText, "text", "こんにちは、今日はいい天気です。", "initial text")
@@ -145,36 +150,50 @@ func main() {
 	closeLog := initializeLog()
 	defer closeLog()
 
-	coInitializeEx.Call(0, 2)
-	defer coUninitialize.Call()
+	comResult, _, comErr := coInitializeEx.Call(0, 2)
+	if int32(comResult) < 0 {
+		log.Printf("CoInitializeEx failed: HRESULT=0x%08X error=%v", uint32(comResult), comErr)
+	} else {
+		defer coUninitialize.Call()
+	}
 
 	instance, _, _ := getModuleHandle.Call(0)
 	cursor, _, _ := loadCursor.Call(0, 32512)
-	className := utf16("UtauTTSWindow")
+	className := windowsString("UtauTTSWindow")
 	class := windowClassEx{
 		Size: uint32(unsafe.Sizeof(windowClassEx{})), WndProc: syscall.NewCallback(windowProc),
-		Instance: instance, Cursor: cursor, Background: colorBtnFace + 1, ClassName: className,
+		Instance: instance, Cursor: cursor, Background: colorBtnFace + 1, ClassName: &className[0],
 	}
 	if result, _, callErr := registerClassEx.Call(uintptr(unsafe.Pointer(&class))); result == 0 {
 		fatalMessage(fmt.Errorf("RegisterClassExW: %v", callErr))
 		return
 	}
 
+	title := windowsString("UtauTTS")
 	mainWindow, _, _ = createWindowEx.Call(
-		0, uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(utf16("UtauTTS"))),
+		0, uintptr(unsafe.Pointer(&className[0])), uintptr(unsafe.Pointer(&title[0])),
 		wsOverlappedWindow, 120, 100, 700, 535, 0, 0, instance, 0,
 	)
+	runtime.KeepAlive(className)
+	runtime.KeepAlive(title)
 	if mainWindow == 0 {
 		fatalMessage(fmt.Errorf("ウィンドウを作成できません"))
 		return
 	}
-	createControls(mainWindow, instance)
+	if err := createControls(mainWindow, instance); err != nil {
+		fatalMessage(err)
+		return
+	}
 	showWindow.Call(mainWindow, 5)
 	updateWindow.Call(mainWindow)
 
 	var msg message
 	for {
-		result, _, _ := getMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		result, _, callErr := getMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		if int32(result) == -1 {
+			log.Printf("GetMessageW failed: %v", callErr)
+			break
+		}
 		if int32(result) <= 0 {
 			break
 		}
@@ -183,7 +202,7 @@ func main() {
 	}
 }
 
-func createControls(parent, instance uintptr) {
+func createControls(parent, instance uintptr) error {
 	font, _, _ := getStockObject.Call(defaultFont)
 	label(parent, instance, "ボイスバンク（voiceディレクトリ）", 20, 18, 300, 22)
 	control(wsExClientEdge, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|wsVScroll|cbsDropdownList, 20, 42, 550, 300, parent, idVoicebank, instance)
@@ -207,14 +226,31 @@ func createControls(parent, instance uintptr) {
 	generateButton = control(0, "BUTTON", "生成", wsChild|wsVisible|wsTabStop, 20, 405, 120, 38, parent, idGenerate, instance)
 	playButton = control(0, "BUTTON", "再生", wsChild|wsVisible|wsTabStop, 150, 405, 120, 38, parent, idPlay, instance)
 	statusLabel = label(parent, instance, "準備完了", 290, 414, 380, 22)
-	postMessage.Call(parent, wmInitializeVoicebanks, 0, 0)
-
 	for _, handle := range controls {
 		sendMessage.Call(handle, wmSetFont, font, 1)
 	}
+	for _, id := range []int{idVoicebank, idReload, idText, idRenderer, idIntonate, idOutput, idGenerate, idPlay} {
+		if child(parent, id) == 0 {
+			return fmt.Errorf("GUIコントロールを作成できませんでした: id=%d", id)
+		}
+	}
+	if statusLabel == 0 {
+		return fmt.Errorf("GUIステータス欄を作成できませんでした")
+	}
+	postMessage.Call(parent, wmInitializeVoicebanks, 0, 0)
+	return nil
 }
 
-func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintptr) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = logRecoveredPanic("GUI処理", recovered)
+			if statusLabel != 0 {
+				setText(statusLabel, "内部エラー。ログを確認してください")
+			}
+			result = 0
+		}
+	}()
 	switch msg {
 	case wmCommand:
 		switch int(wParam & 0xffff) {
@@ -232,15 +268,21 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case wmInitializeVoicebanks:
 		refreshVoicebanks(hwnd)
 		return 0
+	case wmVoicebanksDone:
+		finishVoicebankRefresh(hwnd)
+		return 0
 	case wmDestroy:
 		postQuitMessage.Call(0)
 		return 0
 	}
-	result, _, _ := defWindowProc.Call(hwnd, uintptr(msg), wParam, lParam)
+	result, _, _ = defWindowProc.Call(hwnd, uintptr(msg), wParam, lParam)
 	return result
 }
 
 func startSynthesis(hwnd uintptr) {
+	if synthesisRunning {
+		return
+	}
 	voicebankPath := ""
 	selected, _, _ := sendMessage.Call(child(hwnd, idVoicebank), cbGetCurSel, 0, 0)
 	if int(selected) >= 0 && int(selected) < len(availableBanks) {
@@ -274,14 +316,18 @@ func startSynthesis(hwnd uintptr) {
 
 	enableWindow.Call(generateButton, 0)
 	enableWindow.Call(playButton, 0)
+	synthesisRunning = true
 	setText(statusLabel, "生成中...")
 	go func() {
-		result, synthErr := tts.Synthesize(tts.Config{
-			VoicebankPath: voicebankPath, Text: text, Renderer: renderer, IntonationStrength: strength,
+		synthErr := runSafely("音声合成", func() error {
+			result, err := tts.Synthesize(tts.Config{
+				VoicebankPath: voicebankPath, Text: text, Renderer: renderer, IntonationStrength: strength,
+			})
+			if err != nil {
+				return err
+			}
+			return audio.WriteWav(output, result.Audio)
 		})
-		if synthErr == nil {
-			synthErr = audio.WriteWav(output, result.Audio)
-		}
 		completionMutex.Lock()
 		completionError = synthErr
 		if synthErr == nil {
@@ -297,6 +343,7 @@ func finishSynthesis(hwnd uintptr) {
 	err := completionError
 	output := lastOutput
 	completionMutex.Unlock()
+	synthesisRunning = false
 	enableWindow.Call(generateButton, 1)
 	enableWindow.Call(playButton, 1)
 	if err != nil {
@@ -309,26 +356,39 @@ func finishSynthesis(hwnd uintptr) {
 
 func playOutput(hwnd uintptr) {
 	path := strings.TrimSpace(windowText(child(hwnd, idOutput)))
-	if lastOutput != "" {
-		path = lastOutput
+	completionMutex.Lock()
+	completedOutput := lastOutput
+	completionMutex.Unlock()
+	if completedOutput != "" {
+		path = completedOutput
 	}
 	if _, err := os.Stat(path); err != nil {
 		showError(hwnd, fmt.Errorf("再生するWAVがありません"))
 		return
 	}
-	result, _, _ := shellExecute.Call(hwnd, uintptr(unsafe.Pointer(utf16("open"))), uintptr(unsafe.Pointer(utf16(path))), 0, 0, swNormal)
+	verb := windowsString("open")
+	pathBuffer := windowsString(path)
+	result, _, _ := shellExecute.Call(hwnd, uintptr(unsafe.Pointer(&verb[0])), uintptr(unsafe.Pointer(&pathBuffer[0])), 0, 0, swNormal)
+	runtime.KeepAlive(verb)
+	runtime.KeepAlive(pathBuffer)
 	if result <= 32 {
 		showError(hwnd, fmt.Errorf("WAVを開けませんでした"))
 	}
 }
 
 func control(exStyle uintptr, class, text string, style uintptr, x, y, width, height int, parent uintptr, id int, instance uintptr) uintptr {
-	handle, _, _ := createWindowEx.Call(
-		exStyle, uintptr(unsafe.Pointer(utf16(class))), uintptr(unsafe.Pointer(utf16(text))), style,
+	classBuffer := windowsString(class)
+	textBuffer := windowsString(text)
+	handle, _, callErr := createWindowEx.Call(
+		exStyle, uintptr(unsafe.Pointer(&classBuffer[0])), uintptr(unsafe.Pointer(&textBuffer[0])), style,
 		uintptr(x), uintptr(y), uintptr(width), uintptr(height), parent, uintptr(id), instance, 0,
 	)
+	runtime.KeepAlive(classBuffer)
+	runtime.KeepAlive(textBuffer)
 	if handle != 0 {
 		controls = append(controls, handle)
+	} else {
+		log.Printf("CreateWindowExW failed: class=%q id=%d error=%v", class, id, callErr)
 	}
 	return handle
 }
@@ -338,10 +398,7 @@ func label(parent, instance uintptr, text string, x, y, width, height int) uintp
 }
 
 func comboAdd(combo uintptr, value string) {
-	buffer, err := syscall.UTF16FromString(value)
-	if err != nil {
-		return
-	}
+	buffer := windowsString(value)
 	sendMessage.Call(combo, cbAddString, 0, uintptr(unsafe.Pointer(&buffer[0])))
 	runtime.KeepAlive(buffer)
 }
@@ -359,25 +416,18 @@ func windowText(hwnd uintptr) string {
 }
 
 func setText(hwnd uintptr, value string) {
-	buffer, err := syscall.UTF16FromString(value)
-	if err != nil {
-		return
-	}
+	buffer := windowsString(value)
 	setWindowText.Call(hwnd, uintptr(unsafe.Pointer(&buffer[0])))
 	runtime.KeepAlive(buffer)
 }
 
-func utf16(value string) *uint16 {
-	result, err := syscall.UTF16PtrFromString(value)
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
 func showError(hwnd uintptr, err error) {
 	log.Printf("error: %v", err)
-	messageBox.Call(hwnd, uintptr(unsafe.Pointer(utf16(err.Error()))), uintptr(unsafe.Pointer(utf16("UtauTTS"))), mbIconError)
+	message := windowsString(err.Error())
+	title := windowsString("UtauTTS")
+	messageBox.Call(hwnd, uintptr(unsafe.Pointer(&message[0])), uintptr(unsafe.Pointer(&title[0])), mbIconError)
+	runtime.KeepAlive(message)
+	runtime.KeepAlive(title)
 }
 
 func fatalMessage(err error) {
