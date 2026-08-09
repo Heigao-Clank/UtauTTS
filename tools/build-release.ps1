@@ -5,6 +5,8 @@ $guiPath = Join-Path $releaseRoot 'UtauTTS'
 $serverPath = Join-Path $releaseRoot 'UtauTTS-Server'
 $guiZip = Join-Path $releaseRoot 'UtauTTS-win-x64.zip'
 $serverZip = Join-Path $releaseRoot 'UtauTTS-Server-win-x64.zip'
+$bundledVoicebankDirectory = Join-Path $root 'voice'
+$bundledVoicebankSHA256 = 'B96D1B21145F22E573AFD9EC8AEAAD0EC9CBAEE581C2623C64ADDEB31DE46B3D'
 
 function Invoke-Checked([string]$Command, [string[]]$Arguments) {
     & $Command @Arguments
@@ -21,6 +23,19 @@ function Reset-Directory([string]$Path) {
         Remove-Item -Recurse -Force -LiteralPath $Path
     }
     New-Item -ItemType Directory -Force -Path $Path | Out-Null
+}
+
+function Expand-BundledVoicebank([string]$Destination) {
+    $archives = @(Get-ChildItem -LiteralPath $bundledVoicebankDirectory -Filter '*ver3.5.0.zip' -File)
+    if ($archives.Count -ne 1) {
+        throw "Expected exactly one bundled voicebank archive, found $($archives.Count) in $bundledVoicebankDirectory"
+    }
+    $bundledVoicebankArchive = $archives[0].FullName
+    $actualHash = (Get-FileHash -LiteralPath $bundledVoicebankArchive -Algorithm SHA256).Hash
+    if ($actualHash -ne $bundledVoicebankSHA256) {
+        throw "Bundled voicebank hash mismatch: expected $bundledVoicebankSHA256, got $actualHash"
+    }
+    Expand-Archive -LiteralPath $bundledVoicebankArchive -DestinationPath $Destination
 }
 
 Reset-Directory $guiPath
@@ -43,6 +58,13 @@ try {
         @('utautts-cli.exe', './cmd/utautts-cli'),
         @('oto-inspect.exe', './cmd/oto-inspect'),
         @('connection-eval.exe', './cmd/connection-eval'),
+        @('connection-compare.exe', './cmd/connection-compare'),
+        @('connection-dataset.exe', './cmd/connection-dataset'),
+        @('connection-train.exe', './cmd/connection-train'),
+        @('connection-lattice.exe', './cmd/connection-lattice'),
+        @('connection-benchmark.exe', './cmd/connection-benchmark'),
+        @('listening-test.exe', './cmd/listening-test'),
+        @('listening-score.exe', './cmd/listening-score'),
         @('prosody-dataset.exe', './cmd/prosody-dataset'),
         @('prosody-train.exe', './cmd/prosody-train')
     )
@@ -68,13 +90,15 @@ try {
     Copy-Item -LiteralPath 'README.md', 'THIRD_PARTY_NOTICES.txt' -Destination $guiPath
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
-    Copy-Item -LiteralPath 'docs/architecture.md', 'docs/training.md', 'docs/evaluation.md' -Destination $guiDocs
+    Copy-Item -LiteralPath 'docs/architecture.md', 'docs/training.md', 'docs/evaluation.md', 'docs/connection-dataset.md', 'docs/listening-test.md', 'docs/voicebank.md' -Destination $guiDocs
 
-    foreach ($outputDirectory in @($guiPath, $serverPath)) {
-        $voiceDirectory = Join-Path $outputDirectory 'voice'
-        New-Item -ItemType Directory -Force -Path $voiceDirectory | Out-Null
-        Set-Content -LiteralPath (Join-Path $voiceDirectory 'PUT_VOICEBANKS_HERE.txt') -Encoding UTF8 -Value 'Place each UTAU voicebank in its own folder here.'
-    }
+    $guiVoiceDirectory = Join-Path $guiPath 'voice'
+    New-Item -ItemType Directory -Force -Path $guiVoiceDirectory | Out-Null
+    Expand-BundledVoicebank $guiVoiceDirectory
+
+    $serverVoiceDirectory = Join-Path $serverPath 'voice'
+    New-Item -ItemType Directory -Force -Path $serverVoiceDirectory | Out-Null
+    Set-Content -LiteralPath (Join-Path $serverVoiceDirectory 'PUT_VOICEBANKS_HERE.txt') -Encoding UTF8 -Value 'Place each UTAU voicebank in its own folder here.'
 
     Copy-Item -LiteralPath 'docs/server.md' -Destination (Join-Path $serverPath 'README.md')
     Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.txt' -Destination $serverPath

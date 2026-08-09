@@ -130,3 +130,27 @@ POSSIBILITY OF SUCH DAMAGE.
 
 Upstream source:
 https://github.com/mmorise/World
+
+
+足立レイ UTAU音源 ver3.5.0
+==========================
+
+The UtauTTS GUI distribution bundles the official 足立レイ UTAU voicebank
+version 3.5.0. The voicebank was designed and created by みさいる / Mechanical
+Girl and is distributed under its own guidelines. It is not covered by the
+UtauTTS software license.
+
+The original readme, usage guidelines, history, and related documents are
+included inside the bundled voicebank directory. Refer to those files for the
+full terms. The official guidelines permit redistribution and use embedded in
+programs or devices. Commercial or for-profit use may require prior contact
+with Mechanical Girl under the current online guidelines.
+
+Official distribution:
+https://mechanicalgirl.jp/adachi-rei/
+
+Current guidelines:
+https://mechanicalgirl.jp/guidelines/
+
+Bundled archive SHA-256:
+B96D1B21145F22E573AFD9EC8AEAAD0EC9CBAEE581C2623C64ADDEB31DE46B3D

@@ -31,7 +31,7 @@ go run ./cmd/prosody-train `
 
 ```powershell
 go run ./cmd/utautts-cli `
-  --voicebank sample/uta `
+  --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
   --text "こんにちは。" `
   --prosody out/prosody/model.json `
   --out out.wav
