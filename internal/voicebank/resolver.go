@@ -6,20 +6,40 @@ import (
 	"sort"
 	"strings"
 
+	"utautts/internal/connection"
 	"utautts/internal/frontend"
 	"utautts/internal/oto"
 )
 
 type Selection struct {
-	Position   int
-	Mora       frontend.Mora
-	Alias      string
-	Entry      oto.Entry
-	Candidates []string
-	Score      float64
+	Position        int
+	Mora            frontend.Mora
+	Alias           string
+	Entry           oto.Entry
+	Candidates      []string
+	CandidateCount  int
+	TargetScore     float64
+	JoinScore       float64
+	JoinProbability float64
+	PathScore       float64
+	Score           float64 // TargetScore + JoinScore; kept for plan v5 compatibility.
 }
 
 const maxCandidatesPerPosition = 32
+
+type SelectionMode string
+
+const (
+	SelectionViterbi    SelectionMode = "viterbi"
+	SelectionGreedy     SelectionMode = "greedy"
+	SelectionTargetOnly SelectionMode = "target-only"
+)
+
+type ResolveConfig struct {
+	Tone      string
+	Mode      SelectionMode
+	JoinModel *connection.LearnedModel
+}
 
 type MissingAliasError struct {
 	Position   int
@@ -32,10 +52,29 @@ func (e *MissingAliasError) Error() string {
 }
 
 func (b *Bank) Resolve(morae []frontend.Mora) ([]Selection, error) {
-	return b.ResolveAtTone(morae, "")
+	return b.ResolveWithConfig(morae, ResolveConfig{})
 }
 
 func (b *Bank) ResolveAtTone(morae []frontend.Mora, tone string) ([]Selection, error) {
+	return b.ResolveWithConfig(morae, ResolveConfig{Tone: tone})
+}
+
+func (b *Bank) ResolveWithConfig(morae []frontend.Mora, cfg ResolveConfig) ([]Selection, error) {
+	mode := cfg.Mode
+	if mode == "" {
+		mode = SelectionViterbi
+	}
+	if mode != SelectionViterbi && mode != SelectionGreedy && mode != SelectionTargetOnly {
+		return nil, fmt.Errorf("unknown selection mode %q", mode)
+	}
+	layers, err := b.candidateLayers(morae, cfg.Tone)
+	if err != nil {
+		return nil, err
+	}
+	return selectBestPaths(layers, mode, cfg.JoinModel), nil
+}
+
+func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selection, error) {
 	layers := make([][]Selection, 0, len(morae))
 	affix, hasAffix := b.AffixForTone(tone)
 	previousVowel := ""
@@ -48,41 +87,57 @@ func (b *Bank) ResolveAtTone(morae []frontend.Mora, tone string) ([]Selection, e
 			continue
 		}
 
-		candidates := aliasCandidates(mora.Text, previousVowel, phraseStart)
+		candidateSpecs := aliasCandidates(mora.Text, previousVowel, phraseStart)
 		if hasAffix {
-			candidates = affixCandidates(candidates, affix)
+			candidateSpecs = affixCandidates(candidateSpecs, affix)
 		}
+		candidates := candidateNames(candidateSpecs)
 		var candidatesAtPosition []Selection
-		for candidateIndex, candidate := range candidates {
-			entries := b.Entries[candidate]
+		for _, candidate := range candidateSpecs {
+			entries := b.Entries[candidate.name]
 			for _, entry := range entries {
+				targetScore := candidateScore(candidate.tier, entry)
 				candidatesAtPosition = append(candidatesAtPosition, Selection{
-					Position: position, Mora: mora, Alias: candidate, Entry: entry,
-					Candidates: candidates, Score: candidateScore(candidateIndex, entry),
+					Position: position, Mora: mora, Alias: candidate.name, Entry: entry,
+					Candidates: candidates, TargetScore: targetScore, Score: targetScore,
 				})
 			}
 		}
 		if len(candidatesAtPosition) == 0 {
+			if mora.Vowel == "cl" {
+				candidatesAtPosition = []Selection{{
+					Position: position, Mora: mora, Alias: "<closure>",
+					Candidates: candidates, CandidateCount: 1,
+					TargetScore: 100, Score: 100,
+				}}
+				layers = append(layers, candidatesAtPosition)
+				previousVowel = mora.Vowel
+				phraseStart = false
+				continue
+			}
 			return nil, &MissingAliasError{Position: position, Mora: mora.Text, Candidates: candidates}
 		}
 		if len(candidatesAtPosition) > maxCandidatesPerPosition {
 			sort.SliceStable(candidatesAtPosition, func(i, j int) bool {
-				return candidatesAtPosition[i].Score > candidatesAtPosition[j].Score
+				return candidatesAtPosition[i].TargetScore > candidatesAtPosition[j].TargetScore
 			})
 			candidatesAtPosition = candidatesAtPosition[:maxCandidatesPerPosition]
+		}
+		for index := range candidatesAtPosition {
+			candidatesAtPosition[index].CandidateCount = len(candidatesAtPosition)
 		}
 		layers = append(layers, candidatesAtPosition)
 		previousVowel = mora.Vowel
 		phraseStart = false
 	}
-	return selectBestPaths(layers), nil
+	return layers, nil
 }
 
 // candidateScore combines linguistic candidate priority with basic oto.ini
 // consistency. It mainly chooses between duplicate recordings, while allowing
 // a badly configured VCV entry to lose to a usable fallback.
-func candidateScore(candidateIndex int, entry oto.Entry) float64 {
-	score := 100 - float64(candidateIndex)*10
+func candidateScore(candidateTier int, entry oto.Entry) float64 {
+	score := 100 - float64(candidateTier)*10
 	if entry.Preutterance >= 0 {
 		score += 4
 	} else {
@@ -106,15 +161,23 @@ func candidateScore(candidateIndex int, entry oto.Entry) float64 {
 	return score
 }
 
-func affixCandidates(base []string, affix Affix) []string {
-	result := make([]string, 0, len(base)*2)
-	for _, candidate := range base {
-		result = append(result, affix.Prefix+candidate+affix.Suffix, candidate)
-	}
-	return unique(result)
+type aliasCandidate struct {
+	name string
+	tier int
 }
 
-func aliasCandidates(mora, previousVowel string, phraseStart bool) []string {
+func affixCandidates(base []aliasCandidate, affix Affix) []aliasCandidate {
+	result := make([]aliasCandidate, 0, len(base)*2)
+	for _, candidate := range base {
+		result = append(result,
+			aliasCandidate{name: affix.Prefix + candidate.name + affix.Suffix, tier: candidate.tier},
+			aliasCandidate{name: candidate.name, tier: candidate.tier + 1},
+		)
+	}
+	return uniqueCandidates(result)
+}
+
+func aliasCandidates(mora, previousVowel string, phraseStart bool) []aliasCandidate {
 	forms := make([]string, 0, 4)
 	if mora == "ー" {
 		if vowelKana := map[string]string{"a": "あ", "i": "い", "u": "う", "e": "え", "o": "お"}[previousVowel]; vowelKana != "" {
@@ -127,25 +190,25 @@ func aliasCandidates(mora, previousVowel string, phraseStart bool) []string {
 		forms = append(forms, katakana)
 	}
 
-	var candidates []string
+	var candidates []aliasCandidate
 	if phraseStart {
 		for _, form := range forms {
-			candidates = append(candidates, "- "+form)
+			candidates = append(candidates, aliasCandidate{name: "- " + form, tier: 0})
 		}
 	} else if previousVowel != "" && previousVowel != "cl" {
 		for _, form := range forms {
-			candidates = append(candidates, previousVowel+" "+form)
+			candidates = append(candidates, aliasCandidate{name: previousVowel + " " + form, tier: 0})
 		}
 	}
 	for _, form := range forms {
-		candidates = append(candidates, form)
+		candidates = append(candidates, aliasCandidate{name: form, tier: 1})
 	}
 	if !phraseStart {
 		for _, form := range forms {
-			candidates = append(candidates, "* "+form)
+			candidates = append(candidates, aliasCandidate{name: "* " + form, tier: 2})
 		}
 	}
-	return unique(candidates)
+	return uniqueCandidates(candidates)
 }
 
 func toKatakana(value string) string {
@@ -159,14 +222,24 @@ func toKatakana(value string) string {
 	return result.String()
 }
 
-func unique(values []string) []string {
-	seen := map[string]bool{}
-	result := make([]string, 0, len(values))
+func uniqueCandidates(values []aliasCandidate) []aliasCandidate {
+	indices := map[string]int{}
+	result := make([]aliasCandidate, 0, len(values))
 	for _, value := range values {
-		if !seen[value] {
-			seen[value] = true
+		if index, ok := indices[value.name]; ok {
+			result[index].tier = min(result[index].tier, value.tier)
+		} else {
+			indices[value.name] = len(result)
 			result = append(result, value)
 		}
+	}
+	return result
+}
+
+func candidateNames(candidates []aliasCandidate) []string {
+	result := make([]string, len(candidates))
+	for index, candidate := range candidates {
+		result[index] = candidate.name
 	}
 	return result
 }

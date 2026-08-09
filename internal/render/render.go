@@ -32,6 +32,8 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	switch cfg.Backend {
 	case "", "waveform":
 		return renderWaveform(synthesisPlan, cfg)
+	case "waveform-long":
+		return renderWaveformLong(synthesisPlan, cfg)
 	case "worldline":
 		return renderWorldline(synthesisPlan, cfg)
 	case "worldline-hybrid":
@@ -39,6 +41,76 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	default:
 		return nil, fmt.Errorf("unknown renderer backend %q", cfg.Backend)
 	}
+}
+
+func renderWaveformLong(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	if synthesisPlan == nil || len(synthesisPlan.Units) == 0 {
+		return nil, errors.New("empty synthesis plan")
+	}
+	if cfg.ReleaseMS <= 0 {
+		cfg.ReleaseMS = 20
+	}
+	collapsed := *synthesisPlan
+	collapsed.Units = collapseLongUnits(synthesisPlan.Units)
+	for index := range synthesisPlan.Units {
+		timing := normalizeTiming(synthesisPlan.Units[index], cfg.ReleaseMS)
+		unit := &synthesisPlan.Units[index]
+		unit.TimingScale = timing.scale
+		unit.EffectivePreutteranceMS = timing.preutteranceMS
+		unit.EffectiveConsonantMS = timing.consonantMS
+		unit.EffectiveOverlapMS = timing.overlapMS
+		unit.IntonationFactor = 1
+	}
+	return renderWaveform(&collapsed, cfg)
+}
+
+func collapseLongUnits(units []plan.Unit) []plan.Unit {
+	result := make([]plan.Unit, 0, len(units))
+	groupID := 0
+	for start := 0; start < len(units); {
+		end := start + 1
+		for end < len(units) && canContinueLongUnit(units[end-1], units[end]) {
+			end++
+		}
+		if end-start < 2 {
+			result = append(result, units[start])
+			start = end
+			continue
+		}
+		groupID++
+		for index := start; index < end; index++ {
+			units[index].LongUnitGroup = groupID
+			units[index].LongUnitSize = end - start
+		}
+		combined := units[start]
+		last := units[end-1]
+		combined.Alias = combined.Alias + "…" + last.Alias
+		combined.DurationMS = last.NoteStartMS + last.DurationMS - combined.NoteStartMS
+		combined.LongUnitGroup = groupID
+		combined.LongUnitSize = end - start
+		if last.CutoffMS < 0 {
+			absoluteEndMS := last.OffsetMS - last.CutoffMS
+			combined.CutoffMS = -(absoluteEndMS - combined.OffsetMS)
+		} else {
+			combined.CutoffMS = last.CutoffMS
+		}
+		result = append(result, combined)
+		start = end
+	}
+	return result
+}
+
+func canContinueLongUnit(previous, current plan.Unit) bool {
+	if previous.Silent || current.Silent || previous.Source == "" || previous.Source != current.Source {
+		return false
+	}
+	if previous.OtoPath == "" || previous.OtoPath != current.OtoPath || current.OtoLine != previous.OtoLine+1 {
+		return false
+	}
+	if current.Position != previous.Position+1 || current.OffsetMS <= previous.OffsetMS {
+		return false
+	}
+	return math.Abs(previous.PitchFactor-current.PitchFactor) < 1e-6 && math.Abs(previous.EnergyFactor-current.EnergyFactor) < 1e-6
 }
 
 func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
@@ -67,6 +139,9 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	for unitIndex := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[unitIndex]
 		timing := timings[unitIndex]
+		if unit.Silent {
+			continue
+		}
 		raw, err := cache.load(unit.Source)
 		if err != nil {
 			return nil, fmt.Errorf("read unit %q (%s): %w", unit.Alias, unit.Source, err)
@@ -161,6 +236,9 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 	pitches := make([]float64, len(synthesisPlan.Units))
 	var voiced []float64
 	for i, unit := range synthesisPlan.Units {
+		if unit.Silent {
+			continue
+		}
 		raw, err := cache.load(unit.Source)
 		if err != nil {
 			continue

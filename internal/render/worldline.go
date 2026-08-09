@@ -89,6 +89,9 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	}
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
+		if unit.Silent {
+			continue
+		}
 		timing := timings[i]
 		unitPitch := pitches[i]
 		if unitPitch <= 0 {
@@ -214,6 +217,9 @@ func measureWorldlinePitches(synthesisPlan *plan.Plan, cache sourceCache) ([]flo
 	values := make([]float64, len(synthesisPlan.Units))
 	sampleRate := 0
 	for i, unit := range synthesisPlan.Units {
+		if unit.Silent {
+			continue
+		}
 		raw, err := cache.load(unit.Source)
 		if err != nil {
 			return nil, 0, err

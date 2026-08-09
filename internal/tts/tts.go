@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"utautts/internal/audio"
+	"utautts/internal/connection"
 	"utautts/internal/frontend"
 	"utautts/internal/plan"
 	"utautts/internal/prosody"
@@ -24,6 +25,9 @@ type Config struct {
 	Renderer            string
 	WorldlinePath       string
 	WorldlineBridgePath string
+	SelectionMode       voicebank.SelectionMode
+	JoinModelPath       string
+	JoinScoreScale      float64
 }
 
 type Result struct {
@@ -48,7 +52,26 @@ func Synthesize(cfg Config) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse reading: %w", err)
 	}
-	selections, err := bank.ResolveAtTone(morae, cfg.Tone)
+	var joinModel *connection.LearnedModel
+	joinCostMode := "handcrafted"
+	joinModelVersion := 0
+	if cfg.JoinModelPath != "" {
+		joinModel, err = connection.LoadLearnedModel(cfg.JoinModelPath)
+		if err != nil {
+			return nil, fmt.Errorf("load join model: %w", err)
+		}
+		joinCostMode = "learned"
+		joinModelVersion = joinModel.Version
+		if cfg.JoinScoreScale > 0 {
+			joinModel.ScoreScale = cfg.JoinScoreScale
+		}
+	}
+	if cfg.SelectionMode == voicebank.SelectionTargetOnly {
+		joinCostMode = "none"
+	}
+	selections, err := bank.ResolveWithConfig(morae, voicebank.ResolveConfig{
+		Tone: cfg.Tone, Mode: cfg.SelectionMode, JoinModel: joinModel,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("resolve voicebank units: %w", err)
 	}
@@ -61,9 +84,13 @@ func Synthesize(cfg Config) (*Result, error) {
 		predictions = model.Predict(morae)
 	}
 	synthesisPlan, err := plan.Build(bank, reading, morae, selections, plan.Config{
-		MoraDurationMS:  cfg.MoraDurationMS,
-		PauseDurationMS: cfg.PauseDurationMS,
-		Predictions:     predictions,
+		MoraDurationMS:   cfg.MoraDurationMS,
+		PauseDurationMS:  cfg.PauseDurationMS,
+		Predictions:      predictions,
+		SelectionMode:    cfg.SelectionMode,
+		JoinCostMode:     joinCostMode,
+		JoinModelVersion: joinModelVersion,
+		JoinScoreScale:   joinModelScoreScale(joinModel),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build synthesis plan: %w", err)
@@ -80,4 +107,11 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 	return &Result{Voicebank: bank, Plan: synthesisPlan, Audio: pcm}, nil
+}
+
+func joinModelScoreScale(model *connection.LearnedModel) float64 {
+	if model == nil {
+		return 0
+	}
+	return model.ScoreScale
 }

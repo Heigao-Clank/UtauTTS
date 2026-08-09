@@ -50,6 +50,51 @@ func TestRenderRejectsUnknownBackend(t *testing.T) {
 	}
 }
 
+func TestRenderAllowsSilentClosureUnit(t *testing.T) {
+	path := t.TempDir() + "/unit.wav"
+	data := make([]int16, 200)
+	for index := range data {
+		data[index] = 8000
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{DurationMS: 265, Units: []plan.Unit{
+		{Position: 0, Alias: "あ", Source: path, NoteStartMS: 0, DurationMS: 100},
+		{Position: 1, Alias: "<closure>", Silent: true, NoteStartMS: 100, DurationMS: 65},
+		{Position: 2, Alias: "か", Source: path, NoteStartMS: 165, DurationMS: 100},
+	}}
+	pcm, err := Render(p, Config{ReleaseMS: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pcm.Data[140] != 0 {
+		t.Fatalf("closure midpoint=%d, want silence", pcm.Data[140])
+	}
+}
+
+func TestWaveformLongCollapsesConsecutiveSourceEntries(t *testing.T) {
+	path := t.TempDir() + "/continuous.wav"
+	data := make([]int16, 1000)
+	for index := range data {
+		data[index] = int16(7000 * math.Sin(2*math.Pi*0.02*float64(index)))
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{DurationMS: 280, Units: []plan.Unit{
+		{Position: 0, Alias: "a か", Source: path, OtoPath: "oto.ini", OtoLine: 10, NoteStartMS: 0, DurationMS: 140, OffsetMS: 0, ConsonantMS: 80, PreutteranceMS: 40, PitchFactor: 1, EnergyFactor: 1},
+		{Position: 1, Alias: "a き", Source: path, OtoPath: "oto.ini", OtoLine: 11, NoteStartMS: 140, DurationMS: 140, OffsetMS: 300, ConsonantMS: 80, PreutteranceMS: 40, PitchFactor: 1, EnergyFactor: 1},
+	}}
+	pcm, err := Render(p, Config{Backend: "waveform-long", ReleaseMS: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pcm.Data) < 280 || p.Units[0].LongUnitGroup != 1 || p.Units[1].LongUnitGroup != 1 || p.Units[0].LongUnitSize != 2 {
+		t.Fatalf("long-unit audit missing: units=%+v frames=%d", p.Units, len(pcm.Data))
+	}
+}
+
 func TestWorldlineF0CurveInterpolatesInLogFrequency(t *testing.T) {
 	p := &plan.Plan{Units: []plan.Unit{{NoteStartMS: 0}, {NoteStartMS: 100}}}
 	curve := worldlineF0Curve(p, []float64{200, 400}, []float64{1, 1}, 220, 11)

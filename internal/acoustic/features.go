@@ -10,10 +10,10 @@ import (
 // Frame describes the level, pitch, and coarse spectral shape of a waveform
 // region. Spectrum values are in dB and may optionally be mean-normalized.
 type Frame struct {
-	Valid      bool
-	RMSDB      float64
-	F0Hz       float64
-	SpectrumDB []float64
+	Valid      bool      `json:"valid"`
+	RMSDB      float64   `json:"rms_db"`
+	F0Hz       float64   `json:"f0_hz"`
+	SpectrumDB []float64 `json:"spectrum_db"`
 }
 
 func AnalyzeFrame(values []float64, sampleRate, bands int, normalizeSpectrum bool) Frame {

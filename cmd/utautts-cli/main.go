@@ -9,6 +9,7 @@ import (
 
 	"utautts/internal/audio"
 	"utautts/internal/tts"
+	"utautts/internal/voicebank"
 )
 
 func main() {
@@ -28,6 +29,9 @@ func main() {
 		renderer            string
 		worldlinePath       string
 		worldlineBridgePath string
+		selectionMode       string
+		joinModelPath       string
+		joinScoreScale      float64
 	)
 	flag.StringVar(&voicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&otoPath, "oto", "", "deprecated alias for --voicebank")
@@ -41,9 +45,12 @@ func main() {
 	flag.Float64Var(&releaseMS, "release-ms", 20, "unit release envelope in milliseconds")
 	flag.StringVar(&prosodyPath, "prosody", "", "optional learned prosody model JSON")
 	flag.Float64Var(&intonationStrength, "intonation-strength", 0, "source-pitch stabilization and phrase contour strength (0..1)")
-	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend: waveform, worldline, or worldline-hybrid")
+	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend: waveform, waveform-long, worldline, or worldline-hybrid")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
+	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
+	flag.StringVar(&joinModelPath, "join-model", "", "optional learned join-cost model JSON")
+	flag.Float64Var(&joinScoreScale, "join-scale", 0, "learned logit score scale (default: model or 4)")
 	flag.Parse()
 
 	if voicebankPath == "" {
@@ -67,6 +74,9 @@ func main() {
 		Renderer:            renderer,
 		WorldlinePath:       worldlinePath,
 		WorldlineBridgePath: worldlineBridgePath,
+		SelectionMode:       voicebank.SelectionMode(selectionMode),
+		JoinModelPath:       joinModelPath,
+		JoinScoreScale:      joinScoreScale,
 	})
 	if err != nil {
 		log.Fatal(err)

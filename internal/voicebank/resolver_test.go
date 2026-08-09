@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"utautts/internal/audio"
+	"utautts/internal/connection"
 	"utautts/internal/frontend"
 	"utautts/internal/oto"
 )
@@ -122,6 +123,87 @@ func TestResolveUsesPhrasePathInsteadOfGreedyDuplicateChoice(t *testing.T) {
 	if got[0].Entry.Filename != "continuous.wav" {
 		t.Fatalf("path did not retain source continuity: %#v", got)
 	}
+	if got[0].CandidateCount != 2 || got[0].TargetScore != 114 || got[0].JoinScore != 0 || got[0].PathScore != 114 {
+		t.Fatalf("first score audit = %#v", got[0])
+	}
+	if got[1].JoinScore != 8 || got[1].Score != 122 || got[1].PathScore != 236 {
+		t.Fatalf("second score audit = %#v", got[1])
+	}
+
+	greedy, err := bank.ResolveWithConfig(morae, ResolveConfig{Mode: SelectionGreedy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if greedy[0].Entry.Filename != "isolated.wav" || greedy[1].JoinScore != 0 || greedy[1].PathScore != 228 {
+		t.Fatalf("greedy path = %#v", greedy)
+	}
+
+	targetOnly, err := bank.ResolveWithConfig(morae, ResolveConfig{Mode: SelectionTargetOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targetOnly[0].Entry.Filename != "isolated.wav" || targetOnly[1].JoinScore != 0 {
+		t.Fatalf("target-only path = %#v", targetOnly)
+	}
+
+	scales := make([]float64, 14)
+	for index := range scales {
+		scales[index] = 1
+	}
+	learned, err := bank.ResolveWithConfig(morae, ResolveConfig{
+		Mode: SelectionViterbi,
+		JoinModel: &connection.LearnedModel{
+			Means: make([]float64, 14), Scales: scales, Weights: make([]float64, 14),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if learned[0].Entry.Filename != "continuous.wav" || learned[1].JoinScore != 8 || learned[1].JoinProbability != 0.5 {
+		t.Fatalf("learned path audit = %#v", learned)
+	}
+}
+
+func TestResolveRejectsUnknownSelectionMode(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{}}
+	morae, _ := frontend.ParseKana("あ")
+	if _, err := bank.ResolveWithConfig(morae, ResolveConfig{Mode: "unknown"}); err == nil {
+		t.Fatal("unknown selection mode was accepted")
+	}
+}
+
+func TestResolveUsesSilentClosureWhenVoicebankHasNoSmallTsu(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{
+		"- あ": {{Alias: "- あ", Filename: "a.wav"}},
+		"か":   {{Alias: "か", Filename: "ka.wav"}},
+	}}
+	morae, err := frontend.ParseKana("あっか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bank.Resolve(morae)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[1].Alias != "<closure>" || got[1].Entry.Filename != "" {
+		t.Fatalf("selections=%#v", got)
+	}
+}
+
+func TestAliasCandidateTiersDoNotPenalizeScriptVariants(t *testing.T) {
+	candidates := aliasCandidates("こ", "", true)
+	want := map[string]int{"- こ": 0, "- コ": 0, "こ": 1, "コ": 1}
+	for _, candidate := range candidates {
+		if tier, ok := want[candidate.name]; ok {
+			if candidate.tier != tier {
+				t.Errorf("candidate %q tier=%d, want %d", candidate.name, candidate.tier, tier)
+			}
+			delete(want, candidate.name)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing candidates: %v", want)
+	}
 }
 
 func TestJoinScorePrefersMatchingAcousticBoundary(t *testing.T) {
@@ -135,7 +217,7 @@ func TestJoinScorePrefersMatchingAcousticBoundary(t *testing.T) {
 	entry := func(path string) oto.Entry {
 		return oto.Entry{Filename: path, Preutterance: 30, Overlap: 10}
 	}
-	cache := boundaryFeatureCache{}
+	cache := connection.NewExtractor()
 	matching := joinScore(entry(previousPath), entry(matchingPath), cache)
 	mismatch := joinScore(entry(previousPath), entry(mismatchPath), cache)
 	if matching <= mismatch {

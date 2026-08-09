@@ -8,21 +8,29 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 5
+const Version = 7
 
 type Config struct {
-	MoraDurationMS  float64
-	PauseDurationMS float64
-	Predictions     []prosody.Prediction
+	MoraDurationMS   float64
+	PauseDurationMS  float64
+	Predictions      []prosody.Prediction
+	SelectionMode    voicebank.SelectionMode
+	JoinCostMode     string
+	JoinModelVersion int
+	JoinScoreScale   float64
 }
 
 type Plan struct {
-	Version    int     `json:"version"`
-	Voicebank  string  `json:"voicebank"`
-	Text       string  `json:"text,omitempty"`
-	Reading    string  `json:"reading"`
-	DurationMS float64 `json:"duration_ms"`
-	Units      []Unit  `json:"units"`
+	Version          int     `json:"version"`
+	Voicebank        string  `json:"voicebank"`
+	Text             string  `json:"text,omitempty"`
+	Reading          string  `json:"reading"`
+	SelectionMode    string  `json:"selection_mode"`
+	JoinCostMode     string  `json:"join_cost_mode"`
+	JoinModelVersion int     `json:"join_model_version,omitempty"`
+	JoinScoreScale   float64 `json:"join_score_scale,omitempty"`
+	DurationMS       float64 `json:"duration_ms"`
+	Units            []Unit  `json:"units"`
 }
 
 type Unit struct {
@@ -30,6 +38,9 @@ type Unit struct {
 	Mora                    string  `json:"mora"`
 	Alias                   string  `json:"alias"`
 	Source                  string  `json:"source"`
+	Silent                  bool    `json:"silent,omitempty"`
+	LongUnitGroup           int     `json:"long_unit_group,omitempty"`
+	LongUnitSize            int     `json:"long_unit_size,omitempty"`
 	OtoPath                 string  `json:"oto_path"`
 	OtoLine                 int     `json:"oto_line"`
 	NoteStartMS             float64 `json:"note_start_ms"`
@@ -49,6 +60,11 @@ type Unit struct {
 	TargetF0Hz              float64 `json:"target_f0_hz,omitempty"`
 	IntonationFactor        float64 `json:"intonation_factor"`
 	SelectionScore          float64 `json:"selection_score"`
+	CandidateCount          int     `json:"candidate_count"`
+	TargetScore             float64 `json:"target_score"`
+	JoinScore               float64 `json:"join_score"`
+	JoinProbability         float64 `json:"join_probability,omitempty"`
+	PathScore               float64 `json:"path_score"`
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {
@@ -63,7 +79,20 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 		byPosition[selection.Position] = selection
 	}
 
-	result := &Plan{Version: Version, Voicebank: bank.Root, Reading: reading}
+	selectionMode := cfg.SelectionMode
+	if selectionMode == "" {
+		selectionMode = voicebank.SelectionViterbi
+	}
+	joinCostMode := cfg.JoinCostMode
+	if joinCostMode == "" {
+		joinCostMode = "handcrafted"
+	}
+	result := &Plan{
+		Version: Version, Voicebank: bank.Root, Reading: reading,
+		SelectionMode: string(selectionMode), JoinCostMode: joinCostMode,
+		JoinModelVersion: cfg.JoinModelVersion,
+		JoinScoreScale:   cfg.JoinScoreScale,
+	}
 	cursor := 0.0
 	for position, mora := range morae {
 		prediction := prosody.Prediction{PitchFactor: 1, EnergyFactor: 1}
@@ -98,22 +127,28 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 		}
 		entry := selection.Entry
 		result.Units = append(result.Units, Unit{
-			Position:       position,
-			Mora:           mora.Text,
-			Alias:          selection.Alias,
-			Source:         entry.Filename,
-			OtoPath:        entry.OtoPath,
-			OtoLine:        entry.Line,
-			NoteStartMS:    cursor,
-			DurationMS:     duration,
-			OffsetMS:       entry.Offset,
-			ConsonantMS:    entry.Fixed,
-			CutoffMS:       entry.Blank,
-			PreutteranceMS: entry.Preutterance,
-			OverlapMS:      entry.Overlap,
-			PitchFactor:    prediction.PitchFactor,
-			EnergyFactor:   prediction.EnergyFactor,
-			SelectionScore: selection.Score,
+			Position:        position,
+			Mora:            mora.Text,
+			Alias:           selection.Alias,
+			Source:          entry.Filename,
+			Silent:          entry.Filename == "",
+			OtoPath:         entry.OtoPath,
+			OtoLine:         entry.Line,
+			NoteStartMS:     cursor,
+			DurationMS:      duration,
+			OffsetMS:        entry.Offset,
+			ConsonantMS:     entry.Fixed,
+			CutoffMS:        entry.Blank,
+			PreutteranceMS:  entry.Preutterance,
+			OverlapMS:       entry.Overlap,
+			PitchFactor:     prediction.PitchFactor,
+			EnergyFactor:    prediction.EnergyFactor,
+			SelectionScore:  selection.Score,
+			CandidateCount:  selection.CandidateCount,
+			TargetScore:     selection.TargetScore,
+			JoinScore:       selection.JoinScore,
+			JoinProbability: selection.JoinProbability,
+			PathScore:       selection.PathScore,
 		})
 		cursor += duration
 	}
