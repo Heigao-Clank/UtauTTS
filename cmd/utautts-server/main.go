@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -37,6 +36,7 @@ type Server struct {
 	renderer            string
 	worldlinePath       string
 	worldlineBridgePath string
+	voiceDir            string
 }
 
 func main() {
@@ -51,11 +51,14 @@ func main() {
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to worldline bridge (default: next to executable)")
 	flag.Parse()
 
+	voiceDir = voicebank.ResolveDirectory(voiceDir)
 	srv := &Server{
 		voicebanks: map[string]Voicebank{}, prosodyModelPath: prosodyPath,
-		renderer: renderer, worldlinePath: worldlinePath, worldlineBridgePath: worldlineBridgePath,
+		renderer: renderer, worldlinePath: worldlinePath, worldlineBridgePath: worldlineBridgePath, voiceDir: voiceDir,
 	}
-	srv.loadVoiceDirectory(voiceDir)
+	if err := srv.loadVoiceDirectory(); err != nil {
+		log.Printf("warning: load voicebanks from %s: %v", voiceDir, err)
+	}
 	if len(srv.voicebanks) == 0 {
 		log.Printf("warning: no voicebanks found in %s", voiceDir)
 	}
@@ -73,32 +76,29 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /synthesize", s.handleSynthesize)
 	mux.HandleFunc("GET /voicebanks", s.handleListVoicebanks)
 	mux.HandleFunc("POST /voicebanks", s.handleRegisterVoicebank)
+	mux.HandleFunc("POST /voicebanks/reload", s.handleReloadVoicebanks)
 	mux.HandleFunc("GET /health", s.handleHealth)
 	return mux
 }
 
-func (s *Server) loadVoiceDirectory(root string) {
-	entries, err := os.ReadDir(root)
+func (s *Server) loadVoiceDirectory() error {
+	summaries, err := voicebank.Discover(s.voiceDir)
 	if err != nil {
-		return
+		s.mu.Lock()
+		s.voicebanks = map[string]Voicebank{}
+		s.mu.Unlock()
+		return err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(root, entry.Name())
-		vb, err := inspectVoicebank(path)
-		if err != nil {
-			continue
-		}
-		s.voicebanks[vb.ID] = vb
-		log.Printf("voicebank: %s (%d oto files, %d entries)", vb.Name, vb.OtoFileCount, vb.PhonemeCount)
+	next := make(map[string]Voicebank, len(summaries))
+	for _, summary := range summaries {
+		id := filepath.Base(summary.Path)
+		next[id] = Voicebank{ID: id, Name: summary.Name, Path: summary.Path}
+		log.Printf("voicebank: %s (%s)", summary.Name, id)
 	}
-	if len(s.voicebanks) == 0 {
-		if vb, err := inspectVoicebank(root); err == nil {
-			s.voicebanks[vb.ID] = vb
-		}
-	}
+	s.mu.Lock()
+	s.voicebanks = next
+	s.mu.Unlock()
+	return nil
 }
 
 func inspectVoicebank(path string) (Voicebank, error) {
@@ -125,6 +125,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleListVoicebanks(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"voicebanks": s.voicebankList()})
+}
+
+func (s *Server) voicebankList() []Voicebank {
 	s.mu.RLock()
 	list := make([]Voicebank, 0, len(s.voicebanks))
 	for _, vb := range s.voicebanks {
@@ -132,7 +136,15 @@ func (s *Server) handleListVoicebanks(w http.ResponseWriter, _ *http.Request) {
 	}
 	s.mu.RUnlock()
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
-	writeJSON(w, http.StatusOK, map[string]any{"voicebanks": list})
+	return list
+}
+
+func (s *Server) handleReloadVoicebanks(w http.ResponseWriter, _ *http.Request) {
+	if err := s.loadVoiceDirectory(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"voicebanks": s.voicebankList()})
 }
 
 func (s *Server) handleRegisterVoicebank(w http.ResponseWriter, r *http.Request) {

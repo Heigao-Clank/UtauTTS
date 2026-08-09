@@ -10,6 +10,13 @@ GUIを含まないWindows x64向けHTTPサーバーです。.NET 8ランタイ�
 
 起動後に<http://127.0.0.1:8080>を開きます。
 
+標準では実行ファイルと同じ場所の`voice`ディレクトリを読み込みます。利用可能な音源一覧と再走査は次のAPIで取得・実行できます。
+
+```http
+GET /voicebanks
+POST /voicebanks/reload
+```
+
 ```http
 POST /synthesize
 Content-Type: application/json

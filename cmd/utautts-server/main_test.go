@@ -89,3 +89,54 @@ func TestHealthReportsConfiguredRenderer(t *testing.T) {
 		t.Fatalf("unexpected response: %#v", payload)
 	}
 }
+
+func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
+	root := t.TempDir()
+	makeBank := func(directory, name string) {
+		dir := filepath.Join(root, directory)
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "character.txt"), []byte("name="+name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	makeBank("alpha", "アルファ")
+	server := &Server{voicebanks: map[string]Voicebank{}, voiceDir: root}
+	if err := server.loadVoiceDirectory(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/voicebanks", nil)
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request)
+	var first struct {
+		Voicebanks []Voicebank `json:"voicebanks"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Voicebanks) != 1 || first.Voicebanks[0].ID != "alpha" || first.Voicebanks[0].Name != "アルファ" {
+		t.Fatalf("voicebanks = %#v", first.Voicebanks)
+	}
+
+	makeBank("beta", "ベータ")
+	request = httptest.NewRequest(http.MethodPost, "/voicebanks/reload", nil)
+	response = httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reload status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var second struct {
+		Voicebanks []Voicebank `json:"voicebanks"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Voicebanks) != 2 || second.Voicebanks[1].ID != "beta" {
+		t.Fatalf("reloaded voicebanks = %#v", second.Voicebanks)
+	}
+}

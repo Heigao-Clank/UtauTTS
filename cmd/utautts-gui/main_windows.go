@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -15,14 +16,16 @@ import (
 
 	"utautts/internal/audio"
 	"utautts/internal/tts"
+	"utautts/internal/voicebank"
 )
 
 const (
-	wmDestroy       = 0x0002
-	wmGetText       = 0x000D
-	wmCommand       = 0x0111
-	wmSetFont       = 0x0030
-	wmSynthesisDone = 0x8001
+	wmDestroy              = 0x0002
+	wmGetText              = 0x000D
+	wmCommand              = 0x0111
+	wmSetFont              = 0x0030
+	wmSynthesisDone        = 0x8001
+	wmInitializeVoicebanks = 0x8002
 
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
@@ -37,14 +40,15 @@ const (
 	esWantReturn    = 0x1000
 	cbsDropdownList = 0x0003
 
-	cbAddString  = 0x0143
-	cbGetCurSel  = 0x0147
-	cbSetCurSel  = 0x014E
-	defaultFont  = 17
-	colorBtnFace = 15
+	cbAddString    = 0x0143
+	cbGetCurSel    = 0x0147
+	cbResetContent = 0x014B
+	cbSetCurSel    = 0x014E
+	defaultFont    = 17
+	colorBtnFace   = 15
 
 	idVoicebank = 1001
-	idBrowse    = 1002
+	idReload    = 1002
 	idText      = 1003
 	idRenderer  = 1004
 	idIntonate  = 1005
@@ -82,22 +86,22 @@ var (
 
 	getModuleHandle = kernel32.NewProc("GetModuleHandleW")
 	getStockObject  = gdi32.NewProc("GetStockObject")
-	browseForFolder = shell32.NewProc("SHBrowseForFolderW")
-	getFolderPath   = shell32.NewProc("SHGetPathFromIDListW")
 	shellExecute    = shell32.NewProc("ShellExecuteW")
-	coTaskMemFree   = ole32.NewProc("CoTaskMemFree")
 	coInitializeEx  = ole32.NewProc("CoInitializeEx")
 	coUninitialize  = ole32.NewProc("CoUninitialize")
 
 	mainWindow       uintptr
 	generateButton   uintptr
 	playButton       uintptr
+	reloadButton     uintptr
 	statusLabel      uintptr
 	controls         []uintptr
 	completionMutex  sync.Mutex
 	completionError  error
 	lastOutput       string
 	initialVoicebank string
+	voiceDirectory   string
+	availableBanks   []voicebank.Summary
 	initialText      string
 	initialOutput    string
 )
@@ -132,22 +136,14 @@ type windowClassEx struct {
 	IconSmall  uintptr
 }
 
-type browseInfo struct {
-	Owner       uintptr
-	Root        uintptr
-	DisplayName *uint16
-	Title       *uint16
-	Flags       uint32
-	Callback    uintptr
-	Param       uintptr
-	Image       int32
-}
-
 func main() {
 	flag.StringVar(&initialVoicebank, "voicebank", "", "initial voicebank directory")
+	flag.StringVar(&voiceDirectory, "voice-dir", "voice", "directory containing voicebanks")
 	flag.StringVar(&initialText, "text", "こんにちは、今日はいい天気です。", "initial text")
 	flag.StringVar(&initialOutput, "out", "output.wav", "initial output WAV")
 	flag.Parse()
+	closeLog := initializeLog()
+	defer closeLog()
 
 	coInitializeEx.Call(0, 2)
 	defer coUninitialize.Call()
@@ -189,9 +185,9 @@ func main() {
 
 func createControls(parent, instance uintptr) {
 	font, _, _ := getStockObject.Call(defaultFont)
-	label(parent, instance, "ボイスバンク", 20, 18, 120, 22)
-	control(wsExClientEdge, "EDIT", initialVoicebank, wsChild|wsVisible|wsTabStop, 20, 42, 550, 27, parent, idVoicebank, instance)
-	control(0, "BUTTON", "参照...", wsChild|wsVisible|wsTabStop, 580, 41, 90, 29, parent, idBrowse, instance)
+	label(parent, instance, "ボイスバンク（voiceディレクトリ）", 20, 18, 300, 22)
+	control(wsExClientEdge, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|wsVScroll|cbsDropdownList, 20, 42, 550, 300, parent, idVoicebank, instance)
+	reloadButton = control(0, "BUTTON", "再読込", wsChild|wsVisible|wsTabStop, 580, 41, 90, 29, parent, idReload, instance)
 
 	label(parent, instance, "文章", 20, 82, 120, 22)
 	control(wsExClientEdge, "EDIT", initialText, wsChild|wsVisible|wsTabStop|wsVScroll|esMultiline|esAutoVScroll|esWantReturn, 20, 106, 650, 190, parent, idText, instance)
@@ -211,6 +207,7 @@ func createControls(parent, instance uintptr) {
 	generateButton = control(0, "BUTTON", "生成", wsChild|wsVisible|wsTabStop, 20, 405, 120, 38, parent, idGenerate, instance)
 	playButton = control(0, "BUTTON", "再生", wsChild|wsVisible|wsTabStop, 150, 405, 120, 38, parent, idPlay, instance)
 	statusLabel = label(parent, instance, "準備完了", 290, 414, 380, 22)
+	postMessage.Call(parent, wmInitializeVoicebanks, 0, 0)
 
 	for _, handle := range controls {
 		sendMessage.Call(handle, wmSetFont, font, 1)
@@ -221,8 +218,8 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	switch msg {
 	case wmCommand:
 		switch int(wParam & 0xffff) {
-		case idBrowse:
-			browseVoicebank(hwnd)
+		case idReload:
+			refreshVoicebanks(hwnd)
 		case idGenerate:
 			startSynthesis(hwnd)
 		case idPlay:
@@ -231,6 +228,9 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 	case wmSynthesisDone:
 		finishSynthesis(hwnd)
+		return 0
+	case wmInitializeVoicebanks:
+		refreshVoicebanks(hwnd)
 		return 0
 	case wmDestroy:
 		postQuitMessage.Call(0)
@@ -241,12 +241,16 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 }
 
 func startSynthesis(hwnd uintptr) {
-	voicebank := strings.TrimSpace(windowText(child(hwnd, idVoicebank)))
+	voicebankPath := ""
+	selected, _, _ := sendMessage.Call(child(hwnd, idVoicebank), cbGetCurSel, 0, 0)
+	if int(selected) >= 0 && int(selected) < len(availableBanks) {
+		voicebankPath = availableBanks[int(selected)].Path
+	}
 	text := strings.TrimSpace(windowText(child(hwnd, idText)))
 	output := strings.TrimSpace(windowText(child(hwnd, idOutput)))
 	strength, err := strconv.ParseFloat(strings.TrimSpace(windowText(child(hwnd, idIntonate))), 64)
 	var missing []string
-	if voicebank == "" {
+	if voicebankPath == "" {
 		missing = append(missing, "ボイスバンク")
 	}
 	if text == "" {
@@ -273,7 +277,7 @@ func startSynthesis(hwnd uintptr) {
 	setText(statusLabel, "生成中...")
 	go func() {
 		result, synthErr := tts.Synthesize(tts.Config{
-			VoicebankPath: voicebank, Text: text, Renderer: renderer, IntonationStrength: strength,
+			VoicebankPath: voicebankPath, Text: text, Renderer: renderer, IntonationStrength: strength,
 		})
 		if synthErr == nil {
 			synthErr = audio.WriteWav(output, result.Audio)
@@ -301,22 +305,6 @@ func finishSynthesis(hwnd uintptr) {
 		return
 	}
 	setText(statusLabel, "生成完了: "+output)
-}
-
-func browseVoicebank(hwnd uintptr) {
-	var display [260]uint16
-	info := browseInfo{
-		Owner: hwnd, DisplayName: &display[0], Title: utf16("ボイスバンクのフォルダを選択"), Flags: 0x0001 | 0x0040,
-	}
-	pidl, _, _ := browseForFolder.Call(uintptr(unsafe.Pointer(&info)))
-	if pidl == 0 {
-		return
-	}
-	defer coTaskMemFree.Call(pidl)
-	var path [32768]uint16
-	if ok, _, _ := getFolderPath.Call(pidl, uintptr(unsafe.Pointer(&path[0]))); ok != 0 {
-		setText(child(hwnd, idVoicebank), syscall.UTF16ToString(path[:]))
-	}
 }
 
 func playOutput(hwnd uintptr) {
@@ -350,7 +338,12 @@ func label(parent, instance uintptr, text string, x, y, width, height int) uintp
 }
 
 func comboAdd(combo uintptr, value string) {
-	sendMessage.Call(combo, cbAddString, 0, uintptr(unsafe.Pointer(utf16(value))))
+	buffer, err := syscall.UTF16FromString(value)
+	if err != nil {
+		return
+	}
+	sendMessage.Call(combo, cbAddString, 0, uintptr(unsafe.Pointer(&buffer[0])))
+	runtime.KeepAlive(buffer)
 }
 
 func child(parent uintptr, id int) uintptr {
@@ -366,7 +359,12 @@ func windowText(hwnd uintptr) string {
 }
 
 func setText(hwnd uintptr, value string) {
-	setWindowText.Call(hwnd, uintptr(unsafe.Pointer(utf16(value))))
+	buffer, err := syscall.UTF16FromString(value)
+	if err != nil {
+		return
+	}
+	setWindowText.Call(hwnd, uintptr(unsafe.Pointer(&buffer[0])))
+	runtime.KeepAlive(buffer)
 }
 
 func utf16(value string) *uint16 {
@@ -378,6 +376,7 @@ func utf16(value string) *uint16 {
 }
 
 func showError(hwnd uintptr, err error) {
+	log.Printf("error: %v", err)
 	messageBox.Call(hwnd, uintptr(unsafe.Pointer(utf16(err.Error()))), uintptr(unsafe.Pointer(utf16("UtauTTS"))), mbIconError)
 }
 
