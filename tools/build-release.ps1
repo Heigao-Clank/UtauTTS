@@ -42,6 +42,7 @@ try {
     $guiCommands = @(
         @('utautts-cli.exe', './cmd/utautts-cli'),
         @('oto-inspect.exe', './cmd/oto-inspect'),
+        @('connection-eval.exe', './cmd/connection-eval'),
         @('prosody-dataset.exe', './cmd/prosody-dataset'),
         @('prosody-train.exe', './cmd/prosody-train')
     )
@@ -67,7 +68,13 @@ try {
     Copy-Item -LiteralPath 'README.md', 'THIRD_PARTY_NOTICES.txt' -Destination $guiPath
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
-    Copy-Item -LiteralPath 'docs/architecture.md', 'docs/training.md' -Destination $guiDocs
+    Copy-Item -LiteralPath 'docs/architecture.md', 'docs/training.md', 'docs/evaluation.md' -Destination $guiDocs
+
+    foreach ($outputDirectory in @($guiPath, $serverPath)) {
+        $voiceDirectory = Join-Path $outputDirectory 'voice'
+        New-Item -ItemType Directory -Force -Path $voiceDirectory | Out-Null
+        Set-Content -LiteralPath (Join-Path $voiceDirectory 'PUT_VOICEBANKS_HERE.txt') -Encoding UTF8 -Value 'Place each UTAU voicebank in its own folder here.'
+    }
 
     Copy-Item -LiteralPath 'docs/server.md' -Destination (Join-Path $serverPath 'README.md')
     Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.txt' -Destination $serverPath

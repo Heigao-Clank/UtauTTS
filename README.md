@@ -30,9 +30,9 @@ Windows x64、Go、.NET 8 SDK、インターネット接続が必要。
 .\UtauTTS\utautts.exe
 ```
 
-ボイスバンクのフォルダと文章を指定して「生成」を押します。初期設定は`worldline-hybrid`、イントネーション`0.6`、出力先`output.wav`です。
+実行ファイルと同じ場所の`voice`ディレクトリへ、ボイスバンクをフォルダ単位で配置します。GUI起動時に音源名を読み取り、プルダウンから選択できます。「再読込」で起動後に追加した音源も反映されます。初期設定は`worldline-hybrid`、イントネーション`0.6`、出力先`output.wav`です。
 
-`--voicebank`、`--text`、`--out`で入力欄の初期値を指定できます。
+`--voice-dir`で音源格納ディレクトリ、`--voicebank`で初期選択、`--text`、`--out`で入力欄の初期値を指定できます。
 
 ## CLI
 
@@ -76,4 +76,4 @@ go run ./cmd/utautts-cli --voicebank "sample/uta" --text "こんにちは。" --
 go run ./cmd/oto-inspect --oto "sample/uta"
 ```
 
-構成は[docs/architecture.md](docs/architecture.md)、モーラ長の学習は[docs/training.md](docs/training.md)を参照してください。
+構成は[docs/architecture.md](docs/architecture.md)、モーラ長の学習は[docs/training.md](docs/training.md)、接続の測定は[docs/evaluation.md](docs/evaluation.md)を参照してください。

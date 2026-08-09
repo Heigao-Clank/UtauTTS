@@ -11,3 +11,4 @@ dist/
 .tmp-*/
 tools/worldline-bridge/bin/
 tools/worldline-bridge/obj/
+/notes/utautts-unit-selection-research.md
