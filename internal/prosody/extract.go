@@ -12,6 +12,7 @@ import (
 type ExtractConfig struct {
 	MinDurationMS float64
 	MaxDurationMS float64
+	HTSLabelPath  string
 }
 
 func ExtractRecord(id, text, audioPath string, cfg ExtractConfig) (Record, error) {
@@ -38,13 +39,35 @@ func ExtractRecord(id, text, audioPath string, cfg ExtractConfig) (Record, error
 	}
 	wave := monoFloats(pcm)
 	start, end := voicedRange(wave, pcm.SampleRate)
-	if end-start < len(morae)*msFrames(cfg.MinDurationMS, pcm.SampleRate) {
-		return Record{}, fmt.Errorf("voiced range is too short for %d tokens", len(morae))
+	segments := make([]labeledSegment, len(morae))
+	if cfg.HTSLabelPath != "" {
+		segments, err = loadHTSMoraSegments(cfg.HTSLabelPath, pcm.SampleRate)
+		if err != nil {
+			return Record{}, fmt.Errorf("load HTS labels: %w", err)
+		}
+		if len(segments) != len(morae) {
+			return Record{}, fmt.Errorf("HTS labels contain %d morae, want %d", len(segments), len(morae))
+		}
+		for i := range segments {
+			if segments[i].pause != morae[i].Pause {
+				return Record{}, fmt.Errorf("HTS label pause mismatch at mora %d", i)
+			}
+			segments[i].start = max(0, min(len(wave), segments[i].start))
+			segments[i].end = max(segments[i].start, min(len(wave), segments[i].end))
+		}
+		start, end = segments[0].start, segments[len(segments)-1].end
+	} else {
+		if end-start < len(morae)*msFrames(cfg.MinDurationMS, pcm.SampleRate) {
+			return Record{}, fmt.Errorf("voiced range is too short for %d tokens", len(morae))
+		}
+		boundaries := alignBoundaries(wave, pcm.SampleRate, start, end, len(morae), cfg.MinDurationMS)
+		for i := range segments {
+			segments[i] = labeledSegment{start: boundaries[i], end: boundaries[i+1], pause: morae[i].Pause}
+		}
 	}
-	boundaries := alignBoundaries(wave, pcm.SampleRate, start, end, len(morae), cfg.MinDurationMS)
 	targets := make([]Target, len(morae))
 	for i, mora := range morae {
-		segmentStart, segmentEnd := boundaries[i], boundaries[i+1]
+		segmentStart, segmentEnd := segments[i].start, segments[i].end
 		duration := framesMS(segmentEnd-segmentStart, pcm.SampleRate)
 		if duration > cfg.MaxDurationMS && !mora.Pause {
 			return Record{}, fmt.Errorf("token %d duration %.1fms exceeds limit", i, duration)

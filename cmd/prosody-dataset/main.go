@@ -26,12 +26,13 @@ type report struct {
 }
 
 func main() {
-	var root, output, reportPath string
+	var root, output, reportPath, labelsRoot string
 	var limit int
 	var workers int
 	flag.StringVar(&root, "jsut", "data/jsut/basic5000", "JSUT basic5000 directory")
 	flag.StringVar(&output, "out", "out/prosody/jsut.jsonl", "output dataset JSONL")
 	flag.StringVar(&reportPath, "report", "", "failure report JSON (default: <out>.report.json)")
+	flag.StringVar(&labelsRoot, "labels", "", "optional directory containing HTS <utterance>.lab files")
 	flag.IntVar(&limit, "limit", 0, "maximum utterances (0 means all)")
 	flag.IntVar(&workers, "workers", runtime.NumCPU(), "parallel extraction workers")
 	flag.Parse()
@@ -67,7 +68,11 @@ func main() {
 			defer group.Done()
 			for job := range jobs {
 				wav := filepath.Join(root, "wav", job.entry.id+".wav")
-				record, err := prosody.ExtractRecord(job.entry.id, job.entry.text, wav, prosody.ExtractConfig{})
+				labelPath := ""
+				if labelsRoot != "" {
+					labelPath = filepath.Join(labelsRoot, job.entry.id+".lab")
+				}
+				record, err := prosody.ExtractRecord(job.entry.id, job.entry.text, wav, prosody.ExtractConfig{HTSLabelPath: labelPath})
 				results <- extractionResult{job.index, job.entry.id, record, err}
 			}
 		}()
