@@ -43,6 +43,26 @@ func TestRenderIsDeterministicAndUsesAbsolutePlacement(t *testing.T) {
 	}
 }
 
+func TestMinimumHandoffIsComplementaryWhenPreutteranceEqualsOverlap(t *testing.T) {
+	timings := []effectiveTiming{{}, {preutteranceMS: 8, overlapMS: 8}}
+	p := &plan.Plan{Units: []plan.Unit{{Position: 0}, {Position: 1, NoteStartMS: 100}}}
+	const sampleRate = 1000
+	start := 92
+	for frame := start; frame <= start+6; frame++ {
+		previous := handoffGain(frame, 0, p, timings, sampleRate)
+		next := envelope(frame-start, 100, msToFrames(fadeInDurationMS(timings[1]), sampleRate), 0)
+		if math.Abs(previous+next-1) > 1e-9 {
+			t.Fatalf("non-complementary handoff at %d: previous=%f next=%f", frame, previous, next)
+		}
+	}
+}
+
+func TestFadeInDurationKeepsConfiguredLongCrossfade(t *testing.T) {
+	if got := fadeInDurationMS(effectiveTiming{preutteranceMS: 60, overlapMS: 20}); got != 40 {
+		t.Fatalf("fade-in duration=%f, want 40", got)
+	}
+}
+
 func TestRenderRejectsUnknownBackend(t *testing.T) {
 	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "missing"})
 	if err == nil {
@@ -378,39 +398,6 @@ func TestRenderPitchFactorChangesF0(t *testing.T) {
 	got := pitch.EstimateMedian(wave, pcm.SampleRate)
 	if math.Abs(got-210) > 5 {
 		t.Fatalf("shifted F0 = %.2f, want about 210", got)
-	}
-}
-
-func TestPitchShiftVowelTailPreservesFixedPrefixAndChangesTailF0(t *testing.T) {
-	const sampleRate = 16000
-	wave := make([]float64, sampleRate/2)
-	for i := range wave {
-		wave[i] = 0.2 * math.Sin(2*math.Pi*200*float64(i)/sampleRate)
-	}
-	vowelStart := msToFrames(100, sampleRate)
-	got := pitchShiftVowelTail(wave, vowelStart, 1.05, sampleRate)
-	for i := 0; i < vowelStart; i++ {
-		if got[i] != wave[i] {
-			t.Fatalf("fixed prefix changed at sample %d", i)
-		}
-	}
-	start := vowelStart + msToFrames(40, sampleRate)
-	measured := pitch.EstimateMedian(got[start:start+msToFrames(200, sampleRate)], sampleRate)
-	if measured < 207 || measured > 213 {
-		t.Fatalf("shifted vowel F0=%f, want about 210 Hz", measured)
-	}
-}
-
-func TestPitchShiftVowelTailLeavesShortTailUntouched(t *testing.T) {
-	wave := make([]float64, 100)
-	for i := range wave {
-		wave[i] = float64(i) / 100
-	}
-	got := pitchShiftVowelTail(wave, 80, 1.05, 1000)
-	for i := range wave {
-		if got[i] != wave[i] {
-			t.Fatalf("short tail changed at sample %d", i)
-		}
 	}
 }
 

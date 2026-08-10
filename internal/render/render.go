@@ -32,8 +32,6 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	switch cfg.Backend {
 	case "", "waveform":
 		return renderWaveform(synthesisPlan, cfg)
-	case "waveform-vowel-pitch":
-		return renderWaveform(synthesisPlan, cfg)
 	case "waveform-long":
 		return renderWaveformLong(synthesisPlan, cfg)
 	case "worldline":
@@ -138,7 +136,7 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		unit.TimingScale = timings[i].scale
 		unit.EffectivePreutteranceMS = timings[i].preutteranceMS
 		unit.EffectiveConsonantMS = timings[i].consonantMS
-		unit.EffectiveOverlapMS = timings[i].overlapMS
+		unit.EffectiveOverlapMS = timings[i].preutteranceMS - fadeInDurationMS(timings[i])
 		unit.IntonationFactor = 1
 	}
 	intonation := analyzeIntonation(synthesisPlan, timings, cache, cfg.IntonationStrength)
@@ -170,18 +168,11 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		effectiveConsonantFrames := msToFrames(timing.consonantMS, sampleRate)
 		wave := pcmFloats(trimmed.Data)
 		appliedPitch := unit.PitchFactor * intonation[unitIndex]
-		if cfg.Backend == "waveform-vowel-pitch" {
-			// Match the intelligible waveform baseline first. Only the vowel tail
-			// after oto.ini's fixed region is allowed to realize the pitch contour.
-			wave = retimeWithCompressedPrefix(wave, targetFrames, sourceConsonantFrames, effectiveConsonantFrames, sampleRate)
-			wave = pitchShiftVowelTail(wave, effectiveConsonantFrames, appliedPitch, sampleRate)
-		} else {
-			wave = resampleForPitch(wave, appliedPitch)
-			if appliedPitch > 0 {
-				sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / appliedPitch))
-			}
-			wave = retimeWithCompressedPrefix(wave, targetFrames, sourceConsonantFrames, effectiveConsonantFrames, sampleRate)
+		wave = resampleForPitch(wave, appliedPitch)
+		if appliedPitch > 0 {
+			sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / appliedPitch))
 		}
+		wave = retimeWithCompressedPrefix(wave, targetFrames, sourceConsonantFrames, effectiveConsonantFrames, sampleRate)
 		if unit.EnergyFactor > 0 {
 			for i := range wave {
 				wave[i] *= unit.EnergyFactor
@@ -203,10 +194,7 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 			mixWeights = append(mixWeights, make([]float64, endFrame-len(mixWeights))...)
 		}
 
-		fadeInMS := timing.preutteranceMS - timing.overlapMS
-		if fadeInMS < 2 {
-			fadeInMS = 2
-		}
+		fadeInMS := fadeInDurationMS(timing)
 		fadeInFrames := msToFrames(fadeInMS, sampleRate)
 		fadeOutFrames := msToFrames(cfg.ReleaseMS, sampleRate)
 		for sourceFrame := sourceStart; sourceFrame < len(wave); sourceFrame++ {
@@ -352,7 +340,7 @@ func handoffGain(globalFrame, unitIndex int, synthesisPlan *plan.Plan, timings [
 	}
 	nextTiming := timings[unitIndex+1]
 	start := msToFramesSigned(next.NoteStartMS-nextTiming.preutteranceMS, sampleRate)
-	end := msToFramesSigned(next.NoteStartMS-nextTiming.overlapMS, sampleRate)
+	end := start + msToFrames(fadeInDurationMS(nextTiming), sampleRate)
 	if globalFrame <= start {
 		return 1
 	}
@@ -361,6 +349,13 @@ func handoffGain(globalFrame, unitIndex int, synthesisPlan *plan.Plan, timings [
 	}
 	progress := float64(globalFrame-start) / float64(end-start)
 	return 1 - smoothstep(progress)
+}
+
+func fadeInDurationMS(timing effectiveTiming) float64 {
+	// Some CV banks use zero preutterance, or set overlap equal to
+	// preutterance. Without a floor, the previous unit is cut off exactly when
+	// the next unit still has zero envelope gain, creating an audible click.
+	return math.Max(6, timing.preutteranceMS-timing.overlapMS)
 }
 
 func normalizeTiming(unit plan.Unit, releaseMS float64) effectiveTiming {
@@ -394,35 +389,6 @@ func resampleForPitch(source []float64, factor float64) []float64 {
 	}
 	factor = math.Max(0.75, math.Min(1.35, factor))
 	return linearResample(source, max(16, int(math.Round(float64(len(source))/factor))))
-}
-
-func pitchShiftVowelTail(wave []float64, vowelStart int, factor float64, sampleRate int) []float64 {
-	result := append([]float64(nil), wave...)
-	if len(wave) < 16 || sampleRate <= 0 || factor <= 0 || math.Abs(factor-1) < 0.001 {
-		return result
-	}
-	vowelStart = max(0, min(vowelStart, len(wave)))
-	tail := wave[vowelStart:]
-	if len(tail) < msToFrames(35, sampleRate) {
-		return result
-	}
-	factor = math.Max(0.92, math.Min(1.08, factor))
-	pitched := resampleForPitch(tail, factor)
-	pitched = wsola(pitched, len(tail), sampleRate)
-	if len(pitched) != len(tail) {
-		return result
-	}
-	// Crossfade only forward into the vowel. Samples before vowelStart remain
-	// bit-for-bit identical to the no-pitch waveform baseline.
-	transition := min(msToFrames(12, sampleRate), len(tail)/3)
-	for i := range tail {
-		alpha := 1.0
-		if transition > 0 && i < transition {
-			alpha = smoothstep(float64(i) / float64(transition))
-		}
-		result[vowelStart+i] = tail[i]*(1-alpha) + pitched[i]*alpha
-	}
-	return result
 }
 
 func (c sourceCache) load(path string) (*audio.PCM, error) {

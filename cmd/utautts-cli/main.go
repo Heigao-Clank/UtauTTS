@@ -51,7 +51,7 @@ func main() {
 	flag.StringVar(&pitchContourPath, "pitch-contours", "", "optional per-case pitch contour JSON")
 	flag.StringVar(&pitchContourCase, "pitch-case", "", "case ID in --pitch-contours")
 	flag.Float64Var(&intonationStrength, "intonation-strength", 0, "source-pitch stabilization and phrase contour strength (0..1)")
-	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend: waveform, waveform-vowel-pitch, waveform-long, worldline, worldline-hybrid, worldline-hybrid-cv, or worldline-hybrid-cv-balanced")
+	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend: waveform, waveform-long, worldline, worldline-hybrid, worldline-hybrid-cv, or worldline-hybrid-cv-balanced")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
 	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
