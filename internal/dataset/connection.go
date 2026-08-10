@@ -12,11 +12,12 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type ConnectionConfig struct {
 	NegativesPerPositive int
 	Limit                int
+	NegativeStrategy     string
 }
 
 type EntryReference struct {
@@ -32,9 +33,12 @@ type EntryReference struct {
 
 type ConnectionRecord struct {
 	SchemaVersion    int                         `json:"schema_version"`
+	RecordID         string                      `json:"record_id"`
 	Voicebank        string                      `json:"voicebank"`
 	GroupID          string                      `json:"group_id"`
 	Label            int                         `json:"label"`
+	LabelSource      string                      `json:"label_source,omitempty"`
+	Weight           float64                     `json:"weight,omitempty"`
 	Provenance       string                      `json:"provenance"`
 	Previous         EntryReference              `json:"previous"`
 	Current          EntryReference              `json:"current"`
@@ -52,6 +56,7 @@ type ConnectionReport struct {
 	PairsWithoutNegative   int    `json:"pairs_without_negative"`
 	InvalidPositiveRecords int    `json:"invalid_positive_records"`
 	InvalidNegativeRecords int    `json:"invalid_negative_records"`
+	NegativeStrategy       string `json:"negative_strategy"`
 }
 
 type naturalPair struct {
@@ -65,12 +70,15 @@ func BuildConnections(bank *voicebank.Bank, config ConnectionConfig) ([]Connecti
 	if config.NegativesPerPositive < 0 {
 		config.NegativesPerPositive = 0
 	}
+	if config.NegativeStrategy == "" {
+		config.NegativeStrategy = "hard"
+	}
 	entries := sortedEntries(bank)
 	pairs := naturalPairs(entries, bank.Root)
 	if config.Limit > 0 && len(pairs) > config.Limit {
 		pairs = pairs[:config.Limit]
 	}
-	report := ConnectionReport{SchemaVersion: SchemaVersion, Voicebank: bank.Name, Entries: len(entries), NaturalPairs: len(pairs)}
+	report := ConnectionReport{SchemaVersion: SchemaVersion, Voicebank: bank.Name, Entries: len(entries), NaturalPairs: len(pairs), NegativeStrategy: config.NegativeStrategy}
 	byAlias := map[string][]oto.Entry{}
 	for _, entry := range entries {
 		key := AliasKey(entry.Alias)
@@ -87,13 +95,23 @@ func BuildConnections(bank *voicebank.Bank, config ConnectionConfig) ([]Connecti
 		}
 
 		candidates := negativeCandidates(byAlias[AliasKey(pair.right.Alias)], pair)
+		if config.NegativeStrategy == "hard" {
+			sort.SliceStable(candidates, func(i, j int) bool {
+				leftScore := connection.HandcraftedScore(extractor.Pair(pair.left, candidates[i]))
+				rightScore := connection.HandcraftedScore(extractor.Pair(pair.left, candidates[j]))
+				return leftScore > rightScore
+			})
+		} else if config.NegativeStrategy != "rotating" {
+			config.NegativeStrategy = "rotating"
+			report.NegativeStrategy = "rotating"
+		}
 		if len(candidates) == 0 && config.NegativesPerPositive > 0 {
 			report.PairsWithoutNegative++
 			continue
 		}
 		count := min(config.NegativesPerPositive, len(candidates))
 		start := 0
-		if len(candidates) > 0 {
+		if config.NegativeStrategy == "rotating" && len(candidates) > 0 {
 			start = pairIndex % len(candidates)
 		}
 		for index := 0; index < count; index++ {
@@ -168,11 +186,16 @@ func negativeCandidates(entries []oto.Entry, pair naturalPair) []oto.Entry {
 func makeRecord(bank *voicebank.Bank, extractor *connection.Extractor, groupID string, label int, provenance string, left, right oto.Entry) ConnectionRecord {
 	features := extractor.Pair(left, right)
 	return ConnectionRecord{
-		SchemaVersion: SchemaVersion, Voicebank: bank.Name, GroupID: groupID,
-		Label: label, Provenance: provenance,
+		SchemaVersion: SchemaVersion, RecordID: recordID(bank.Root, groupID, left, right), Voicebank: bank.Name, GroupID: groupID,
+		Label: label, LabelSource: "weak_recording_continuity", Weight: 1, Provenance: provenance,
 		Previous: reference(bank.Root, left), Current: reference(bank.Root, right),
 		Features: connection.ToLearningFeatures(features), HandcraftedScore: connection.HandcraftedScore(features),
 	}
+}
+
+func recordID(root, groupID string, left, right oto.Entry) string {
+	leftRef, rightRef := reference(root, left), reference(root, right)
+	return fmt.Sprintf("%s|%s:%d|%s:%d", groupID, leftRef.Source, leftRef.Line, rightRef.Source, rightRef.Line)
 }
 
 func reference(root string, entry oto.Entry) EntryReference {

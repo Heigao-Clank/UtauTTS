@@ -2,6 +2,7 @@ package connection
 
 import (
 	"math"
+	"path/filepath"
 	"testing"
 
 	"utautts/internal/acoustic"
@@ -53,6 +54,45 @@ func TestTrainModelLearnsAcousticDifference(t *testing.T) {
 	}
 	if model.Predict(testLearningFeatures(1)) <= model.Predict(testLearningFeatures(14)) {
 		t.Fatal("smooth boundary did not receive a higher probability")
+	}
+}
+
+func TestTrainMLPLearnsAcousticDifference(t *testing.T) {
+	var training, validation []Example
+	for index := 0; index < 40; index++ {
+		training = append(training,
+			Example{Label: 1, Features: testLearningFeatures(1 + float64(index%3)*0.1)},
+			Example{Label: 0, Features: testLearningFeatures(12 + float64(index%3))},
+		)
+	}
+	for index := 0; index < 10; index++ {
+		validation = append(validation,
+			Example{Label: 1, Features: testLearningFeatures(1.2)},
+			Example{Label: 0, Features: testLearningFeatures(13)},
+		)
+	}
+	model, err := TrainModel(training, validation, TrainConfig{
+		Epochs: 300, LearningRate: 0.08, L2: 0.001, Model: "mlp", HiddenUnits: 8, Seed: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.Mode != "acoustic_join_mlp" || model.Metrics.AUC < 0.99 {
+		t.Fatalf("model=%s metrics=%+v", model.Mode, model.Metrics)
+	}
+	if model.Predict(testLearningFeatures(1)) <= model.Predict(testLearningFeatures(14)) {
+		t.Fatal("smooth boundary did not receive a higher probability")
+	}
+	path := filepath.Join(t.TempDir(), "mlp.json")
+	if err := SaveLearnedModel(path, model); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadLearnedModel(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(loaded.Predict(testLearningFeatures(1))-model.Predict(testLearningFeatures(1))) > 1e-12 {
+		t.Fatal("loaded MLP prediction changed")
 	}
 }
 

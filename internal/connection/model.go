@@ -6,18 +6,20 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 )
 
-const LearnedModelVersion = 2
+const LearnedModelVersion = 3
 
 type Example struct {
 	Voicebank string
 	GroupID   string
 	Label     int
 	Features  LearningFeatures
+	Weight    float64
 }
 
 type LearnedModel struct {
@@ -29,6 +31,9 @@ type LearnedModel struct {
 	Scales         []float64    `json:"scales"`
 	Weights        []float64    `json:"weights"`
 	Bias           float64      `json:"bias"`
+	HiddenWeights  [][]float64  `json:"hidden_weights,omitempty"`
+	HiddenBias     []float64    `json:"hidden_bias,omitempty"`
+	OutputWeights  []float64    `json:"output_weights,omitempty"`
 	ScoreScale     float64      `json:"score_scale,omitempty"`
 	Training       TrainingInfo `json:"training"`
 	Metrics        Metrics      `json:"validation_metrics"`
@@ -42,6 +47,9 @@ type TrainingInfo struct {
 	Epochs       int      `json:"epochs"`
 	LearningRate float64  `json:"learning_rate"`
 	L2           float64  `json:"l2"`
+	Model        string   `json:"model,omitempty"`
+	HiddenUnits  int      `json:"hidden_units,omitempty"`
+	Seed         int64    `json:"seed,omitempty"`
 }
 
 type Metrics struct {
@@ -58,6 +66,9 @@ type TrainConfig struct {
 	Epochs       int
 	LearningRate float64
 	L2           float64
+	Model        string
+	HiddenUnits  int
+	Seed         int64
 }
 
 type SplitConfig struct {
@@ -89,6 +100,18 @@ func SplitExamples(examples []Example, config SplitConfig) (training, validation
 func TrainModel(training, validation []Example, config TrainConfig) (*LearnedModel, error) {
 	if config.Epochs <= 0 || config.LearningRate <= 0 || config.L2 < 0 {
 		return nil, errors.New("invalid training configuration")
+	}
+	if config.Model == "" {
+		config.Model = "logistic"
+	}
+	if config.Model != "logistic" && config.Model != "mlp" {
+		return nil, fmt.Errorf("unknown model type %q", config.Model)
+	}
+	if config.HiddenUnits <= 0 {
+		config.HiddenUnits = 32
+	}
+	if config.Seed == 0 {
+		config.Seed = 1
 	}
 	training = validExamples(training)
 	validation = validExamples(validation)
@@ -129,35 +152,55 @@ func TrainModel(training, validation []Example, config TrainConfig) (*LearnedMod
 	bias := 0.0
 	positiveWeight := float64(len(training)) / (2 * float64(positive))
 	negativeWeight := float64(len(training)) / (2 * float64(negative))
-	for epoch := 0; epoch < config.Epochs; epoch++ {
-		gradient := make([]float64, len(weights))
-		biasGradient := 0.0
-		for index, example := range training {
-			probability := sigmoid(bias + dotVector(weights, vectors[index]))
-			classWeight := negativeWeight
-			if example.Label == 1 {
-				classWeight = positiveWeight
+	if config.Model == "logistic" {
+		for epoch := 0; epoch < config.Epochs; epoch++ {
+			gradient := make([]float64, len(weights))
+			biasGradient := 0.0
+			for index, example := range training {
+				probability := sigmoid(bias + dotVector(weights, vectors[index]))
+				classWeight := negativeWeight
+				if example.Label == 1 {
+					classWeight = positiveWeight
+				}
+				exampleWeight := example.Weight
+				if exampleWeight <= 0 {
+					exampleWeight = 1
+				}
+				delta := exampleWeight * classWeight * (probability - float64(example.Label))
+				biasGradient += delta
+				for feature, value := range vectors[index] {
+					gradient[feature] += delta * value
+				}
 			}
-			delta := classWeight * (probability - float64(example.Label))
-			biasGradient += delta
-			for feature, value := range vectors[index] {
-				gradient[feature] += delta * value
+			rate := config.LearningRate / math.Sqrt(1+float64(epoch)*0.02)
+			bias -= rate * biasGradient / float64(len(training))
+			for feature := range weights {
+				gradient[feature] = gradient[feature]/float64(len(training)) + config.L2*weights[feature]
+				weights[feature] -= rate * gradient[feature]
 			}
-		}
-		rate := config.LearningRate / math.Sqrt(1+float64(epoch)*0.02)
-		bias -= rate * biasGradient / float64(len(training))
-		for feature := range weights {
-			gradient[feature] = gradient[feature]/float64(len(training)) + config.L2*weights[feature]
-			weights[feature] -= rate * gradient[feature]
 		}
 	}
+	mode := "acoustic_join_logistic"
+	recordedHiddenUnits := 0
+	if config.Model == "mlp" {
+		recordedHiddenUnits = config.HiddenUnits
+	}
 	model := &LearnedModel{
-		Version: LearnedModelVersion, FeatureVersion: 2, Mode: "acoustic_join_logistic",
+		Version: LearnedModelVersion, FeatureVersion: 2, Mode: mode,
 		FeatureNames: names, Means: means, Scales: scales, Weights: weights, Bias: bias,
 		ScoreScale: 4,
 		Training: TrainingInfo{Records: len(training), Positive: positive, Negative: negative,
 			Voicebanks: voicebanks(training), Epochs: config.Epochs,
-			LearningRate: config.LearningRate, L2: config.L2},
+			LearningRate: config.LearningRate, L2: config.L2, Model: config.Model,
+			HiddenUnits: recordedHiddenUnits, Seed: config.Seed},
+	}
+	if config.Model == "mlp" {
+		model.Mode = "acoustic_join_mlp"
+		model.Weights = nil
+		model.Bias = 0
+		model.HiddenWeights, model.HiddenBias, model.OutputWeights, model.Bias = trainMLP(
+			training, vectors, len(names), config, positiveWeight, negativeWeight,
+		)
 	}
 	model.Metrics = EvaluateModel(model, validation)
 	return model, nil
@@ -165,10 +208,17 @@ func TrainModel(training, validation []Example, config TrainConfig) (*LearnedMod
 
 func (model *LearnedModel) Predict(features LearningFeatures) float64 {
 	vector := featureVector(features)
-	if len(model.Weights) < len(vector) {
-		vector = vector[:len(model.Weights)]
+	if len(model.Means) < len(vector) {
+		vector = vector[:len(model.Means)]
 	}
 	normalize(vector, model.Means, model.Scales)
+	if model.Mode == "acoustic_join_mlp" {
+		hidden := make([]float64, len(model.HiddenWeights))
+		for unit := range hidden {
+			hidden[unit] = math.Tanh(model.HiddenBias[unit] + dotVector(model.HiddenWeights[unit], vector))
+		}
+		return sigmoid(model.Bias + dotVector(model.OutputWeights, hidden))
+	}
 	return sigmoid(model.Bias + dotVector(model.Weights, vector))
 }
 
@@ -257,21 +307,102 @@ func LoadLearnedModel(path string) (*LearnedModel, error) {
 		return nil, err
 	}
 	legacy := model.Version == 1 && model.FeatureVersion == 1
+	logisticV2 := model.Version == 2 && model.FeatureVersion == 2
 	current := model.Version == LearnedModelVersion && model.FeatureVersion == 2
-	if (!legacy && !current) || model.Mode != "acoustic_join_logistic" {
+	if (!legacy && !logisticV2 && !current) || (model.Mode != "acoustic_join_logistic" && model.Mode != "acoustic_join_mlp") {
 		return nil, fmt.Errorf("unsupported join model version %d/%d", model.Version, model.FeatureVersion)
 	}
 	length := len(featureNames())
 	if legacy {
 		length--
 	}
-	if len(model.Weights) != length || len(model.Means) != length || len(model.Scales) != length {
+	if len(model.Means) != length || len(model.Scales) != length {
 		return nil, errors.New("invalid join model feature dimensions")
+	}
+	if model.Mode == "acoustic_join_logistic" && len(model.Weights) != length {
+		return nil, errors.New("invalid logistic model dimensions")
+	}
+	if model.Mode == "acoustic_join_mlp" && !validMLPDimensions(&model, length) {
+		return nil, errors.New("invalid MLP model dimensions")
 	}
 	if model.ScoreScale <= 0 {
 		model.ScoreScale = 4
 	}
 	return &model, nil
+}
+
+func trainMLP(examples []Example, vectors [][]float64, featureCount int, config TrainConfig, positiveWeight, negativeWeight float64) ([][]float64, []float64, []float64, float64) {
+	rng := rand.New(rand.NewSource(config.Seed))
+	hiddenWeights := make([][]float64, config.HiddenUnits)
+	hiddenBias := make([]float64, config.HiddenUnits)
+	outputWeights := make([]float64, config.HiddenUnits)
+	inputScale := math.Sqrt(2 / float64(featureCount+config.HiddenUnits))
+	outputScale := math.Sqrt(2 / float64(config.HiddenUnits+1))
+	for unit := range hiddenWeights {
+		hiddenWeights[unit] = make([]float64, featureCount)
+		for feature := range hiddenWeights[unit] {
+			hiddenWeights[unit][feature] = rng.NormFloat64() * inputScale
+		}
+		outputWeights[unit] = rng.NormFloat64() * outputScale
+	}
+	outputBias := 0.0
+	for epoch := 0; epoch < config.Epochs; epoch++ {
+		hiddenGradient := make([][]float64, config.HiddenUnits)
+		hiddenBiasGradient := make([]float64, config.HiddenUnits)
+		outputGradient := make([]float64, config.HiddenUnits)
+		for unit := range hiddenGradient {
+			hiddenGradient[unit] = make([]float64, featureCount)
+		}
+		outputBiasGradient := 0.0
+		for index, example := range examples {
+			hidden := make([]float64, config.HiddenUnits)
+			for unit := range hidden {
+				hidden[unit] = math.Tanh(hiddenBias[unit] + dotVector(hiddenWeights[unit], vectors[index]))
+			}
+			probability := sigmoid(outputBias + dotVector(outputWeights, hidden))
+			classWeight := negativeWeight
+			if example.Label == 1 {
+				classWeight = positiveWeight
+			}
+			exampleWeight := example.Weight
+			if exampleWeight <= 0 {
+				exampleWeight = 1
+			}
+			delta := exampleWeight * classWeight * (probability - float64(example.Label))
+			outputBiasGradient += delta
+			for unit := range hidden {
+				outputGradient[unit] += delta * hidden[unit]
+				hiddenDelta := delta * outputWeights[unit] * (1 - hidden[unit]*hidden[unit])
+				hiddenBiasGradient[unit] += hiddenDelta
+				for feature, value := range vectors[index] {
+					hiddenGradient[unit][feature] += hiddenDelta * value
+				}
+			}
+		}
+		rate := config.LearningRate / math.Sqrt(1+float64(epoch)*0.02)
+		n := float64(len(examples))
+		outputBias -= rate * outputBiasGradient / n
+		for unit := range hiddenWeights {
+			outputWeights[unit] -= rate * (outputGradient[unit]/n + config.L2*outputWeights[unit])
+			hiddenBias[unit] -= rate * hiddenBiasGradient[unit] / n
+			for feature := range hiddenWeights[unit] {
+				hiddenWeights[unit][feature] -= rate * (hiddenGradient[unit][feature]/n + config.L2*hiddenWeights[unit][feature])
+			}
+		}
+	}
+	return hiddenWeights, hiddenBias, outputWeights, outputBias
+}
+
+func validMLPDimensions(model *LearnedModel, features int) bool {
+	if len(model.HiddenWeights) == 0 || len(model.HiddenBias) != len(model.HiddenWeights) || len(model.OutputWeights) != len(model.HiddenWeights) {
+		return false
+	}
+	for _, weights := range model.HiddenWeights {
+		if len(weights) != features {
+			return false
+		}
+	}
+	return true
 }
 
 func validExamples(examples []Example) []Example {
