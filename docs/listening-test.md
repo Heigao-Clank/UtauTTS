@@ -35,6 +35,8 @@ go run ./cmd/listening-test `
 
 韻律モデルも`--prosody`を両システム共通、`--system-a-prosody`と`--system-b-prosody`を個別指定として比較できます。WORLD系レンダラでは`--worldline`、`--worldline-bridge`と`--intonation-strength`も指定できます。
 
+学習ピッチだけを分離評価する場合は、対象システムへ`--system-a-prosody-pitch-only`または`--system-b-prosody-pitch-only`を指定します。モーラ長と音量は固定値のままになり、イントネーション差だけを比較できます。
+
 ## ABX識別評価
 
 ```powershell

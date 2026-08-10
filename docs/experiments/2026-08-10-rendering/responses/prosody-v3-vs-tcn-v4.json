@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "mode": "ab",
+  "answers": [
+    {"id": 1, "answer": "B"},
+    {"id": 2, "answer": "A"},
+    {"id": 3, "answer": "B"},
+    {"id": 4, "answer": "A"},
+    {"id": 5, "answer": "B"},
+    {"id": 6, "answer": "tie"},
+    {"id": 7, "answer": "tie"},
+    {"id": 8, "answer": "tie"},
+    {"id": 9, "answer": "tie"},
+    {"id": 10, "answer": "tie"},
+    {"id": 11, "answer": "tie"},
+    {"id": 12, "answer": "tie"}
+  ]
+}
