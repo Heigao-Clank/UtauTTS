@@ -21,11 +21,13 @@ func (values *textList) String() string         { return strings.Join(*values, "
 func (values *textList) Set(value string) error { *values = append(*values, value); return nil }
 
 type caseReport struct {
-	Text         string             `json:"text"`
-	Units        int                `json:"units"`
-	ChangedUnits int                `json:"changed_units"`
-	Handcrafted  *evaluation.Report `json:"handcrafted"`
-	Learned      *evaluation.Report `json:"learned"`
+	CaseID              string             `json:"case_id,omitempty"`
+	Text                string             `json:"text"`
+	Units               int                `json:"units"`
+	MultiCandidateUnits int                `json:"multi_candidate_units"`
+	ChangedUnits        int                `json:"changed_units"`
+	Handcrafted         *evaluation.Report `json:"handcrafted"`
+	Learned             *evaluation.Report `json:"learned"`
 }
 
 type aggregate struct {
@@ -33,6 +35,8 @@ type aggregate struct {
 	ChangedUtterances     int     `json:"changed_utterances"`
 	Units                 int     `json:"units"`
 	ChangedUnits          int     `json:"changed_units"`
+	MultiCandidateUnits   int     `json:"multi_candidate_units"`
+	ChangedCandidateRate  float64 `json:"changed_candidate_rate"`
 	ConnectedBoundaries   int     `json:"connected_boundaries"`
 	HandcraftedMeanClick  float64 `json:"handcrafted_mean_click"`
 	LearnedMeanClick      float64 `json:"learned_mean_click"`
@@ -44,6 +48,7 @@ type aggregate struct {
 
 type benchmarkReport struct {
 	Version   int             `json:"version"`
+	Corpus    string          `json:"corpus,omitempty"`
 	Voicebank string          `json:"voicebank"`
 	JoinModel string          `json:"join_model"`
 	JoinScale float64         `json:"join_scale"`
@@ -53,17 +58,19 @@ type benchmarkReport struct {
 }
 
 type failureReport struct {
-	Text  string `json:"text"`
-	Stage string `json:"stage"`
-	Error string `json:"error"`
+	CaseID string `json:"case_id,omitempty"`
+	Text   string `json:"text"`
+	Stage  string `json:"stage"`
+	Error  string `json:"error"`
 }
 
 func main() {
 	var texts textList
 	var cfg tts.Config
-	var outputPath string
+	var outputPath, corpusPath string
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.Var(&texts, "text", "Japanese text to benchmark (repeatable)")
+	flag.StringVar(&corpusPath, "corpus", "", "versioned evaluation corpus JSON")
 	flag.StringVar(&cfg.JoinModelPath, "join-model", "", "learned join-cost model JSON")
 	flag.Float64Var(&cfg.JoinScoreScale, "join-scale", 0, "learned logit score scale")
 	flag.StringVar(&outputPath, "out", "", "output benchmark JSON")
@@ -73,45 +80,63 @@ func main() {
 	flag.Float64Var(&cfg.PauseDurationMS, "pause-ms", 180, "pause duration")
 	flag.Float64Var(&cfg.ReleaseMS, "release-ms", 20, "release envelope")
 	flag.Parse()
-	if cfg.VoicebankPath == "" || cfg.JoinModelPath == "" || outputPath == "" || len(texts) == 0 {
+	if cfg.VoicebankPath == "" || cfg.JoinModelPath == "" || outputPath == "" || (len(texts) == 0 && corpusPath == "") {
 		flag.Usage()
-		log.Fatal("--voicebank, --join-model, --out, and at least one --text are required")
+		log.Fatal("--voicebank, --join-model, --out, and --text or --corpus are required")
 	}
-	report := benchmarkReport{Version: 1, Voicebank: cfg.VoicebankPath, JoinModel: cfg.JoinModelPath, JoinScale: cfg.JoinScoreScale}
-	for _, text := range texts {
+	type benchmarkCase struct{ id, text string }
+	cases := make([]benchmarkCase, 0, len(texts))
+	corpusName := ""
+	if corpusPath != "" {
+		corpus, err := evaluation.LoadCorpus(corpusPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		corpusName = corpus.Name
+		for _, item := range corpus.Cases {
+			cases = append(cases, benchmarkCase{id: item.ID, text: item.Text})
+		}
+	}
+	for index, text := range texts {
+		cases = append(cases, benchmarkCase{id: fmt.Sprintf("custom-%03d", index+1), text: text})
+	}
+	report := benchmarkReport{Version: 2, Corpus: corpusName, Voicebank: cfg.VoicebankPath, JoinModel: cfg.JoinModelPath, JoinScale: cfg.JoinScoreScale}
+	for _, item := range cases {
+		text := item.text
 		cfg.Text = text
 		cfg.SelectionMode, cfg.JoinModelPath = voicebank.SelectionViterbi, ""
 		handcrafted, err := tts.Synthesize(cfg)
 		if err != nil {
-			report.Failures = append(report.Failures, failureReport{Text: text, Stage: "handcrafted", Error: err.Error()})
+			report.Failures = append(report.Failures, failureReport{CaseID: item.id, Text: text, Stage: "handcrafted", Error: err.Error()})
 			fmt.Printf("skipped %s: %v\n", text, err)
 			continue
 		}
 		handMetrics, err := evaluation.Analyze(handcrafted.Audio, handcrafted.Plan)
 		if err != nil {
-			report.Failures = append(report.Failures, failureReport{Text: text, Stage: "handcrafted-evaluation", Error: err.Error()})
+			report.Failures = append(report.Failures, failureReport{CaseID: item.id, Text: text, Stage: "handcrafted-evaluation", Error: err.Error()})
 			continue
 		}
 		cfg.JoinModelPath = report.JoinModel
 		learned, err := tts.Synthesize(cfg)
 		if err != nil {
-			report.Failures = append(report.Failures, failureReport{Text: text, Stage: "learned", Error: err.Error()})
+			report.Failures = append(report.Failures, failureReport{CaseID: item.id, Text: text, Stage: "learned", Error: err.Error()})
 			continue
 		}
 		learnedMetrics, err := evaluation.Analyze(learned.Audio, learned.Plan)
 		if err != nil {
-			report.Failures = append(report.Failures, failureReport{Text: text, Stage: "learned-evaluation", Error: err.Error()})
+			report.Failures = append(report.Failures, failureReport{CaseID: item.id, Text: text, Stage: "learned-evaluation", Error: err.Error()})
 			continue
 		}
 		if report.JoinScale <= 0 {
 			report.JoinScale = learned.Plan.JoinScoreScale
 		}
 		changed := selectionDifferences(handcrafted.Plan, learned.Plan)
+		multiCandidate := multiCandidateUnits(learned.Plan)
 		report.Cases = append(report.Cases, caseReport{
-			Text: text, Units: len(learned.Plan.Units), ChangedUnits: changed,
+			CaseID: item.id, Text: text, Units: len(learned.Plan.Units), MultiCandidateUnits: multiCandidate, ChangedUnits: changed,
 			Handcrafted: handMetrics, Learned: learnedMetrics,
 		})
-		accumulate(&report.Aggregate, len(learned.Plan.Units), changed, handMetrics, learnedMetrics)
+		accumulate(&report.Aggregate, len(learned.Plan.Units), multiCandidate, changed, handMetrics, learnedMetrics)
 		fmt.Printf("changed=%d click %.5f -> %.5f spectrum %.3f -> %.3f %s\n",
 			changed, handMetrics.MeanClick, learnedMetrics.MeanClick,
 			handMetrics.MeanSpectrumDB, learnedMetrics.MeanSpectrumDB, text)
@@ -129,10 +154,11 @@ func main() {
 		report.Aggregate.HandcraftedSpectrumDB, report.Aggregate.LearnedSpectrumDB)
 }
 
-func accumulate(total *aggregate, units, changed int, handcrafted, learned *evaluation.Report) {
+func accumulate(total *aggregate, units, multiCandidate, changed int, handcrafted, learned *evaluation.Report) {
 	total.Utterances++
 	total.Units += units
 	total.ChangedUnits += changed
+	total.MultiCandidateUnits += multiCandidate
 	if changed > 0 {
 		total.ChangedUtterances++
 	}
@@ -147,6 +173,9 @@ func accumulate(total *aggregate, units, changed int, handcrafted, learned *eval
 }
 
 func finishAggregate(total *aggregate) {
+	if total.MultiCandidateUnits > 0 {
+		total.ChangedCandidateRate = float64(total.ChangedUnits) / float64(total.MultiCandidateUnits)
+	}
 	if total.ConnectedBoundaries == 0 {
 		return
 	}
@@ -157,6 +186,16 @@ func finishAggregate(total *aggregate) {
 	total.LearnedSpectrumDB /= denominator
 	total.HandcraftedRMSDB /= denominator
 	total.LearnedRMSDB /= denominator
+}
+
+func multiCandidateUnits(value *plan.Plan) int {
+	count := 0
+	for _, unit := range value.Units {
+		if unit.CandidateCount > 1 {
+			count++
+		}
+	}
+	return count
 }
 
 func selectionDifferences(left, right *plan.Plan) int {

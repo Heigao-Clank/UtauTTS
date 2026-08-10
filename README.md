@@ -84,6 +84,7 @@ go run ./cmd/connection-dataset --voicebank "release/UtauTTS/voice/足立レイv
 go run ./cmd/connection-train --dataset "out/connections.jsonl" --out "out/join-model.json"
 go run ./cmd/utautts-cli --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --text "こんにちは。" --join-model "out/join-model.json" --out "out/learned.wav"
 go run ./cmd/connection-lattice --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --text "こんにちは。" --join-model "out/join-model.json" --out "out/lattice.json"
+go run ./cmd/connection-benchmark --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --join-model "out/join-model.json" --corpus "docs/evaluation-corpus.json" --out "out/benchmark.json"
 ```
 
 同梱音源とライセンスは[docs/voicebank.md](docs/voicebank.md)、構成は[docs/architecture.md](docs/architecture.md)、モーラ長の学習は[docs/training.md](docs/training.md)、接続の測定は[docs/evaluation.md](docs/evaluation.md)、接続データ生成は[docs/connection-dataset.md](docs/connection-dataset.md)、AB/ABX評価は[docs/listening-test.md](docs/listening-test.md)を参照してください。

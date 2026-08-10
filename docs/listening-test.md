@@ -16,6 +16,8 @@ go run ./cmd/listening-test `
 
 `public/index.html`を開くと、Aが自然、Bが自然、同程度から回答できます。二方式のWAVが完全一致する文章は自動的に除外されます。`public`ディレクトリだけを評価者へ渡し、方式名を含む`answer-key.json`は評価終了まで非公開にしてください。
 
+固定評価セットを使う場合は、繰り返しの`--text`の代わりに`--corpus docs/evaluation-corpus.json`を指定します。manifestにはコーパス名、case ID、乱数seed、非公開keyにはモデルパスと変更原音の位置・alias・スコアも記録されます。公開ファイルから方式や原音差分は分かりません。
+
 手設計join costと学習join costを同じrendererで比較する場合は、システム別にモデルを指定します。
 
 ```powershell
@@ -56,7 +58,7 @@ go run ./cmd/listening-score `
   --out out/listening/long-unit-ab/score.json
 ```
 
-ABでは方式別選好数と同率、ABXでは正答・誤答・不明・不明を除いた正答率を集計します。少数試行の差を結論とせず、音源・文章・評価者を増やして信頼区間を確認してください。
+ABでは方式別選好数、同率、同率を除いた選好率と95% Wilson信頼区間を出します。ABXでは正答・誤答・不明、不明を除いた正答率と95% Wilson信頼区間を集計します。`cases`にはcase ID、文章、回答、対応する方式を残すため、変更原音との突き合わせに使えます。少数試行の差を結論とせず、音源・文章・評価者を増やしてください。
 
 ## waveform-long
 

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "utautts-ja-core-v1",
+  "cases": [
+    {"id": "greeting", "text": "こんにちは、今日はいい天気です。", "tags": ["baseline", "pause"]},
+    {"id": "vowels", "text": "青い家へ会いに行く。", "tags": ["vowel", "hiatus"]},
+    {"id": "voiceless", "text": "小さな靴を机に置いた。", "tags": ["unvoiced", "closure"]},
+    {"id": "voiced", "text": "銀色の風鈴が静かに鳴る。", "tags": ["voiced", "nasal"]},
+    {"id": "palatalized", "text": "急行列車で京都へ向かう。", "tags": ["palatalized"]},
+    {"id": "long-vowel", "text": "遠い公園まで歩こう。", "tags": ["long-vowel"]},
+    {"id": "geminate", "text": "切符を持って学校へ行った。", "tags": ["closure"]},
+    {"id": "nasal", "text": "新幹線の窓から山を見る。", "tags": ["nasal"]},
+    {"id": "fricative", "text": "涼しい風が砂浜を吹き抜ける。", "tags": ["fricative"]},
+    {"id": "mixed", "text": "明日も公園へ出かけましょう。", "tags": ["baseline", "phrase-end"]},
+    {"id": "question", "text": "この声は自然に聞こえますか？", "tags": ["question"]},
+    {"id": "two-phrases", "text": "朝日が昇り、町がゆっくり目を覚ます。", "tags": ["pause", "long"]}
+  ]
+}

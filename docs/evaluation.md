@@ -70,4 +70,14 @@ go run ./cmd/connection-benchmark `
 
 `--join-scale`でlearned logitの倍率を変更できます。単一指標だけに合わせず、クリック、スペクトル差、RMS差、原音変更数と聴感を併せて決定します。
 
+再現可能な標準12文は`docs/evaluation-corpus.json`にあります。各文は安定したIDと音韻上のタグを持ち、任意の`--text`と併用できます。
+
+```powershell
+go run ./cmd/connection-benchmark `
+  --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
+  --join-model out/connection-model/model.json `
+  --corpus docs/evaluation-corpus.json `
+  --out out/benchmark.json
+```
+
 join costを学習するための境界ペア生成は[接続学習データセット](connection-dataset.md)を参照してください。

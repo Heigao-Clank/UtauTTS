@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"utautts/internal/audio"
+	"utautts/internal/evaluation"
 	"utautts/internal/plan"
 	"utautts/internal/tts"
 )
@@ -22,30 +23,51 @@ func (values *textList) String() string         { return strings.Join(*values, "
 func (values *textList) Set(value string) error { *values = append(*values, value); return nil }
 
 type publicTrial struct {
-	ID   int    `json:"id"`
-	Text string `json:"text"`
-	A    string `json:"a"`
-	B    string `json:"b"`
-	X    string `json:"x,omitempty"`
+	ID     int    `json:"id"`
+	CaseID string `json:"case_id,omitempty"`
+	Text   string `json:"text"`
+	A      string `json:"a"`
+	B      string `json:"b"`
+	X      string `json:"x,omitempty"`
 }
 
 type answerTrial struct {
-	ID      int        `json:"id"`
-	Text    string     `json:"text"`
-	A       systemInfo `json:"a"`
-	B       systemInfo `json:"b"`
-	XAnswer string     `json:"x_answer,omitempty"`
+	ID      int               `json:"id"`
+	CaseID  string            `json:"case_id,omitempty"`
+	Text    string            `json:"text"`
+	A       systemInfo        `json:"a"`
+	B       systemInfo        `json:"b"`
+	XAnswer string            `json:"x_answer,omitempty"`
+	Changes []selectionChange `json:"selection_changes,omitempty"`
+}
+
+type selectionChange struct {
+	Position int        `json:"position"`
+	Mora     string     `json:"mora"`
+	A        unitChoice `json:"a"`
+	B        unitChoice `json:"b"`
+}
+
+type unitChoice struct {
+	Alias           string  `json:"alias"`
+	Source          string  `json:"source"`
+	OtoLine         int     `json:"oto_line"`
+	TargetScore     float64 `json:"target_score"`
+	JoinScore       float64 `json:"join_score"`
+	JoinProbability float64 `json:"join_probability,omitempty"`
 }
 
 type systemInfo struct {
 	Renderer       string `json:"renderer"`
 	JoinModel      bool   `json:"join_model"`
+	JoinModelPath  string `json:"join_model_path,omitempty"`
 	LongUnitGroups int    `json:"long_unit_groups"`
 }
 
 type publicManifest struct {
 	Version int           `json:"version"`
 	Mode    string        `json:"mode"`
+	Corpus  string        `json:"corpus,omitempty"`
 	Trials  []publicTrial `json:"trials"`
 }
 
@@ -53,6 +75,7 @@ type answerKey struct {
 	Version  int           `json:"version"`
 	Mode     string        `json:"mode"`
 	Seed     int64         `json:"seed"`
+	Corpus   string        `json:"corpus,omitempty"`
 	Trials   []answerTrial `json:"trials"`
 	Failures []string      `json:"failures,omitempty"`
 }
@@ -60,10 +83,11 @@ type answerKey struct {
 func main() {
 	var texts textList
 	var cfg tts.Config
-	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB string
+	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, corpusPath string
 	var seed int64
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.Var(&texts, "text", "Japanese text to evaluate (repeatable)")
+	flag.StringVar(&corpusPath, "corpus", "", "versioned evaluation corpus JSON")
 	flag.StringVar(&commonModel, "join-model", "", "join-cost model used by both systems")
 	flag.StringVar(&modelA, "system-a-join-model", "", "optional join model for system A")
 	flag.StringVar(&modelB, "system-b-join-model", "", "optional join model for system B")
@@ -78,9 +102,25 @@ func main() {
 	flag.Float64Var(&cfg.PauseDurationMS, "pause-ms", 180, "pause duration")
 	flag.Float64Var(&cfg.ReleaseMS, "release-ms", 20, "release envelope")
 	flag.Parse()
-	if cfg.VoicebankPath == "" || outputDirectory == "" || len(texts) == 0 || (mode != "ab" && mode != "abx") {
+	if cfg.VoicebankPath == "" || outputDirectory == "" || (len(texts) == 0 && corpusPath == "") || (mode != "ab" && mode != "abx") {
 		flag.Usage()
-		log.Fatal("--voicebank, --out, at least one --text, and mode ab/abx are required")
+		log.Fatal("--voicebank, --out, --text or --corpus, and mode ab/abx are required")
+	}
+	type evaluationCase struct{ id, text string }
+	cases := make([]evaluationCase, 0, len(texts))
+	corpusName := ""
+	if corpusPath != "" {
+		corpus, err := evaluation.LoadCorpus(corpusPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		corpusName = corpus.Name
+		for _, item := range corpus.Cases {
+			cases = append(cases, evaluationCase{id: item.ID, text: item.Text})
+		}
+	}
+	for index, text := range texts {
+		cases = append(cases, evaluationCase{id: fmt.Sprintf("custom-%03d", index+1), text: text})
 	}
 	if modelA == "" {
 		modelA = commonModel
@@ -93,9 +133,10 @@ func main() {
 		log.Fatal(err)
 	}
 	random := rand.New(rand.NewSource(seed))
-	manifest := publicManifest{Version: 1, Mode: mode}
-	key := answerKey{Version: 1, Mode: mode, Seed: seed}
-	for _, text := range texts {
+	manifest := publicManifest{Version: 2, Mode: mode, Corpus: corpusName}
+	key := answerKey{Version: 3, Mode: mode, Seed: seed, Corpus: corpusName}
+	for _, item := range cases {
+		text := item.text
 		cfg.Text = text
 		cfg.Renderer, cfg.JoinModelPath = rendererA, modelA
 		first, err := tts.Synthesize(cfg)
@@ -115,8 +156,8 @@ func main() {
 		}
 		trialID := len(manifest.Trials) + 1
 		left, right := first, second
-		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", LongUnitGroups: longUnitGroups(first.Plan.Units)}
-		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", LongUnitGroups: longUnitGroups(second.Plan.Units)}
+		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, LongUnitGroups: longUnitGroups(first.Plan.Units)}
+		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, LongUnitGroups: longUnitGroups(second.Plan.Units)}
 		if random.Intn(2) == 1 {
 			left, right, leftInfo, rightInfo = right, left, rightInfo, leftInfo
 		}
@@ -128,8 +169,9 @@ func main() {
 		if err := audio.WriteWav(filepath.Join(publicDirectory, bName), right.Audio); err != nil {
 			log.Fatal(err)
 		}
-		public := publicTrial{ID: trialID, Text: text, A: aName, B: bName}
-		answer := answerTrial{ID: trialID, Text: text, A: leftInfo, B: rightInfo}
+		public := publicTrial{ID: trialID, CaseID: item.id, Text: text, A: aName, B: bName}
+		answer := answerTrial{ID: trialID, CaseID: item.id, Text: text, A: leftInfo, B: rightInfo}
+		answer.Changes = selectionChanges(left.Plan, right.Plan)
 		if mode == "abx" {
 			xName := prefix + "-X.wav"
 			xAudio := left.Audio
@@ -158,6 +200,26 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("wrote %d %s trials to %s (keep answer-key.json private)\n", len(manifest.Trials), mode, publicDirectory)
+}
+
+func selectionChanges(left, right *plan.Plan) []selectionChange {
+	if left == nil || right == nil {
+		return nil
+	}
+	length := min(len(left.Units), len(right.Units))
+	var result []selectionChange
+	for index := 0; index < length; index++ {
+		a, b := left.Units[index], right.Units[index]
+		if a.Alias == b.Alias && a.Source == b.Source && a.OtoLine == b.OtoLine {
+			continue
+		}
+		result = append(result, selectionChange{
+			Position: a.Position, Mora: a.Mora,
+			A: unitChoice{Alias: a.Alias, Source: a.Source, OtoLine: a.OtoLine, TargetScore: a.TargetScore, JoinScore: a.JoinScore, JoinProbability: a.JoinProbability},
+			B: unitChoice{Alias: b.Alias, Source: b.Source, OtoLine: b.OtoLine, TargetScore: b.TargetScore, JoinScore: b.JoinScore, JoinProbability: b.JoinProbability},
+		})
+	}
+	return result
 }
 
 func sameAudio(left, right *audio.PCM) bool {
