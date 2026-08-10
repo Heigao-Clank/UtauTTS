@@ -53,6 +53,7 @@ func main() {
 	flag.Float64Var(&cfg.PauseDurationMS, "pause-ms", 180, "punctuation pause in milliseconds")
 	flag.Float64Var(&cfg.ReleaseMS, "release-ms", 20, "unit release envelope in milliseconds")
 	flag.StringVar(&cfg.ProsodyModelPath, "prosody", "", "optional learned prosody model JSON")
+	flag.BoolVar(&cfg.ApplyPitch, "apply-pitch", false, "experimental waveform pitch resampling")
 	flag.Float64Var(&cfg.IntonationStrength, "intonation-strength", 0, "intonation strength (0..1)")
 	flag.StringVar(&cfg.WorldlinePath, "worldline", "", "path to worldline library")
 	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")

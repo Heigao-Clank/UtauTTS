@@ -74,8 +74,9 @@ GUI版に同梱された足立レイを使う実行例です。`--renderer`を�
 
 ```powershell
 .\UtauTTS\utautts-cli.exe `
-  --renderer worldline-hybrid-cv-balanced `
+  --renderer waveform `
   --intonation-strength 0.6 `
+  --apply-pitch `
   --voicebank ".\UtauTTS\voice\足立レイver3.5.0" `
   --text "あらゆる現実をすべて自分のほうへねじ曲げたのだ。" `
   --out "out.wav" `

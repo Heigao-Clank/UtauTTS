@@ -64,6 +64,7 @@ type systemInfo struct {
 	ProsodyModel       bool    `json:"prosody_model,omitempty"`
 	ProsodyPath        string  `json:"prosody_model_path,omitempty"`
 	ProsodyPitchOnly   bool    `json:"prosody_pitch_only,omitempty"`
+	ApplyPitch         bool    `json:"apply_pitch,omitempty"`
 	PitchContourPath   string  `json:"pitch_contour_path,omitempty"`
 	IntonationStrength float64 `json:"intonation_strength,omitempty"`
 	LongUnitGroups     int     `json:"long_unit_groups"`
@@ -100,7 +101,7 @@ func main() {
 	var cfg tts.Config
 	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, commonProsody, prosodyA, prosodyB, contourAPath, contourBPath, corpusPath string
 	var seed int64
-	var pitchOnlyA, pitchOnlyB bool
+	var pitchOnlyA, pitchOnlyB, applyPitchA, applyPitchB bool
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.Var(&texts, "text", "Japanese text to evaluate (repeatable)")
 	flag.StringVar(&corpusPath, "corpus", "", "versioned evaluation corpus JSON")
@@ -112,6 +113,8 @@ func main() {
 	flag.StringVar(&prosodyB, "system-b-prosody", "", "optional prosody model for system B")
 	flag.BoolVar(&pitchOnlyA, "system-a-prosody-pitch-only", false, "apply only prosody pitch prediction to system A")
 	flag.BoolVar(&pitchOnlyB, "system-b-prosody-pitch-only", false, "apply only prosody pitch prediction to system B")
+	flag.BoolVar(&applyPitchA, "system-a-apply-pitch", false, "enable experimental waveform pitch resampling for system A")
+	flag.BoolVar(&applyPitchB, "system-b-apply-pitch", false, "enable experimental waveform pitch resampling for system B")
 	flag.StringVar(&contourAPath, "system-a-pitch-contours", "", "optional per-case pitch contour JSON for system A")
 	flag.StringVar(&contourBPath, "system-b-pitch-contours", "", "optional per-case pitch contour JSON for system B")
 	flag.Float64Var(&cfg.JoinScoreScale, "join-scale", 0, "learned logit score scale")
@@ -179,14 +182,14 @@ func main() {
 		text := item.text
 		cfg.Text = text
 		cfg.PitchFactors = contoursA[item.id]
-		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly = rendererA, modelA, prosodyA, pitchOnlyA
+		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly, cfg.ApplyPitch = rendererA, modelA, prosodyA, pitchOnlyA, applyPitchA
 		first, err := tts.Synthesize(cfg)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system A: %v", text, err))
 			continue
 		}
 		cfg.PitchFactors = contoursB[item.id]
-		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly = rendererB, modelB, prosodyB, pitchOnlyB
+		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly, cfg.ApplyPitch = rendererB, modelB, prosodyB, pitchOnlyB, applyPitchB
 		second, err := tts.Synthesize(cfg)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system B: %v", text, err))
@@ -198,8 +201,8 @@ func main() {
 		}
 		trialID := len(manifest.Trials) + 1
 		left, right := first, second
-		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, ProsodyPitchOnly: pitchOnlyA, PitchContourPath: contourAPath, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(first.Plan.Units)}
-		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, ProsodyPitchOnly: pitchOnlyB, PitchContourPath: contourBPath, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(second.Plan.Units)}
+		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, ProsodyPitchOnly: pitchOnlyA, ApplyPitch: applyPitchA || pitchOnlyA || contourAPath != "", PitchContourPath: contourAPath, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(first.Plan.Units)}
+		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, ProsodyPitchOnly: pitchOnlyB, ApplyPitch: applyPitchB || pitchOnlyB || contourBPath != "", PitchContourPath: contourBPath, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(second.Plan.Units)}
 		if random.Intn(2) == 1 {
 			left, right, leftInfo, rightInfo = right, left, rightInfo, leftInfo
 		}

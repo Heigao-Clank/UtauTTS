@@ -379,7 +379,7 @@ func TestAnalyzeIntonationAuditIncludesLearnedPitchFactor(t *testing.T) {
 	}
 }
 
-func TestRenderPitchFactorChangesF0(t *testing.T) {
+func TestRenderPitchFactorRequiresExplicitMode(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/tone.wav"
 	data := make([]int16, 8000)
@@ -394,10 +394,17 @@ func TestRenderPitchFactorChangesF0(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wave := pcmFloats(pcm.Data[1600:4000])
-	got := pitch.EstimateMedian(wave, pcm.SampleRate)
-	if math.Abs(got-210) > 5 {
-		t.Fatalf("shifted F0 = %.2f, want about 210", got)
+	baseline := pitch.EstimateMedian(pcmFloats(pcm.Data[1600:4000]), pcm.SampleRate)
+	if math.Abs(baseline-200) > 5 {
+		t.Fatalf("default F0 = %.2f, want about 200", baseline)
+	}
+	pcm, err = Render(p, Config{ReleaseMS: 20, ApplyPitch: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shifted := pitch.EstimateMedian(pcmFloats(pcm.Data[1600:4000]), pcm.SampleRate)
+	if math.Abs(shifted-210) > 5 {
+		t.Fatalf("explicitly shifted F0 = %.2f, want about 210", shifted)
 	}
 }
 

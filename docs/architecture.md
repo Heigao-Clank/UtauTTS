@@ -37,7 +37,7 @@ aliasのtarget優先度は配列位置ではなく意味的tierで付けます�
 
 外部依存がなく、同じ入力から同じWAVを生成する標準レンダラです。
 
-PitchFactorを与えない`waveform`を発音明瞭度の固定基準とします。韻律レンダラの評価では、この基準より文章の聞き取りやすさを落とさないことを最初の採用条件にします。Overlapが0、またはPreutteranceと同値でも瞬時切替にならないよう、最低6msの相補クロスフェードを使います。
+PitchFactorを与えない、または`ApplyPitch`を有効にしない`waveform`を発音明瞭度の固定基準とします。標準CLIでは`--apply-pitch`を省略するため、`--prosody`を指定してもF0のリサンプルは行いません。`--apply-pitch`、pitch-only、pitch contourは実験用です。韻律レンダラの評価では、この基準より文章の聞き取りやすさを落とさないことを最初の採用条件にします。Overlapが0、またはPreutteranceと同値でも瞬時切替にならないよう、最低6msの相補クロスフェードを使います。
 
 ### waveform-long（実験的）
 

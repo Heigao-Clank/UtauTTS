@@ -23,6 +23,7 @@ type Config struct {
 	ProsodyModelPath    string
 	ProsodyPitchOnly    bool
 	PitchFactors        []float64
+	ApplyPitch          bool
 	IntonationStrength  float64
 	Renderer            string
 	WorldlinePath       string
@@ -123,9 +124,11 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("build synthesis plan: %w", err)
 	}
 	synthesisPlan.Text = cfg.Text
+	applyPitch := cfg.ApplyPitch || cfg.ProsodyPitchOnly || len(cfg.PitchFactors) > 0
 	pcm, err := render.Render(synthesisPlan, render.Config{
 		ReleaseMS:           cfg.ReleaseMS,
 		IntonationStrength:  cfg.IntonationStrength,
+		ApplyPitch:          applyPitch,
 		Backend:             cfg.Renderer,
 		WorldlinePath:       cfg.WorldlinePath,
 		WorldlineBridgePath: cfg.WorldlineBridgePath,

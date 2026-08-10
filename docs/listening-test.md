@@ -33,7 +33,7 @@ go run ./cmd/listening-test `
 
 `--join-model`は両システム共通、`--system-a-join-model`と`--system-b-join-model`は個別指定です。
 
-韻律モデルも`--prosody`を両システム共通、`--system-a-prosody`と`--system-b-prosody`を個別指定として比較できます。明瞭度基準は両方とも`waveform`、イントネーション強度`0`です。WORLD系と直接ピッチ加工は研究比較として、`--worldline`、`--worldline-bridge`、`--intonation-strength`を明示して有効にします。
+韻律モデルも`--prosody`を両システム共通、`--system-a-prosody`と`--system-b-prosody`を個別指定として比較できます。明瞭度基準は両方とも`waveform`、イントネーション強度`0`、`--system-a-apply-pitch`/`--system-b-apply-pitch`なしです。WORLD系と直接ピッチ加工は研究比較として、`--worldline`、`--worldline-bridge`、`--intonation-strength`、必要ならシステム別`--*-apply-pitch`を明示して有効にします。
 
 学習ピッチだけを分離評価する場合は、対象システムへ`--system-a-prosody-pitch-only`または`--system-b-prosody-pitch-only`を指定します。モーラ長と音量は固定値のままになり、イントネーション差だけを比較できます。ただし総合自然さだけでなく、発音明瞭度、クリック、声質、韻律を別々に記録してください。
 

@@ -179,6 +179,7 @@ func (s *Server) handleSynthesize(w http.ResponseWriter, r *http.Request) {
 		MoraDurationMS     float64 `json:"mora_duration_ms"`
 		PauseDurationMS    float64 `json:"pause_duration_ms"`
 		IntonationStrength float64 `json:"intonation_strength"`
+		ApplyPitch         bool    `json:"apply_pitch"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
@@ -203,6 +204,7 @@ func (s *Server) handleSynthesize(w http.ResponseWriter, r *http.Request) {
 		PauseDurationMS:     request.PauseDurationMS,
 		ProsodyModelPath:    s.prosodyModelPath,
 		IntonationStrength:  request.IntonationStrength,
+		ApplyPitch:          request.ApplyPitch,
 		Renderer:            s.renderer,
 		WorldlinePath:       s.worldlinePath,
 		WorldlineBridgePath: s.worldlineBridgePath,

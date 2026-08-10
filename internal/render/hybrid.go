@@ -33,7 +33,7 @@ func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config, restoreCV cvRes
 		directPlan.Units[i].EnergyFactor = 1
 	}
 	waveformPCM, err := renderWaveform(&directPlan, Config{
-		ReleaseMS: cfg.ReleaseMS, IntonationStrength: 0, Backend: "waveform",
+		ReleaseMS: cfg.ReleaseMS, IntonationStrength: 0, ApplyPitch: false, Backend: "waveform",
 	})
 	if err != nil {
 		return nil, err

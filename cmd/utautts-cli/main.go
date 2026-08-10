@@ -28,6 +28,7 @@ func main() {
 		prosodyPitchOnly    bool
 		pitchContourPath    string
 		pitchContourCase    string
+		applyPitch          bool
 		intonationStrength  float64
 		renderer            string
 		worldlinePath       string
@@ -50,6 +51,7 @@ func main() {
 	flag.BoolVar(&prosodyPitchOnly, "prosody-pitch-only", false, "apply only learned pitch and keep fixed duration/energy")
 	flag.StringVar(&pitchContourPath, "pitch-contours", "", "optional per-case pitch contour JSON")
 	flag.StringVar(&pitchContourCase, "pitch-case", "", "case ID in --pitch-contours")
+	flag.BoolVar(&applyPitch, "apply-pitch", false, "experimental waveform pitch resampling")
 	flag.Float64Var(&intonationStrength, "intonation-strength", 0, "experimental source-pitch stabilization and phrase contour strength (0..1)")
 	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend (default: waveform; other backends are experimental)")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
@@ -82,6 +84,7 @@ func main() {
 		ProsodyModelPath:    prosodyPath,
 		ProsodyPitchOnly:    prosodyPitchOnly,
 		PitchFactors:        pitchFactors,
+		ApplyPitch:          applyPitch,
 		IntonationStrength:  intonationStrength,
 		Renderer:            renderer,
 		WorldlinePath:       worldlinePath,

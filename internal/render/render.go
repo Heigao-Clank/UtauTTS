@@ -12,8 +12,12 @@ import (
 )
 
 type Config struct {
-	ReleaseMS           float64
-	IntonationStrength  float64
+	ReleaseMS          float64
+	IntonationStrength float64
+	// ApplyPitch enables the experimental waveform resampling path. The
+	// default false value keeps the waveform renderer intelligible and
+	// pitch-neutral even when a plan contains predicted pitch factors.
+	ApplyPitch          bool
 	Backend             string
 	WorldlinePath       string
 	WorldlineBridgePath string
@@ -139,7 +143,10 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		unit.EffectiveOverlapMS = timings[i].preutteranceMS - fadeInDurationMS(timings[i])
 		unit.IntonationFactor = 1
 	}
-	intonation := analyzeIntonation(synthesisPlan, timings, cache, cfg.IntonationStrength)
+	intonation := identityFactors(len(synthesisPlan.Units))
+	if cfg.ApplyPitch {
+		intonation = analyzeIntonation(synthesisPlan, timings, cache, cfg.IntonationStrength)
+	}
 	for unitIndex := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[unitIndex]
 		timing := timings[unitIndex]
@@ -167,7 +174,10 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		sourceConsonantFrames := msToFrames(unit.ConsonantMS, sampleRate)
 		effectiveConsonantFrames := msToFrames(timing.consonantMS, sampleRate)
 		wave := pcmFloats(trimmed.Data)
-		appliedPitch := unit.PitchFactor * intonation[unitIndex]
+		appliedPitch := 1.0
+		if cfg.ApplyPitch {
+			appliedPitch = unit.PitchFactor * intonation[unitIndex]
+		}
 		wave = resampleForPitch(wave, appliedPitch)
 		if appliedPitch > 0 {
 			sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / appliedPitch))
@@ -222,6 +232,14 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	}
 	preventClipping(mix, 0.98)
 	return &audio.PCM{SampleRate: sampleRate, Channels: 1, Data: floatPCM(mix)}, nil
+}
+
+func identityFactors(size int) []float64 {
+	result := make([]float64, size)
+	for index := range result {
+		result[index] = 1
+	}
+	return result
 }
 
 func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cache sourceCache, strength float64) []float64 {
