@@ -213,6 +213,7 @@ func createControls(parent, instance uintptr) error {
 
 	label(parent, instance, "レンダラ", 20, 312, 90, 22)
 	rendererCombo := control(0, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|cbsDropdownList, 110, 308, 200, 200, parent, idRenderer, instance)
+	comboAdd(rendererCombo, "worldline-hybrid-cv-balanced (推奨)")
 	comboAdd(rendererCombo, "worldline-hybrid")
 	comboAdd(rendererCombo, "waveform")
 	comboAdd(rendererCombo, "waveform-long (実験的)")
@@ -310,10 +311,12 @@ func startSynthesis(hwnd uintptr) {
 		showError(hwnd, fmt.Errorf("イントネーションは0から1で指定してください"))
 		return
 	}
-	renderer := "worldline-hybrid"
+	renderer := "worldline-hybrid-cv-balanced"
 	if selected, _, _ := sendMessage.Call(child(hwnd, idRenderer), cbGetCurSel, 0, 0); selected == 1 {
-		renderer = "waveform"
+		renderer = "worldline-hybrid"
 	} else if selected == 2 {
+		renderer = "waveform"
+	} else if selected == 3 {
 		renderer = "waveform-long"
 	}
 

@@ -5,7 +5,7 @@ GUIを含まないWindows x64向けHTTPサーバーです。.NET 8ランタイ�
 ```powershell
 .\utautts-server.exe `
   --voice-dir "voice" `
-  --renderer worldline-hybrid
+  --renderer worldline-hybrid-cv-balanced
 ```
 
 標準では実行ファイルと同じ場所の`voice`ディレクトリを読み込みます。利用可能な音源一覧と再走査は次のAPIで取得・実行できます。
@@ -31,7 +31,7 @@ Content-Type: application/json
 主なオプション：
 
 - `--voice-dir`: ボイスバンクを格納したディレクトリ
-- `--renderer`: `worldline-hybrid`、`waveform`、または実験的な`waveform-long`
+- `--renderer`: 足立レイでの推奨は`worldline-hybrid-cv-balanced`。比較用の`worldline-hybrid-cv`、従来の`worldline-hybrid`、`waveform`、実験的な`waveform-long`も指定可能
 - `--host`: 待受アドレス。初期値は`127.0.0.1`
 - `--port`: ポート。初期値は`8080`
 - `--prosody`: 学習済みモーラ長モデル

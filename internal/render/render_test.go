@@ -116,12 +116,49 @@ func TestDirectConsonantWeightsRestoreOnlyAperiodicFixedRegion(t *testing.T) {
 		state = state*1664525 + 1013904223
 		baseline[i] = (float64(state>>8)/float64(1<<24) - 0.5) * 0.4
 	}
-	weights := directConsonantWeights(p, 20, 1000, len(baseline), baseline, make([]float64, len(baseline)))
+	weights := directConsonantWeights(p, 20, 1000, len(baseline), baseline, make([]float64, len(baseline)), cvRestoreNone)
 	if weights[20] != 0 || weights[200] != 0 {
 		t.Fatalf("direct audio leaked outside fixed region: %.2f %.2f", weights[20], weights[200])
 	}
 	if weights[100] == 0 {
 		t.Fatal("aperiodic consonant was not restored")
+	}
+}
+
+func TestDirectConsonantWeightsCanForceCVFixedRegion(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{
+		Position: 0, Alias: "か", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 80, DurationMS: 140,
+	}}}
+	const sampleRate = 8000
+	baseline := make([]float64, sampleRate/2)
+	for index := range baseline {
+		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
+	}
+	standard := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreNone)
+	forced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreFull)
+	center := msToFrames(100, sampleRate)
+	if standard[center] != 0 || forced[center] != 1 {
+		t.Fatalf("standard=%f forced=%f", standard[center], forced[center])
+	}
+}
+
+func TestDirectConsonantWeightsBalancedCVStopsBeforeVowelTail(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{
+		Position: 0, Alias: "あ", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,
+	}}}
+	const sampleRate = 8000
+	baseline := make([]float64, sampleRate/2)
+	for index := range baseline {
+		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
+	}
+	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced)
+	attack := msToFrames(90, sampleRate)
+	vowelTail := msToFrames(145, sampleRate)
+	if math.Abs(balanced[attack]-0.85) > 0.001 {
+		t.Fatalf("attack weight=%f, want 0.85", balanced[attack])
+	}
+	if balanced[vowelTail] != 0 {
+		t.Fatalf("vowel tail weight=%f, want 0", balanced[vowelTail])
 	}
 }
 

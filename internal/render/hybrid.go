@@ -7,9 +7,18 @@ import (
 	"utautts/internal/audio"
 	"utautts/internal/pitch"
 	"utautts/internal/plan"
+	"utautts/internal/voicebank"
 )
 
-func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+type cvRestoreMode int
+
+const (
+	cvRestoreNone cvRestoreMode = iota
+	cvRestoreBalanced
+	cvRestoreFull
+)
+
+func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config, restoreCV cvRestoreMode) (*audio.PCM, error) {
 	worldlinePCM, err := renderWorldline(synthesisPlan, cfg)
 	if err != nil {
 		return nil, err
@@ -26,7 +35,7 @@ func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, er
 	length := max(len(waveformPCM.Data), len(worldlinePCM.Data))
 	baseline := pcmFloats(waveformPCM.Data)
 	vocoder := pcmFloats(worldlinePCM.Data)
-	weights := directConsonantWeights(synthesisPlan, cfg.ReleaseMS, waveformPCM.SampleRate, length, baseline, vocoder)
+	weights := directConsonantWeights(synthesisPlan, cfg.ReleaseMS, waveformPCM.SampleRate, length, baseline, vocoder, restoreCV)
 	result := make([]int16, length)
 	for i := range result {
 		if weights[i] == 0 {
@@ -49,7 +58,7 @@ func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, er
 	return &audio.PCM{SampleRate: waveformPCM.SampleRate, Channels: 1, Data: result}, nil
 }
 
-func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleRate, length int, baseline, synthesized []float64) []float64 {
+func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleRate, length int, baseline, synthesized []float64, restoreCV cvRestoreMode) []float64 {
 	weights := make([]float64, length)
 	window := max(16, msToFrames(30, sampleRate))
 	hop := max(1, msToFrames(5, sampleRate))
@@ -57,6 +66,23 @@ func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleR
 		timing := normalizeTiming(unit, releaseMS)
 		start := max(0, msToFramesSigned(unit.NoteStartMS-timing.preutteranceMS, sampleRate))
 		end := min(length, start+msToFrames(timing.consonantMS, sampleRate))
+		isCV := voicebank.ClassifyAlias(unit.Alias) == voicebank.AliasCV
+		if restoreCV == cvRestoreFull && isCV {
+			for index := start; index < end; index++ {
+				weights[index] = 1
+			}
+			continue
+		}
+		if restoreCV == cvRestoreBalanced && isCV {
+			// A CV fixed region often extends into its periodic vowel. Restoring the
+			// whole region makes the consonant clear, but also exposes rough WSOLA
+			// pitch artifacts in the vowel. Protect the preutterance (the consonant
+			// attack) and only a short release after the note boundary instead.
+			attackEnd := min(end, msToFramesSigned(unit.NoteStartMS+8, sampleRate))
+			for index := start; index < attackEnd; index++ {
+				weights[index] = math.Max(weights[index], 0.85)
+			}
+		}
 		for center := start; center < end; center += hop {
 			frameStart := max(0, center-window/2)
 			frameEnd := min(len(baseline), frameStart+window)
