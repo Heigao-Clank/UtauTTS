@@ -33,6 +33,8 @@ go run ./cmd/listening-test `
 
 `--join-model`は両システム共通、`--system-a-join-model`と`--system-b-join-model`は個別指定です。
 
+韻律モデルも`--prosody`を両システム共通、`--system-a-prosody`と`--system-b-prosody`を個別指定として比較できます。WORLD系レンダラでは`--worldline`、`--worldline-bridge`と`--intonation-strength`も指定できます。
+
 ## ABX識別評価
 
 ```powershell

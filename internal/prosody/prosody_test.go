@@ -3,6 +3,7 @@ package prosody
 import (
 	"encoding/json"
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -43,12 +44,17 @@ func TestTrainPredictSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(model.PitchWeights) == 0 || len(model.EnergyWeights) == 0 {
+		t.Fatal("pitch and energy models were not trained")
+	}
 	predictions := model.Predict(morae)
 	if len(predictions) != len(morae) || predictions[0].DurationFactor < 0.8 || predictions[0].DurationFactor > 1.25 {
 		t.Fatalf("invalid predictions: %#v", predictions)
 	}
-	if predictions[0].PitchFactor != 1 || predictions[0].EnergyFactor != 1 {
-		t.Fatalf("duration-only model changed pitch or energy: %#v", predictions[0])
+	for _, prediction := range predictions {
+		if prediction.PitchFactor < 0.97 || prediction.PitchFactor > 1.03 || prediction.EnergyFactor < 0.9 || prediction.EnergyFactor > 1.1 {
+			t.Fatalf("prosody factors out of bounds: %#v", prediction)
+		}
 	}
 	for i, mora := range morae {
 		if mora.Pause && predictions[i].DurationFactor != 1 {
@@ -74,6 +80,22 @@ func TestTrainPredictSaveLoad(t *testing.T) {
 	secondJSON, _ := json.Marshal(again)
 	if string(firstJSON) != string(secondJSON) {
 		t.Fatal("training is not deterministic")
+	}
+}
+
+func TestLoadLegacyDurationOnlyModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.json")
+	data := []byte(`{"version":2,"feature_version":1,"mode":"speech_duration_residual","duration_weights":{"bias":0.1}}`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	model, err := LoadModel(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prediction := model.Predict([]frontend.Mora{{Text: "あ", Vowel: "a"}})[0]
+	if prediction.PitchFactor != 1 || prediction.EnergyFactor != 1 {
+		t.Fatalf("legacy model changed pitch or energy: %+v", prediction)
 	}
 }
 

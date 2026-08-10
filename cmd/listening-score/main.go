@@ -20,6 +20,8 @@ type systemInfo struct {
 	Renderer      string `json:"renderer"`
 	JoinModel     bool   `json:"join_model"`
 	JoinModelPath string `json:"join_model_path,omitempty"`
+	ProsodyModel  bool   `json:"prosody_model,omitempty"`
+	ProsodyPath   string `json:"prosody_model_path,omitempty"`
 }
 type answerTrial struct {
 	ID      int        `json:"id"`
@@ -193,6 +195,12 @@ func systemName(system systemInfo) string {
 		}
 	} else {
 		name += "+handcrafted"
+	}
+	if system.ProsodyModel {
+		name += "+prosody"
+		if system.ProsodyPath != "" {
+			name += ":" + filepath.Base(system.ProsodyPath)
+		}
 	}
 	return name
 }

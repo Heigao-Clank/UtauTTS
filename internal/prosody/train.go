@@ -38,7 +38,7 @@ func Train(records []Record, cfg TrainConfig) (*Model, error) {
 		cfg.Seed = 1
 	}
 
-	var duration []example
+	var duration, pitchTargets, energyTargets []example
 	trainRecords, validation := splitRecords(records)
 	for _, record := range trainRecords {
 		morae := targetsToMorae(record.Tokens)
@@ -49,15 +49,27 @@ func Train(records []Record, cfg TrainConfig) (*Model, error) {
 				ratio /= center
 				duration = append(duration, example{featuresFor(morae, i), math.Log(clamp(ratio, 0.5, 2.0))})
 			}
+			if !target.Pause && target.PitchRatio > 0 {
+				pitchTargets = append(pitchTargets, example{featuresFor(morae, i), math.Log(clamp(target.PitchRatio, 0.7, 1.4))})
+			}
+			if !target.Pause && target.EnergyRatio > 0 {
+				energyTargets = append(energyTargets, example{featuresFor(morae, i), math.Log(clamp(target.EnergyRatio, 0.4, 2.5))})
+			}
 		}
 	}
 	if len(duration) == 0 {
 		return nil, fmt.Errorf("dataset has insufficient duration targets")
 	}
 	model := &Model{
-		Version: ModelVersion, FeatureVersion: 1, Mode: "speech_duration_residual",
+		Version: ModelVersion, FeatureVersion: 1, Mode: "speech_prosody_residual",
 		DurationWeights: fit(duration, cfg, cfg.Seed),
 		Training:        TrainingInfo{Records: len(trainRecords), Tokens: len(duration), Epochs: cfg.Epochs, Rate: cfg.LearningRate, Seed: cfg.Seed},
+	}
+	if len(pitchTargets) > 0 {
+		model.PitchWeights = fit(pitchTargets, cfg, cfg.Seed+1)
+	}
+	if len(energyTargets) > 0 {
+		model.EnergyWeights = fit(energyTargets, cfg, cfg.Seed+2)
 	}
 	model.Metrics = Evaluate(model, validation)
 	return model, nil
@@ -120,7 +132,7 @@ func fit(examples []example, cfg TrainConfig, seed int64) map[string]float64 {
 
 func Evaluate(model *Model, records []Record) Metrics {
 	result := Metrics{Records: len(records)}
-	var durationN int
+	var durationN, pitchN, energyN int
 	for _, record := range records {
 		morae := targetsToMorae(record.Tokens)
 		predicted := model.Predict(morae)
@@ -130,13 +142,33 @@ func Evaluate(model *Model, records []Record) Metrics {
 				expected := baselineDuration(target) * predicted[i].DurationFactor
 				actual := target.DurationMS / center
 				result.DurationMAEMS += math.Abs(expected - actual)
+				result.BaselineDurationMAEMS += math.Abs(baselineDuration(target) - actual)
 				durationN++
+			}
+			if !target.Pause && target.PitchRatio > 0 && predicted[i].PitchFactor > 0 {
+				result.PitchMAECents += math.Abs(1200 * math.Log2(predicted[i].PitchFactor/target.PitchRatio))
+				result.BaselinePitchMAECents += math.Abs(1200 * math.Log2(target.PitchRatio))
+				pitchN++
+			}
+			if !target.Pause && target.EnergyRatio > 0 && predicted[i].EnergyFactor > 0 {
+				result.EnergyMAEDB += math.Abs(20 * math.Log10(predicted[i].EnergyFactor/target.EnergyRatio))
+				result.BaselineEnergyMAEDB += math.Abs(20 * math.Log10(target.EnergyRatio))
+				energyN++
 			}
 		}
 	}
 	result.Tokens = durationN
 	if durationN > 0 {
 		result.DurationMAEMS /= float64(durationN)
+		result.BaselineDurationMAEMS /= float64(durationN)
+	}
+	if pitchN > 0 {
+		result.PitchMAECents /= float64(pitchN)
+		result.BaselinePitchMAECents /= float64(pitchN)
+	}
+	if energyN > 0 {
+		result.EnergyMAEDB /= float64(energyN)
+		result.BaselineEnergyMAEDB /= float64(energyN)
 	}
 	return result
 }

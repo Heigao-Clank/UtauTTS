@@ -1,6 +1,6 @@
 # モーラ長の学習
 
-この学習ラインは固定規則に対する局所的なモーラ長補正だけを学習します。コーパス話者の声質、発話全体の速度、F0、音量、ポーズは転写しません。
+この学習ラインは固定規則に対する局所的なモーラ長、F0、エネルギーの残差を学習します。コーパス話者の声質や絶対音高、発話全体の速度・音量は転写せず、各発話の中央値で正規化します。
 
 ## データセット作成
 
@@ -25,7 +25,9 @@ go run ./cmd/prosody-train `
   --epochs 30
 ```
 
-発話単位で学習・検証を分離し、発話速度を正規化した対数モーラ長の残差を学習します。弱アラインメントの外れ値はHuber勾配で抑えます。
+発話単位で学習・検証を分離し、発話速度を正規化した対数モーラ長、発話中央値に対するF0比とエネルギー比を学習します。弱アラインメントの外れ値はHuber勾配で抑えます。推論時は中央値を1へ戻し、長さを0.8〜1.25、F0を0.97〜1.03、エネルギーを0.9〜1.1へ制限します。
+
+レポートには学習モデルと固定値ベースラインのduration MAE、pitch MAE、energy MAEを併記します。学習値が固定値を上回る場合はモデルを採用しません。
 
 ## 使用
 
@@ -38,3 +40,18 @@ go run ./cmd/utautts-cli `
 ```
 
 モデル適用時も補正倍率は発話内中央値1.0へ揃え、`0.8`から`1.25`へ制限します。`--prosody`を省略すると固定規則を使います。
+
+聴感比較では片側だけにモデルを指定できます。
+
+```powershell
+go run ./cmd/listening-test `
+  --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
+  --system-a-renderer worldline-hybrid `
+  --system-b-renderer worldline-hybrid `
+  --system-b-prosody out/prosody/model.json `
+  --corpus docs/evaluation-corpus.json `
+  --intonation-strength 0.6 `
+  --worldline release/UtauTTS/worldline.dll `
+  --worldline-bridge release/UtauTTS/utautts-worldline-bridge.exe `
+  --out out/listening/prosody
+```

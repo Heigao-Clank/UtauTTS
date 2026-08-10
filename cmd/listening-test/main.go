@@ -58,10 +58,13 @@ type unitChoice struct {
 }
 
 type systemInfo struct {
-	Renderer       string `json:"renderer"`
-	JoinModel      bool   `json:"join_model"`
-	JoinModelPath  string `json:"join_model_path,omitempty"`
-	LongUnitGroups int    `json:"long_unit_groups"`
+	Renderer           string  `json:"renderer"`
+	JoinModel          bool    `json:"join_model"`
+	JoinModelPath      string  `json:"join_model_path,omitempty"`
+	ProsodyModel       bool    `json:"prosody_model,omitempty"`
+	ProsodyPath        string  `json:"prosody_model_path,omitempty"`
+	IntonationStrength float64 `json:"intonation_strength,omitempty"`
+	LongUnitGroups     int     `json:"long_unit_groups"`
 }
 
 type publicManifest struct {
@@ -83,7 +86,7 @@ type answerKey struct {
 func main() {
 	var texts textList
 	var cfg tts.Config
-	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, corpusPath string
+	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, commonProsody, prosodyA, prosodyB, corpusPath string
 	var seed int64
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.Var(&texts, "text", "Japanese text to evaluate (repeatable)")
@@ -91,6 +94,9 @@ func main() {
 	flag.StringVar(&commonModel, "join-model", "", "join-cost model used by both systems")
 	flag.StringVar(&modelA, "system-a-join-model", "", "optional join model for system A")
 	flag.StringVar(&modelB, "system-b-join-model", "", "optional join model for system B")
+	flag.StringVar(&commonProsody, "prosody", "", "prosody model used by both systems")
+	flag.StringVar(&prosodyA, "system-a-prosody", "", "optional prosody model for system A")
+	flag.StringVar(&prosodyB, "system-b-prosody", "", "optional prosody model for system B")
 	flag.Float64Var(&cfg.JoinScoreScale, "join-scale", 0, "learned logit score scale")
 	flag.StringVar(&rendererA, "system-a-renderer", "waveform", "first renderer")
 	flag.StringVar(&rendererB, "system-b-renderer", "waveform-long", "second renderer")
@@ -101,6 +107,9 @@ func main() {
 	flag.Float64Var(&cfg.MoraDurationMS, "mora-ms", 140, "base mora duration")
 	flag.Float64Var(&cfg.PauseDurationMS, "pause-ms", 180, "pause duration")
 	flag.Float64Var(&cfg.ReleaseMS, "release-ms", 20, "release envelope")
+	flag.Float64Var(&cfg.IntonationStrength, "intonation-strength", 0, "source-pitch stabilization and phrase contour strength (0..1)")
+	flag.StringVar(&cfg.WorldlinePath, "worldline", "", "path to worldline library")
+	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")
 	flag.Parse()
 	if cfg.VoicebankPath == "" || outputDirectory == "" || (len(texts) == 0 && corpusPath == "") || (mode != "ab" && mode != "abx") {
 		flag.Usage()
@@ -128,6 +137,12 @@ func main() {
 	if modelB == "" {
 		modelB = commonModel
 	}
+	if prosodyA == "" {
+		prosodyA = commonProsody
+	}
+	if prosodyB == "" {
+		prosodyB = commonProsody
+	}
 	publicDirectory := filepath.Join(outputDirectory, "public")
 	if err := os.MkdirAll(publicDirectory, 0o755); err != nil {
 		log.Fatal(err)
@@ -138,13 +153,13 @@ func main() {
 	for _, item := range cases {
 		text := item.text
 		cfg.Text = text
-		cfg.Renderer, cfg.JoinModelPath = rendererA, modelA
+		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath = rendererA, modelA, prosodyA
 		first, err := tts.Synthesize(cfg)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system A: %v", text, err))
 			continue
 		}
-		cfg.Renderer, cfg.JoinModelPath = rendererB, modelB
+		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath = rendererB, modelB, prosodyB
 		second, err := tts.Synthesize(cfg)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system B: %v", text, err))
@@ -156,8 +171,8 @@ func main() {
 		}
 		trialID := len(manifest.Trials) + 1
 		left, right := first, second
-		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, LongUnitGroups: longUnitGroups(first.Plan.Units)}
-		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, LongUnitGroups: longUnitGroups(second.Plan.Units)}
+		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(first.Plan.Units)}
+		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(second.Plan.Units)}
 		if random.Intn(2) == 1 {
 			left, right, leftInfo, rightInfo = right, left, rightInfo, leftInfo
 		}
