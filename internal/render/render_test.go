@@ -106,6 +106,14 @@ func TestWorldlineF0CurveInterpolatesInLogFrequency(t *testing.T) {
 	}
 }
 
+func TestWorldlineF0CurveAppliesLearnedPitchFactors(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{NoteStartMS: 0}, {NoteStartMS: 100}}}
+	curve := worldlineF0Curve(p, []float64{200, 200}, []float64{1.03, 0.97}, 200, 11)
+	if math.Abs(curve[0]-206) > 0.01 || math.Abs(curve[10]-194) > 0.01 {
+		t.Fatalf("factored curve endpoints = %.2f..%.2f", curve[0], curve[10])
+	}
+}
+
 func TestDirectConsonantWeightsRestoreOnlyAperiodicFixedRegion(t *testing.T) {
 	p := &plan.Plan{Units: []plan.Unit{{
 		Position: 0, NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 80, DurationMS: 140,
@@ -159,6 +167,27 @@ func TestDirectConsonantWeightsBalancedCVStopsBeforeVowelTail(t *testing.T) {
 	}
 	if balanced[vowelTail] != 0 {
 		t.Fatalf("vowel tail weight=%f, want 0", balanced[vowelTail])
+	}
+}
+
+func TestDirectConsonantWeightsBalancedAvoidsShiftedPeriodicVowel(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{
+		Position: 0, Alias: "か", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,
+		PitchFactor: 1.03, IntonationFactor: 1.02,
+	}}}
+	const sampleRate = 8000
+	baseline := make([]float64, sampleRate/2)
+	for index := range baseline {
+		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
+	}
+	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced)
+	beforeBoundary := msToFrames(98, sampleRate)
+	afterTransition := msToFrames(105, sampleRate)
+	if balanced[beforeBoundary] == 0 {
+		t.Fatal("shifted CV consonant attack was not protected")
+	}
+	if balanced[afterTransition] != 0 {
+		t.Fatalf("shifted raw vowel leaked after transition: %f", balanced[afterTransition])
 	}
 }
 
@@ -314,6 +343,22 @@ func TestAnalyzeIntonationMeasuresAndLimitsCorrection(t *testing.T) {
 	}
 }
 
+func TestAnalyzeIntonationAuditIncludesLearnedPitchFactor(t *testing.T) {
+	path := t.TempDir() + "/tone.wav"
+	data := make([]int16, 8000)
+	for i := range data {
+		data[i] = int16(6000 * math.Sin(2*math.Pi*200*float64(i)/16000))
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 16000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{Units: []plan.Unit{{Position: 0, Source: path, PitchFactor: 1.03}}}
+	factors := analyzeIntonation(p, []effectiveTiming{{scale: 1}}, sourceCache{}, 1)
+	if math.Abs(p.Units[0].TargetF0Hz-p.Units[0].SourceF0Hz*factors[0]*1.03) > 0.1 {
+		t.Fatalf("target F0=%f source=%f", p.Units[0].TargetF0Hz, p.Units[0].SourceF0Hz)
+	}
+}
+
 func TestRenderPitchFactorChangesF0(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/tone.wav"
@@ -333,6 +378,39 @@ func TestRenderPitchFactorChangesF0(t *testing.T) {
 	got := pitch.EstimateMedian(wave, pcm.SampleRate)
 	if math.Abs(got-210) > 5 {
 		t.Fatalf("shifted F0 = %.2f, want about 210", got)
+	}
+}
+
+func TestPitchShiftVowelTailPreservesFixedPrefixAndChangesTailF0(t *testing.T) {
+	const sampleRate = 16000
+	wave := make([]float64, sampleRate/2)
+	for i := range wave {
+		wave[i] = 0.2 * math.Sin(2*math.Pi*200*float64(i)/sampleRate)
+	}
+	vowelStart := msToFrames(100, sampleRate)
+	got := pitchShiftVowelTail(wave, vowelStart, 1.05, sampleRate)
+	for i := 0; i < vowelStart; i++ {
+		if got[i] != wave[i] {
+			t.Fatalf("fixed prefix changed at sample %d", i)
+		}
+	}
+	start := vowelStart + msToFrames(40, sampleRate)
+	measured := pitch.EstimateMedian(got[start:start+msToFrames(200, sampleRate)], sampleRate)
+	if measured < 207 || measured > 213 {
+		t.Fatalf("shifted vowel F0=%f, want about 210 Hz", measured)
+	}
+}
+
+func TestPitchShiftVowelTailLeavesShortTailUntouched(t *testing.T) {
+	wave := make([]float64, 100)
+	for i := range wave {
+		wave[i] = float64(i) / 100
+	}
+	got := pitchShiftVowelTail(wave, 80, 1.05, 1000)
+	for i := range wave {
+		if got[i] != wave[i] {
+			t.Fatalf("short tail changed at sample %d", i)
+		}
 	}
 }
 

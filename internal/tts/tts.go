@@ -21,6 +21,8 @@ type Config struct {
 	PauseDurationMS     float64
 	ReleaseMS           float64
 	ProsodyModelPath    string
+	ProsodyPitchOnly    bool
+	PitchFactors        []float64
 	IntonationStrength  float64
 	Renderer            string
 	WorldlinePath       string
@@ -82,6 +84,31 @@ func Synthesize(cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("load prosody model: %w", loadErr)
 		}
 		predictions = model.Predict(morae)
+		if cfg.ProsodyPitchOnly {
+			for i := range predictions {
+				predictions[i].DurationMS = 0
+				predictions[i].DurationFactor = 1
+				predictions[i].EnergyFactor = 1
+			}
+		}
+	}
+	if len(cfg.PitchFactors) > 0 {
+		if len(cfg.PitchFactors) != len(morae) {
+			return nil, fmt.Errorf("pitch factors: got %d values for %d morae", len(cfg.PitchFactors), len(morae))
+		}
+		if len(predictions) == 0 {
+			predictions = make([]prosody.Prediction, len(morae))
+			for i := range predictions {
+				predictions[i].DurationFactor = 1
+				predictions[i].EnergyFactor = 1
+			}
+		}
+		for i, factor := range cfg.PitchFactors {
+			if factor <= 0 {
+				return nil, fmt.Errorf("pitch factors: value %d is %.4f, want positive", i, factor)
+			}
+			predictions[i].PitchFactor = factor
+		}
 	}
 	synthesisPlan, err := plan.Build(bank, reading, morae, selections, plan.Config{
 		MoraDurationMS:   cfg.MoraDurationMS,

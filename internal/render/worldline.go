@@ -79,11 +79,18 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		reference = 220
 	}
 
+	pitchFactors := make([]float64, len(synthesisPlan.Units))
+	for i, unit := range synthesisPlan.Units {
+		pitchFactors[i] = intonation[i]
+		if unit.PitchFactor > 0 {
+			pitchFactors[i] *= unit.PitchFactor
+		}
+	}
 	manifest := worldlineManifest{
 		WorldlinePath: library,
 		SampleRate:    sampleRate,
 		F0Curve: worldlineF0Curve(
-			synthesisPlan, pitches, intonation, reference,
+			synthesisPlan, pitches, pitchFactors, reference,
 			max(2, int(math.Ceil((synthesisPlan.DurationMS+cfg.ReleaseMS)/worldlineFrameMS))+2),
 		),
 	}
@@ -98,7 +105,7 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 			unitPitch = reference
 		}
 		unit.SourceF0Hz = pitches[i]
-		unit.TargetF0Hz = unitPitch * intonation[i]
+		unit.TargetF0Hz = unitPitch * pitchFactors[i]
 		unit.IntonationFactor = intonation[i]
 		consonantVelocity := 100.0
 		if timing.consonantMS > 0 && unit.ConsonantMS > 0 {

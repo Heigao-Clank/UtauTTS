@@ -32,6 +32,8 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	switch cfg.Backend {
 	case "", "waveform":
 		return renderWaveform(synthesisPlan, cfg)
+	case "waveform-vowel-pitch":
+		return renderWaveform(synthesisPlan, cfg)
 	case "waveform-long":
 		return renderWaveformLong(synthesisPlan, cfg)
 	case "worldline":
@@ -168,11 +170,18 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		effectiveConsonantFrames := msToFrames(timing.consonantMS, sampleRate)
 		wave := pcmFloats(trimmed.Data)
 		appliedPitch := unit.PitchFactor * intonation[unitIndex]
-		wave = resampleForPitch(wave, appliedPitch)
-		if appliedPitch > 0 {
-			sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / appliedPitch))
+		if cfg.Backend == "waveform-vowel-pitch" {
+			// Match the intelligible waveform baseline first. Only the vowel tail
+			// after oto.ini's fixed region is allowed to realize the pitch contour.
+			wave = retimeWithCompressedPrefix(wave, targetFrames, sourceConsonantFrames, effectiveConsonantFrames, sampleRate)
+			wave = pitchShiftVowelTail(wave, effectiveConsonantFrames, appliedPitch, sampleRate)
+		} else {
+			wave = resampleForPitch(wave, appliedPitch)
+			if appliedPitch > 0 {
+				sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / appliedPitch))
+			}
+			wave = retimeWithCompressedPrefix(wave, targetFrames, sourceConsonantFrames, effectiveConsonantFrames, sampleRate)
 		}
-		wave = retimeWithCompressedPrefix(wave, targetFrames, sourceConsonantFrames, effectiveConsonantFrames, sampleRate)
 		if unit.EnergyFactor > 0 {
 			for i := range wave {
 				wave[i] *= unit.EnergyFactor
@@ -298,7 +307,7 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 			}
 			target := reference * math.Pow(2, semitones/12)
 			unit := &synthesisPlan.Units[i]
-			unit.SourceF0Hz, unit.TargetF0Hz = pitches[i], target
+			unit.SourceF0Hz = pitches[i]
 			if pitches[i] > 0 {
 				effectiveStrength := strength
 				if timings[i].scale < 1 {
@@ -306,6 +315,11 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 				}
 				factor := math.Pow(target/pitches[i], effectiveStrength)
 				factors[i] = math.Max(0.92, math.Min(1.08, factor))
+				pitchFactor := unit.PitchFactor
+				if pitchFactor <= 0 {
+					pitchFactor = 1
+				}
+				unit.TargetF0Hz = pitches[i] * factors[i] * pitchFactor
 			}
 			unit.IntonationFactor = factors[i]
 		}
@@ -380,6 +394,35 @@ func resampleForPitch(source []float64, factor float64) []float64 {
 	}
 	factor = math.Max(0.75, math.Min(1.35, factor))
 	return linearResample(source, max(16, int(math.Round(float64(len(source))/factor))))
+}
+
+func pitchShiftVowelTail(wave []float64, vowelStart int, factor float64, sampleRate int) []float64 {
+	result := append([]float64(nil), wave...)
+	if len(wave) < 16 || sampleRate <= 0 || factor <= 0 || math.Abs(factor-1) < 0.001 {
+		return result
+	}
+	vowelStart = max(0, min(vowelStart, len(wave)))
+	tail := wave[vowelStart:]
+	if len(tail) < msToFrames(35, sampleRate) {
+		return result
+	}
+	factor = math.Max(0.92, math.Min(1.08, factor))
+	pitched := resampleForPitch(tail, factor)
+	pitched = wsola(pitched, len(tail), sampleRate)
+	if len(pitched) != len(tail) {
+		return result
+	}
+	// Crossfade only forward into the vowel. Samples before vowelStart remain
+	// bit-for-bit identical to the no-pitch waveform baseline.
+	transition := min(msToFrames(12, sampleRate), len(tail)/3)
+	for i := range tail {
+		alpha := 1.0
+		if transition > 0 && i < transition {
+			alpha = smoothstep(float64(i) / float64(transition))
+		}
+		result[vowelStart+i] = tail[i]*(1-alpha) + pitched[i]*alpha
+	}
+	return result
 }
 
 func (c sourceCache) load(path string) (*audio.PCM, error) {

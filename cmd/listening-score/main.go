@@ -17,11 +17,13 @@ func (paths *pathList) String() string         { return strings.Join(*paths, ","
 func (paths *pathList) Set(value string) error { *paths = append(*paths, value); return nil }
 
 type systemInfo struct {
-	Renderer      string `json:"renderer"`
-	JoinModel     bool   `json:"join_model"`
-	JoinModelPath string `json:"join_model_path,omitempty"`
-	ProsodyModel  bool   `json:"prosody_model,omitempty"`
-	ProsodyPath   string `json:"prosody_model_path,omitempty"`
+	Renderer         string `json:"renderer"`
+	JoinModel        bool   `json:"join_model"`
+	JoinModelPath    string `json:"join_model_path,omitempty"`
+	ProsodyModel     bool   `json:"prosody_model,omitempty"`
+	ProsodyPath      string `json:"prosody_model_path,omitempty"`
+	ProsodyPitchOnly bool   `json:"prosody_pitch_only,omitempty"`
+	PitchContourPath string `json:"pitch_contour_path,omitempty"`
 }
 type answerTrial struct {
 	ID      int        `json:"id"`
@@ -201,6 +203,12 @@ func systemName(system systemInfo) string {
 		if system.ProsodyPath != "" {
 			name += ":" + filepath.Base(system.ProsodyPath)
 		}
+		if system.ProsodyPitchOnly {
+			name += ":pitch-only"
+		}
+	}
+	if system.PitchContourPath != "" {
+		name += "+pitch-contour:" + filepath.Base(system.PitchContourPath)
 	}
 	return name
 }

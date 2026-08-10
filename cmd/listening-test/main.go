@@ -63,8 +63,20 @@ type systemInfo struct {
 	JoinModelPath      string  `json:"join_model_path,omitempty"`
 	ProsodyModel       bool    `json:"prosody_model,omitempty"`
 	ProsodyPath        string  `json:"prosody_model_path,omitempty"`
+	ProsodyPitchOnly   bool    `json:"prosody_pitch_only,omitempty"`
+	PitchContourPath   string  `json:"pitch_contour_path,omitempty"`
 	IntonationStrength float64 `json:"intonation_strength,omitempty"`
 	LongUnitGroups     int     `json:"long_unit_groups"`
+}
+
+type pitchContourCorpus struct {
+	Version int                `json:"version"`
+	Cases   []pitchContourCase `json:"cases"`
+}
+
+type pitchContourCase struct {
+	ID           string    `json:"id"`
+	PitchFactors []float64 `json:"pitch_factors"`
 }
 
 type publicManifest struct {
@@ -86,8 +98,9 @@ type answerKey struct {
 func main() {
 	var texts textList
 	var cfg tts.Config
-	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, commonProsody, prosodyA, prosodyB, corpusPath string
+	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, commonProsody, prosodyA, prosodyB, contourAPath, contourBPath, corpusPath string
 	var seed int64
+	var pitchOnlyA, pitchOnlyB bool
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.Var(&texts, "text", "Japanese text to evaluate (repeatable)")
 	flag.StringVar(&corpusPath, "corpus", "", "versioned evaluation corpus JSON")
@@ -97,6 +110,10 @@ func main() {
 	flag.StringVar(&commonProsody, "prosody", "", "prosody model used by both systems")
 	flag.StringVar(&prosodyA, "system-a-prosody", "", "optional prosody model for system A")
 	flag.StringVar(&prosodyB, "system-b-prosody", "", "optional prosody model for system B")
+	flag.BoolVar(&pitchOnlyA, "system-a-prosody-pitch-only", false, "apply only prosody pitch prediction to system A")
+	flag.BoolVar(&pitchOnlyB, "system-b-prosody-pitch-only", false, "apply only prosody pitch prediction to system B")
+	flag.StringVar(&contourAPath, "system-a-pitch-contours", "", "optional per-case pitch contour JSON for system A")
+	flag.StringVar(&contourBPath, "system-b-pitch-contours", "", "optional per-case pitch contour JSON for system B")
 	flag.Float64Var(&cfg.JoinScoreScale, "join-scale", 0, "learned logit score scale")
 	flag.StringVar(&rendererA, "system-a-renderer", "waveform", "first renderer")
 	flag.StringVar(&rendererB, "system-b-renderer", "waveform-long", "second renderer")
@@ -143,6 +160,14 @@ func main() {
 	if prosodyB == "" {
 		prosodyB = commonProsody
 	}
+	contoursA, err := loadPitchContours(contourAPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	contoursB, err := loadPitchContours(contourBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 	publicDirectory := filepath.Join(outputDirectory, "public")
 	if err := os.MkdirAll(publicDirectory, 0o755); err != nil {
 		log.Fatal(err)
@@ -153,13 +178,15 @@ func main() {
 	for _, item := range cases {
 		text := item.text
 		cfg.Text = text
-		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath = rendererA, modelA, prosodyA
+		cfg.PitchFactors = contoursA[item.id]
+		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly = rendererA, modelA, prosodyA, pitchOnlyA
 		first, err := tts.Synthesize(cfg)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system A: %v", text, err))
 			continue
 		}
-		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath = rendererB, modelB, prosodyB
+		cfg.PitchFactors = contoursB[item.id]
+		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly = rendererB, modelB, prosodyB, pitchOnlyB
 		second, err := tts.Synthesize(cfg)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system B: %v", text, err))
@@ -171,8 +198,8 @@ func main() {
 		}
 		trialID := len(manifest.Trials) + 1
 		left, right := first, second
-		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(first.Plan.Units)}
-		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(second.Plan.Units)}
+		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, ProsodyPitchOnly: pitchOnlyA, PitchContourPath: contourAPath, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(first.Plan.Units)}
+		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, ProsodyPitchOnly: pitchOnlyB, PitchContourPath: contourBPath, IntonationStrength: cfg.IntonationStrength, LongUnitGroups: longUnitGroups(second.Plan.Units)}
 		if random.Intn(2) == 1 {
 			left, right, leftInfo, rightInfo = right, left, rightInfo, leftInfo
 		}
@@ -215,6 +242,28 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("wrote %d %s trials to %s (keep answer-key.json private)\n", len(manifest.Trials), mode, publicDirectory)
+}
+
+func loadPitchContours(path string) (map[string][]float64, error) {
+	result := map[string][]float64{}
+	if path == "" {
+		return result, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read pitch contours: %w", err)
+	}
+	var corpus pitchContourCorpus
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		return nil, fmt.Errorf("decode pitch contours: %w", err)
+	}
+	if corpus.Version != 1 {
+		return nil, fmt.Errorf("unsupported pitch contour version %d", corpus.Version)
+	}
+	for _, item := range corpus.Cases {
+		result[item.ID] = item.PitchFactors
+	}
+	return result, nil
 }
 
 func selectionChanges(left, right *plan.Plan) []selectionChange {

@@ -23,8 +23,17 @@ func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config, restoreCV cvRes
 	if err != nil {
 		return nil, err
 	}
-	waveformPCM, err := renderWaveform(synthesisPlan, Config{
-		ReleaseMS: cfg.ReleaseMS, IntonationStrength: cfg.IntonationStrength, Backend: "waveform",
+	// The direct branch exists to restore consonant attacks, not periodic pitch.
+	// Pitch-shifting it independently changes phase and period boundaries before
+	// it is mixed with WORLD, producing clicks and comb-like roughness.
+	directPlan := *synthesisPlan
+	directPlan.Units = append([]plan.Unit(nil), synthesisPlan.Units...)
+	for i := range directPlan.Units {
+		directPlan.Units[i].PitchFactor = 1
+		directPlan.Units[i].EnergyFactor = 1
+	}
+	waveformPCM, err := renderWaveform(&directPlan, Config{
+		ReleaseMS: cfg.ReleaseMS, IntonationStrength: 0, Backend: "waveform",
 	})
 	if err != nil {
 		return nil, err
@@ -78,7 +87,14 @@ func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleR
 			// whole region makes the consonant clear, but also exposes rough WSOLA
 			// pitch artifacts in the vowel. Protect the preutterance (the consonant
 			// attack) and only a short release after the note boundary instead.
-			attackEnd := min(end, msToFramesSigned(unit.NoteStartMS+8, sampleRate))
+			releaseMS := 8.0
+			if unitHasPitchShift(unit) {
+				// With pitch control active, periodic raw vowel and WORLD output do
+				// not share phase. End the protected raw region at the note boundary;
+				// the smoothing pass below still supplies a short transition.
+				releaseMS = 0
+			}
+			attackEnd := min(end, msToFramesSigned(unit.NoteStartMS+releaseMS, sampleRate))
 			for index := start; index < attackEnd; index++ {
 				weights[index] = math.Max(weights[index], 0.85)
 			}
@@ -119,6 +135,18 @@ func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleR
 		weights[i] = math.Max(weights[i], weights[i+1]-step)
 	}
 	return weights
+}
+
+func unitHasPitchShift(unit plan.Unit) bool {
+	pitchFactor := unit.PitchFactor
+	if pitchFactor <= 0 {
+		pitchFactor = 1
+	}
+	intonationFactor := unit.IntonationFactor
+	if intonationFactor <= 0 {
+		intonationFactor = 1
+	}
+	return math.Abs(pitchFactor*intonationFactor-1) > 0.002
 }
 
 func frameRMS(values []float64) float64 {
