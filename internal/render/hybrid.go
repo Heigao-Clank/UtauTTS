@@ -14,6 +14,7 @@ type cvRestoreMode int
 
 const (
 	cvRestoreNone cvRestoreMode = iota
+	cvRestoreGentle
 	cvRestoreBalanced
 	cvRestoreFull
 )
@@ -82,7 +83,7 @@ func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleR
 			}
 			continue
 		}
-		if restoreCV == cvRestoreBalanced && isCV {
+		if (restoreCV == cvRestoreGentle || restoreCV == cvRestoreBalanced) && isCV {
 			// A CV fixed region often extends into its periodic vowel. Restoring the
 			// whole region makes the consonant clear, but also exposes rough WSOLA
 			// pitch artifacts in the vowel. Protect the preutterance (the consonant
@@ -95,8 +96,12 @@ func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleR
 				releaseMS = 0
 			}
 			attackEnd := min(end, msToFramesSigned(unit.NoteStartMS+releaseMS, sampleRate))
+			restoreWeight := 0.85
+			if restoreCV == cvRestoreGentle {
+				restoreWeight = 0.55
+			}
 			for index := start; index < attackEnd; index++ {
-				weights[index] = math.Max(weights[index], 0.85)
+				weights[index] = math.Max(weights[index], restoreWeight)
 			}
 		}
 		for center := start; center < end; center += hop {

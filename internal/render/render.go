@@ -46,6 +46,8 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreFull)
 	case "worldline-hybrid-cv-balanced":
 		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreBalanced)
+	case "worldline-hybrid-cv-gentle":
+		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreGentle)
 	default:
 		return nil, fmt.Errorf("unknown renderer backend %q", cfg.Backend)
 	}

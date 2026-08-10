@@ -190,6 +190,22 @@ func TestDirectConsonantWeightsBalancedCVStopsBeforeVowelTail(t *testing.T) {
 	}
 }
 
+func TestDirectConsonantWeightsGentleCVUsesIntermediateAttackWeight(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{
+		Position: 0, Alias: "あ", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,
+	}}}
+	const sampleRate = 8000
+	baseline := make([]float64, sampleRate/2)
+	for index := range baseline {
+		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
+	}
+	gentle := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreGentle)
+	attack := msToFrames(90, sampleRate)
+	if math.Abs(gentle[attack]-0.55) > 0.001 {
+		t.Fatalf("gentle attack weight=%f, want 0.55", gentle[attack])
+	}
+}
+
 func TestDirectConsonantWeightsBalancedAvoidsShiftedPeriodicVowel(t *testing.T) {
 	p := &plan.Plan{Units: []plan.Unit{{
 		Position: 0, Alias: "か", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,

@@ -120,6 +120,7 @@ type rendererOption struct {
 
 var rendererOptions = []rendererOption{
 	{label: "waveform (推奨・明瞭度基準)", backend: "waveform"},
+	{label: "worldline-hybrid-cv-gentle (実験的)", backend: "worldline-hybrid-cv-gentle"},
 	{label: "worldline-hybrid-cv-balanced (実験的)", backend: "worldline-hybrid-cv-balanced"},
 	{label: "worldline-hybrid (実験的)", backend: "worldline-hybrid"},
 	{label: "waveform-long (実験的)", backend: "waveform-long"},

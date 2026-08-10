@@ -32,7 +32,7 @@ Content-Type: application/json
 主なオプション：
 
 - `--voice-dir`: ボイスバンクを格納したディレクトリ
-- `--renderer`: 初期値と推奨は`waveform`。`waveform-long`、`worldline`、`worldline-hybrid`、`worldline-hybrid-cv`、`worldline-hybrid-cv-balanced`は比較研究用
+- `--renderer`: 初期値と推奨は`waveform`。`waveform-long`、`worldline`、`worldline-hybrid`、`worldline-hybrid-cv`、`worldline-hybrid-cv-gentle`、`worldline-hybrid-cv-balanced`は比較研究用。WORLD系では`worldline-hybrid-cv-gentle`を暫定基準とする
 - `--host`: 待受アドレス。初期値は`127.0.0.1`
 - `--port`: ポート。初期値は`8080`
 - `--prosody`: 学習済みモーラ長モデル

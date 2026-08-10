@@ -15,9 +15,10 @@ func TestRendererBackend(t *testing.T) {
 		want  string
 	}{
 		{index: 0, want: "waveform"},
-		{index: 1, want: "worldline-hybrid-cv-balanced"},
-		{index: 2, want: "worldline-hybrid"},
-		{index: 3, want: "waveform-long"},
+		{index: 1, want: "worldline-hybrid-cv-gentle"},
+		{index: 2, want: "worldline-hybrid-cv-balanced"},
+		{index: 3, want: "worldline-hybrid"},
+		{index: 4, want: "waveform-long"},
 		{index: -1, want: "waveform"},
 		{index: 99, want: "waveform"},
 	}
