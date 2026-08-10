@@ -1,6 +1,8 @@
 # モーラ長の学習
 
-この学習ラインは固定規則に対する局所的なモーラ長、F0、エネルギーの残差を学習します。コーパス話者の声質や絶対音高、発話全体の速度・音量は転写せず、各発話の中央値で正規化します。
+この学習ラインは固定規則に対する局所的なモーラ長、F0、エネルギーの残差を学習する研究経路です。コーパス話者の声質や絶対音高、発話全体の速度・音量は転写せず、各発話の中央値で正規化します。
+
+現在の標準合成は、明瞭度を優先して`waveform`とイントネーション強度`0`を使います。学習F0の直接適用はリサンプル由来のケロケロ感を生むため、モデルの客観評価またはブラインド比較に限定します。今後は予測F0を原音候補のtarget costへ使う方向を優先します。
 
 ## データセット作成
 
@@ -46,12 +48,11 @@ go run ./cmd/utautts-cli `
 ```powershell
 go run ./cmd/listening-test `
   --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
-  --system-a-renderer worldline-hybrid `
-  --system-b-renderer worldline-hybrid `
+  --system-a-renderer waveform `
+  --system-b-renderer waveform `
   --system-b-prosody out/prosody/model.json `
   --corpus docs/evaluation-corpus.json `
-  --intonation-strength 0.6 `
-  --worldline release/UtauTTS/worldline.dll `
-  --worldline-bridge release/UtauTTS/utautts-worldline-bridge.exe `
   --out out/listening/prosody
 ```
+
+この例では主にdurationとenergyの差を比較します。F0だけを比較するときは`--system-b-prosody-pitch-only`を加え、必要に応じてWORLD系レンダラと`--intonation-strength`を明示してください。

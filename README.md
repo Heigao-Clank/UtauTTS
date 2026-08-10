@@ -2,13 +2,32 @@
 
 UTAUボイスバンクの原音の選択と自然なつなぎ方を学習する日本語TTSの実験プロジェクトです。
 
-レンダラは次の三つを利用できます。
+標準レンダラは`waveform`です。原音の発音と声質を保つことを優先し、ピッチ加工を行わず接続します。比較研究用として次のレンダラも利用できます。
 
-- `waveform`: 依存のない決定的な波形接続。
+- `waveform`: 依存のない決定的な波形接続。推奨・明瞭度基準。
 - `waveform-long`: 同一録音の連続原音をまとめる実験方式。AB/ABX評価用。
-- `worldline-hybrid`: WORLDで母音を合成し、弱くなった子音だけ原波形から復元。推奨
+- `worldline` / `worldline-hybrid*`: WORLDによるピッチ・スペクトル処理を調べる実験方式。
 
 CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応しています。CVVCのVC挿入は未対応です。
+
+## 現行仕様
+
+- [構成](architecture.md): 合成パイプライン、原音選択、レンダラの位置付け
+- [音源](voicebank.md): 対応ボイスバンクと同梱音源のライセンス
+- [HTTPサーバー](server.md): 起動方法とAPI
+
+## 学習と評価
+
+- [接続学習データセット](connection-dataset.md): join cost用の境界ペア生成
+- [モーラ長・韻律の学習](training.md): duration、F0、energyモデル
+- [系列イントネーションモデル](intonation-model.md): TCNとアクセント特徴の研究経緯
+- [接続品質の評価](evaluation.md): クリック、RMS、スペクトル、F0差
+- [AB・ABX聴感評価](listening-test.md): ブラインド比較と集計
+
+## 実験結果
+
+- [接続モデル聴感評価](experiments/2026-08-10-listening/README.md)
+- [レンダラ・イントネーション評価](experiments/2026-08-10-rendering/README.md)
 
 ## リリースビルド
 
@@ -41,21 +60,21 @@ GUI版にはデフォルト音源として足立レイ UTAU音源 ver3.5.0を同
 
 ## CLI
 
-GUI版に同梱された足立レイを使う、推奨レンダラの実行例です。
+GUI版に同梱された足立レイを使う実行例です。`--renderer`を省略しても`waveform`になります。
 
 ```powershell
 .\UtauTTS\utautts-cli.exe `
-  --renderer worldline-hybrid `
+  --renderer waveform `
   --voicebank ".\UtauTTS\voice\足立レイver3.5.0" `
   --text "あらゆる現実をすべて自分のほうへねじ曲げたのだ。" `
   --out "out.wav"
 ```
 
-配布物内のWORLDライブラリとブリッジは自動検出します。イントネーション補正は`0`から`1`で指定できます。
+イントネーションや学習ピッチをレンダラへ直接反映する経路は研究用です。リサンプルと時間伸縮によるケロケロ感や、WORLDによる子音脱落が確認されているため、明瞭度を評価するときは`waveform`と`--intonation-strength 0`を基準にしてください。
 
 ```powershell
 .\UtauTTS\utautts-cli.exe `
-  --renderer worldline-hybrid `
+  --renderer worldline-hybrid-cv-balanced `
   --intonation-strength 0.6 `
   --voicebank ".\UtauTTS\voice\足立レイver3.5.0" `
   --text "あらゆる現実をすべて自分のほうへねじ曲げたのだ。" `
@@ -63,14 +82,14 @@ GUI版に同梱された足立レイを使う、推奨レンダラの実行例�
   --plan-out "plan.json"
 ```
 
-WORLDを使わない場合は`--renderer waveform`を指定するか、オプションを省略します。
+配布物内のWORLDライブラリとブリッジは自動検出します。
 
 ## HTTP API
 
 ```powershell
 .\UtauTTS-Server\utautts-server.exe `
   --voice-dir ".\UtauTTS\voice" `
-  --renderer worldline-hybrid
+  --renderer waveform
 ```
 
 ## 開発
@@ -86,5 +105,3 @@ go run ./cmd/utautts-cli --voicebank "release/UtauTTS/voice/足立レイver3.5.0
 go run ./cmd/connection-lattice --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --text "こんにちは。" --join-model "out/join-model.json" --out "out/lattice.json"
 go run ./cmd/connection-benchmark --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --join-model "out/join-model.json" --corpus "docs/evaluation-corpus.json" --out "out/benchmark.json"
 ```
-
-同梱音源とライセンスは[docs/voicebank.md](docs/voicebank.md)、構成は[docs/architecture.md](docs/architecture.md)、モーラ長の学習は[docs/training.md](docs/training.md)、接続の測定は[docs/evaluation.md](docs/evaluation.md)、接続データ生成は[docs/connection-dataset.md](docs/connection-dataset.md)、AB/ABX評価は[docs/listening-test.md](docs/listening-test.md)を参照してください。
