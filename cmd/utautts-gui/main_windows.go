@@ -113,6 +113,18 @@ type point struct {
 	Y int32
 }
 
+type rendererOption struct {
+	label   string
+	backend string
+}
+
+var rendererOptions = []rendererOption{
+	{label: "waveform (推奨・明瞭度基準)", backend: "waveform"},
+	{label: "worldline-hybrid-cv-balanced (実験的)", backend: "worldline-hybrid-cv-balanced"},
+	{label: "worldline-hybrid (実験的)", backend: "worldline-hybrid"},
+	{label: "waveform-long (実験的)", backend: "waveform-long"},
+}
+
 type message struct {
 	HWnd    uintptr
 	Message uint32
@@ -213,14 +225,13 @@ func createControls(parent, instance uintptr) error {
 
 	label(parent, instance, "レンダラ", 20, 312, 90, 22)
 	rendererCombo := control(0, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|cbsDropdownList, 110, 308, 200, 200, parent, idRenderer, instance)
-	comboAdd(rendererCombo, "worldline-hybrid-cv-balanced (推奨)")
-	comboAdd(rendererCombo, "worldline-hybrid")
-	comboAdd(rendererCombo, "waveform")
-	comboAdd(rendererCombo, "waveform-long (実験的)")
+	for _, option := range rendererOptions {
+		comboAdd(rendererCombo, option.label)
+	}
 	sendMessage.Call(rendererCombo, cbSetCurSel, 0, 0)
 
-	label(parent, instance, "イントネーション", 340, 312, 120, 22)
-	control(wsExClientEdge, "EDIT", "0.6", wsChild|wsVisible|wsTabStop, 465, 308, 70, 27, parent, idIntonate, instance)
+	label(parent, instance, "イントネーション（実験）", 330, 312, 150, 22)
+	control(wsExClientEdge, "EDIT", "0", wsChild|wsVisible|wsTabStop, 485, 308, 50, 27, parent, idIntonate, instance)
 
 	label(parent, instance, "出力WAV", 20, 354, 90, 22)
 	control(wsExClientEdge, "EDIT", initialOutput, wsChild|wsVisible|wsTabStop, 110, 350, 560, 27, parent, idOutput, instance)
@@ -311,14 +322,8 @@ func startSynthesis(hwnd uintptr) {
 		showError(hwnd, fmt.Errorf("イントネーションは0から1で指定してください"))
 		return
 	}
-	renderer := "worldline-hybrid-cv-balanced"
-	if selected, _, _ := sendMessage.Call(child(hwnd, idRenderer), cbGetCurSel, 0, 0); selected == 1 {
-		renderer = "worldline-hybrid"
-	} else if selected == 2 {
-		renderer = "waveform"
-	} else if selected == 3 {
-		renderer = "waveform-long"
-	}
+	selectedRenderer, _, _ := sendMessage.Call(child(hwnd, idRenderer), cbGetCurSel, 0, 0)
+	renderer := rendererBackend(int(selectedRenderer))
 
 	enableWindow.Call(generateButton, 0)
 	enableWindow.Call(playButton, 0)
@@ -342,6 +347,13 @@ func startSynthesis(hwnd uintptr) {
 		completionMutex.Unlock()
 		postMessage.Call(hwnd, wmSynthesisDone, 0, 0)
 	}()
+}
+
+func rendererBackend(index int) string {
+	if index < 0 || index >= len(rendererOptions) {
+		return rendererOptions[0].backend
+	}
+	return rendererOptions[index].backend
 }
 
 func finishSynthesis(hwnd uintptr) {

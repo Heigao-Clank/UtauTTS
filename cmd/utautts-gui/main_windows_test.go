@@ -9,6 +9,25 @@ import (
 	"testing"
 )
 
+func TestRendererBackend(t *testing.T) {
+	tests := []struct {
+		index int
+		want  string
+	}{
+		{index: 0, want: "waveform"},
+		{index: 1, want: "worldline-hybrid-cv-balanced"},
+		{index: 2, want: "worldline-hybrid"},
+		{index: 3, want: "waveform-long"},
+		{index: -1, want: "waveform"},
+		{index: 99, want: "waveform"},
+	}
+	for _, test := range tests {
+		if got := rendererBackend(test.index); got != test.want {
+			t.Errorf("rendererBackend(%d) = %q, want %q", test.index, got, test.want)
+		}
+	}
+}
+
 func TestSanitizeDisplayName(t *testing.T) {
 	if got := sanitizeDisplayName("  音源\x00名\r\n  "); got != "音源 名" {
 		t.Fatalf("sanitizeDisplayName() = %q", got)

@@ -15,8 +15,8 @@
     <p>ボイスバンク</p>
     <select id="voicebank"></select>
     <button onclick="reloadVoicebanks()">再読込</button>
-    <p>イントネーション補正: <span id="intonation-value">0.6</span></p>
-    <input id="intonation" type="range" min="0" max="1" step="0.1" value="0.6" oninput="document.getElementById('intonation-value').textContent=this.value">
+    <p>イントネーション補正（実験用）: <span id="intonation-value">0</span></p>
+    <input id="intonation" type="range" min="0" max="1" step="0.1" value="0" oninput="document.getElementById('intonation-value').textContent=this.value">
     <br>
     <br>
     <button id="synth" onclick="synthesize()">合成</button>
