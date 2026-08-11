@@ -39,3 +39,16 @@ func TestExternalPitchFactorsDoNotImplicitlyEnableWaveformPitchProcessing(t *tes
 		t.Fatal("ProsodyPitchOnly did not enable pitch processing")
 	}
 }
+
+func TestValidateRuntimeMoraAlignment(t *testing.T) {
+	morae := []frontend.Mora{{Text: "きょ"}, {Text: "う"}, {Pause: true}, {Text: "は"}}
+	if err := validateRuntimeMoraAlignment(morae, []string{"きょ", "う", "", "は"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRuntimeMoraAlignment(morae, []string{"きょ", "お", "", "は"}); err == nil {
+		t.Fatal("mismatched Open JTalk mora was accepted")
+	}
+	if err := validateRuntimeMoraAlignment(morae, []string{"きょ", "う", "は"}); err == nil {
+		t.Fatal("mismatched Open JTalk frame count was accepted")
+	}
+}

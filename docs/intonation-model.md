@@ -69,6 +69,8 @@ v5対v6の聴感比較はv5 1、v6 1、同程度10で、人間にはほぼ差が
 
 モデルv5/v6はGoランタイムから読み込める。これらはアクセント句、核、単語境界、品詞を必要とするため、特徴を与えずゼロ埋めで推論することは禁止している。実験用のOpen JTalk特徴は次のように生成する。
 
+GUIは同梱したOpenJTalk frontendを呼び、任意文章から同じ形式の特徴を実行時に生成する。モデルはメイン画面のプルダウンから選び、frame pitchモデルでは採用済みの`openutau-classic-worldline-faithful` rendererへ自動で切り替える。事前計算JSONとケースIDは再現性が必要な評価ツールとCLIで引き続き利用できる。
+
 ```powershell
 $env:PYTHONPATH=(Resolve-Path .tmp-openjtalk).Path
 python tools/openjtalk-prosody-features.py `

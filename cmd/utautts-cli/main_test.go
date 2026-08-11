@@ -12,7 +12,7 @@ func TestLoadProsodyFeatures(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	frames, err := loadProsodyFeatures(path, "sample")
+	frames, err := loadProsodyFeatures(path, "sample", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

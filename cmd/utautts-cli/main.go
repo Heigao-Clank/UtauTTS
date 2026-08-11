@@ -29,6 +29,8 @@ func main() {
 		prosodyFeaturesPath     string
 		prosodyFeaturesCase     string
 		prosodyPitchOnly        bool
+		openJTalkPath           string
+		openJTalkDictionaryPath string
 		pitchContourPath        string
 		pitchContourCase        string
 		applyPitch              bool
@@ -57,6 +59,8 @@ func main() {
 	flag.StringVar(&prosodyFeaturesPath, "prosody-features", "", "optional per-case mora-level accent feature JSON")
 	flag.StringVar(&prosodyFeaturesCase, "prosody-feature-case", "", "case ID in --prosody-features")
 	flag.BoolVar(&prosodyPitchOnly, "prosody-pitch-only", false, "apply only learned pitch and keep fixed duration/energy")
+	flag.StringVar(&openJTalkPath, "openjtalk-features", "", "path to the Open JTalk feature helper (default: runtime directory)")
+	flag.StringVar(&openJTalkDictionaryPath, "openjtalk-dictionary", "", "path to the Open JTalk dictionary (default: runtime directory)")
 	flag.StringVar(&pitchContourPath, "pitch-contours", "", "optional per-case pitch contour JSON (recorded in the plan; use --apply-pitch for direct waveform processing)")
 	flag.StringVar(&pitchContourCase, "pitch-case", "", "case ID in --pitch-contours")
 	flag.BoolVar(&applyPitch, "apply-pitch", false, "experimental waveform pitch resampling")
@@ -84,7 +88,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	prosodyFeatures, err := loadProsodyFeatures(prosodyFeaturesPath, prosodyFeaturesCase)
+	prosodyFeatures, err := loadProsodyFeatures(prosodyFeaturesPath, prosodyFeaturesCase, text, reading)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -99,6 +103,8 @@ func main() {
 		ProsodyModelPath:        prosodyPath,
 		ProsodyFeatures:         prosodyFeatures,
 		ProsodyPitchOnly:        prosodyPitchOnly,
+		OpenJTalkPath:           openJTalkPath,
+		OpenJTalkDictionaryPath: openJTalkDictionaryPath,
 		PitchFactors:            pitchFactors,
 		ApplyPitch:              applyPitch,
 		IntonationStrength:      intonationStrength,
@@ -133,36 +139,19 @@ func main() {
 	fmt.Printf("wrote %s (%.2fs, %d Hz, %d units)\n", outPath, duration, result.Audio.SampleRate, len(result.Plan.Units))
 }
 
-func loadProsodyFeatures(path, caseID string) ([]prosody.FeatureFrame, error) {
+func loadProsodyFeatures(path, caseID, text, reading string) ([]prosody.FeatureFrame, error) {
 	if path == "" {
 		return nil, nil
 	}
-	if caseID == "" {
-		return nil, fmt.Errorf("--prosody-feature-case is required with --prosody-features")
-	}
-	data, err := os.ReadFile(path)
+	corpus, err := prosody.LoadFeatureCorpus(path)
 	if err != nil {
 		return nil, err
 	}
-	var corpus struct {
-		Version int `json:"version"`
-		Cases   []struct {
-			ID       string                 `json:"id"`
-			Features []prosody.FeatureFrame `json:"features"`
-		} `json:"cases"`
+	item, err := corpus.Select(caseID, text, reading)
+	if err != nil {
+		return nil, fmt.Errorf("select prosody features from %s: %w", path, err)
 	}
-	if err := json.Unmarshal(data, &corpus); err != nil {
-		return nil, err
-	}
-	if corpus.Version != 1 {
-		return nil, fmt.Errorf("unsupported prosody feature file version %d", corpus.Version)
-	}
-	for _, item := range corpus.Cases {
-		if item.ID == caseID {
-			return item.Features, nil
-		}
-	}
-	return nil, fmt.Errorf("prosody feature case %q not found in %s", caseID, path)
+	return item.Features, nil
 }
 
 func loadPitchFactors(path, caseID string) ([]float64, error) {

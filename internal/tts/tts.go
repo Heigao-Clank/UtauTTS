@@ -8,6 +8,7 @@ import (
 	"utautts/internal/audio"
 	"utautts/internal/connection"
 	"utautts/internal/frontend"
+	"utautts/internal/openjtalk"
 	"utautts/internal/plan"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
@@ -25,6 +26,8 @@ type Config struct {
 	ProsodyModelPath        string
 	ProsodyFeatures         []prosody.FeatureFrame
 	ProsodyPitchOnly        bool
+	OpenJTalkPath           string
+	OpenJTalkDictionaryPath string
 	PitchFactors            []float64
 	ApplyPitch              bool
 	IntonationStrength      float64
@@ -51,16 +54,43 @@ func Synthesize(cfg Config) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load voicebank: %w", err)
 	}
+	var loadedProsody *prosody.Model
+	prosodyFeatures := cfg.ProsodyFeatures
+	var runtimeFeatures *openjtalk.Analysis
+	if cfg.ProsodyModelPath != "" {
+		loadedProsody, err = prosody.LoadModel(cfg.ProsodyModelPath)
+		if err != nil {
+			return nil, fmt.Errorf("load prosody model: %w", err)
+		}
+		if loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
+			runtimeFeatures, err = openjtalk.Analyze(cfg.Text, openjtalk.Config{
+				HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("analyze runtime prosody features: %w", err)
+			}
+			prosodyFeatures = runtimeFeatures.Features
+		}
+	}
 	reading := cfg.Reading
 	if reading == "" {
-		reading, err = frontend.ToKana(cfg.Text)
-		if err != nil {
-			return nil, fmt.Errorf("convert text to reading: %w", err)
+		if runtimeFeatures != nil {
+			reading = runtimeFeatures.Reading
+		} else {
+			reading, err = frontend.ToKana(cfg.Text)
+			if err != nil {
+				return nil, fmt.Errorf("convert text to reading: %w", err)
+			}
 		}
 	}
 	morae, err := frontend.ParseKana(reading)
 	if err != nil {
 		return nil, fmt.Errorf("parse reading: %w", err)
+	}
+	if runtimeFeatures != nil {
+		if err := validateRuntimeMoraAlignment(morae, runtimeFeatures.Morae); err != nil {
+			return nil, fmt.Errorf("align runtime prosody features: %w", err)
+		}
 	}
 	var joinModel *connection.LearnedModel
 	joinCostMode := "handcrafted"
@@ -86,17 +116,11 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("resolve voicebank units: %w", err)
 	}
 	var predictions []prosody.Prediction
-	var loadedProsody *prosody.Model
-	if cfg.ProsodyModelPath != "" {
-		model, loadErr := prosody.LoadModel(cfg.ProsodyModelPath)
-		if loadErr != nil {
-			return nil, fmt.Errorf("load prosody model: %w", loadErr)
+	if loadedProsody != nil {
+		if loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) != len(morae) {
+			return nil, fmt.Errorf("prosody model %d/%s requires %d mora-level accent feature frames, got %d", loadedProsody.Version, loadedProsody.Mode, len(morae), len(prosodyFeatures))
 		}
-		loadedProsody = model
-		if model.RequiresExternalFeatures() && len(cfg.ProsodyFeatures) != len(morae) {
-			return nil, fmt.Errorf("prosody model %d/%s requires %d mora-level accent feature frames, got %d", model.Version, model.Mode, len(morae), len(cfg.ProsodyFeatures))
-		}
-		predictions = model.PredictWithFeatures(morae, cfg.ProsodyFeatures)
+		predictions = loadedProsody.PredictWithFeatures(morae, prosodyFeatures)
 		if cfg.ProsodyPitchOnly {
 			for i := range predictions {
 				predictions[i].DurationMS = 0
@@ -140,7 +164,7 @@ func Synthesize(cfg Config) (*Result, error) {
 	if pitchCurve == nil && loadedProsody != nil && loadedProsody.HasFrameContour() && rendererSupportsFramePitch(cfg.Renderer) {
 		timings := moraTimings(morae, synthesisPlan)
 		question := strings.ContainsAny(cfg.Text, "?？")
-		if contour := loadedProsody.PredictFrameContour(morae, cfg.ProsodyFeatures, timings, synthesisPlan.DurationMS+cfg.ReleaseMS, question); contour != nil {
+		if contour := loadedProsody.PredictFrameContour(morae, prosodyFeatures, timings, synthesisPlan.DurationMS+cfg.ReleaseMS, question); contour != nil {
 			pitchCurve = &render.PitchCurve{FrameMS: contour.FrameMS, Cents: contour.Cents}
 		}
 	}
@@ -164,6 +188,26 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 	return &Result{Voicebank: bank, Plan: synthesisPlan, Audio: pcm}, nil
+}
+
+func validateRuntimeMoraAlignment(morae []frontend.Mora, analyzed []string) error {
+	if len(morae) != len(analyzed) {
+		return fmt.Errorf("Open JTalk returned %d morae, Go frontend returned %d", len(analyzed), len(morae))
+	}
+	for index, mora := range morae {
+		want := analyzed[index]
+		if mora.Pause {
+			want = ""
+			if analyzed[index] != "" {
+				return fmt.Errorf("frame %d: Open JTalk mora %q does not match pause", index, analyzed[index])
+			}
+			continue
+		}
+		if mora.Text != want {
+			return fmt.Errorf("frame %d: Open JTalk mora %q does not match reading mora %q", index, want, mora.Text)
+		}
+	}
+	return nil
 }
 
 func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.MoraTiming {

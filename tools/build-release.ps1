@@ -5,6 +5,7 @@ $guiPath = Join-Path $releaseRoot 'UtauTTS'
 $serverPath = Join-Path $releaseRoot 'UtauTTS-Server'
 $guiToolsPath = Join-Path $guiPath 'tools'
 $guiRuntimePath = Join-Path $guiPath 'runtime'
+$guiModelsPath = Join-Path $guiPath 'models'
 $serverRuntimePath = Join-Path $serverPath 'runtime'
 $guiZip = Join-Path $releaseRoot 'UtauTTS-win-x64.zip'
 $serverZip = Join-Path $releaseRoot 'UtauTTS-Server-win-x64.zip'
@@ -43,7 +44,7 @@ function Expand-BundledVoicebank([string]$Destination) {
 
 Reset-Directory $guiPath
 Reset-Directory $serverPath
-New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $serverRuntimePath | Out-Null
+New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $guiModelsPath, $serverRuntimePath | Out-Null
 foreach ($zip in @($guiZip, $serverZip)) {
     if (Test-Path -LiteralPath $zip) {
         Remove-Item -Force -LiteralPath $zip
@@ -79,6 +80,12 @@ try {
     Write-Host '=== Build server package ==='
     Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $serverPath 'utautts-server.exe'), './cmd/utautts-server')
 
+    Write-Host '=== Build Open JTalk frontend helper ==='
+    & (Join-Path $PSScriptRoot 'build-openjtalk-feature-bridge.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        throw "Open JTalk frontend helper build failed with exit code $LASTEXITCODE"
+    }
+
     if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
         throw '.NET 8 SDK is required'
     }
@@ -91,7 +98,32 @@ try {
     Get-ChildItem -LiteralPath $guiRuntimePath -Filter 'utautts-worldline-bridge*' | Copy-Item -Destination $serverRuntimePath
     Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline.dll') -Destination $serverRuntimePath
 
+    $openJTalkHelper = Join-Path $root 'tools/openjtalk-feature-bridge/bin/utautts-openjtalk-features.exe'
+    $openJTalkDictionary = Join-Path $root '.tmp-openjtalk/pyopenjtalk/open_jtalk_dic_utf_8-1.11'
+    foreach ($runtimePath in @($guiRuntimePath, $serverRuntimePath)) {
+        Copy-Item -LiteralPath $openJTalkHelper -Destination $runtimePath
+        Copy-Item -LiteralPath $openJTalkDictionary -Destination $runtimePath -Recurse
+        $licensePath = Join-Path $runtimePath 'licenses'
+        New-Item -ItemType Directory -Force -Path $licensePath | Out-Null
+        $pythonCommand = Get-Command python -ErrorAction Stop
+        Copy-Item -LiteralPath (Join-Path (Split-Path $pythonCommand.Source) 'LICENSE.txt') -Destination (Join-Path $licensePath 'PYTHON_LICENSE.txt')
+        $pyInstallerLicense = @(Get-ChildItem -LiteralPath (Join-Path $root '.tmp-pyinstaller') -Recurse -Filter 'COPYING.txt' -File | Where-Object { $_.FullName -like '*pyinstaller-*.dist-info*' })
+        if ($pyInstallerLicense.Count -ne 1) { throw 'Expected exactly one PyInstaller COPYING.txt' }
+        Copy-Item -LiteralPath $pyInstallerLicense[0].FullName -Destination (Join-Path $licensePath 'PYINSTALLER_COPYING.txt')
+    }
+
     Copy-Item -LiteralPath 'README.md', 'THIRD_PARTY_NOTICES.txt' -Destination $guiPath
+
+    $sourceModels = Join-Path $root 'models'
+    if (Test-Path -LiteralPath $sourceModels) {
+        Get-ChildItem -LiteralPath $sourceModels -Filter '*.json' -File | Copy-Item -Destination $guiModelsPath
+    }
+    $v8Model = Join-Path $root 'out/prosody/jsut-1000-frame-tcn-v8.json'
+    if (Test-Path -LiteralPath $v8Model) {
+        Copy-Item -LiteralPath $v8Model -Destination (Join-Path $guiModelsPath 'frame-intonation-v8.json')
+    } else {
+        Write-Warning 'The v8 prosody model was not found under out/prosody; GUI package will require a model under models/.'
+    }
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
     Copy-Item -Path 'docs/*' -Destination $guiDocs -Recurse

@@ -36,12 +36,14 @@ type Server struct {
 	renderer            string
 	worldlinePath       string
 	worldlineBridgePath string
+	openJTalkPath       string
+	openJTalkDictionary string
 	voiceDir            string
 }
 
 func main() {
 	var port int
-	var host, voiceDir, prosodyPath, renderer, worldlinePath, worldlineBridgePath string
+	var host, voiceDir, prosodyPath, renderer, worldlinePath, worldlineBridgePath, openJTalkPath, openJTalkDictionary string
 	flag.IntVar(&port, "port", 8080, "port")
 	flag.StringVar(&host, "host", "127.0.0.1", "host")
 	flag.StringVar(&voiceDir, "voice-dir", "voice", "directory containing voicebanks")
@@ -49,12 +51,15 @@ func main() {
 	flag.StringVar(&renderer, "renderer", "waveform", "renderer (default: waveform; other backends are experimental)")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to worldline bridge (default: next to executable)")
+	flag.StringVar(&openJTalkPath, "openjtalk-features", "", "path to Open JTalk feature helper")
+	flag.StringVar(&openJTalkDictionary, "openjtalk-dictionary", "", "path to Open JTalk dictionary")
 	flag.Parse()
 
 	voiceDir = voicebank.ResolveDirectory(voiceDir)
 	srv := &Server{
 		voicebanks: map[string]Voicebank{}, prosodyModelPath: prosodyPath,
 		renderer: renderer, worldlinePath: worldlinePath, worldlineBridgePath: worldlineBridgePath, voiceDir: voiceDir,
+		openJTalkPath: openJTalkPath, openJTalkDictionary: openJTalkDictionary,
 	}
 	if err := srv.loadVoiceDirectory(); err != nil {
 		log.Printf("warning: load voicebanks from %s: %v", voiceDir, err)
@@ -196,18 +201,20 @@ func (s *Server) handleSynthesize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := tts.Synthesize(tts.Config{
-		VoicebankPath:       vb.Path,
-		Text:                request.Text,
-		Reading:             request.Kana,
-		Tone:                request.Tone,
-		MoraDurationMS:      request.MoraDurationMS,
-		PauseDurationMS:     request.PauseDurationMS,
-		ProsodyModelPath:    s.prosodyModelPath,
-		IntonationStrength:  request.IntonationStrength,
-		ApplyPitch:          request.ApplyPitch,
-		Renderer:            s.renderer,
-		WorldlinePath:       s.worldlinePath,
-		WorldlineBridgePath: s.worldlineBridgePath,
+		VoicebankPath:           vb.Path,
+		Text:                    request.Text,
+		Reading:                 request.Kana,
+		Tone:                    request.Tone,
+		MoraDurationMS:          request.MoraDurationMS,
+		PauseDurationMS:         request.PauseDurationMS,
+		ProsodyModelPath:        s.prosodyModelPath,
+		IntonationStrength:      request.IntonationStrength,
+		ApplyPitch:              request.ApplyPitch,
+		Renderer:                s.renderer,
+		WorldlinePath:           s.worldlinePath,
+		WorldlineBridgePath:     s.worldlineBridgePath,
+		OpenJTalkPath:           s.openJTalkPath,
+		OpenJTalkDictionaryPath: s.openJTalkDictionary,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
