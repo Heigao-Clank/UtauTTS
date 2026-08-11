@@ -2,6 +2,8 @@ package tts
 
 import (
 	"fmt"
+	"math"
+	"strings"
 
 	"utautts/internal/audio"
 	"utautts/internal/connection"
@@ -21,6 +23,7 @@ type Config struct {
 	PauseDurationMS         float64
 	ReleaseMS               float64
 	ProsodyModelPath        string
+	ProsodyFeatures         []prosody.FeatureFrame
 	ProsodyPitchOnly        bool
 	PitchFactors            []float64
 	ApplyPitch              bool
@@ -28,8 +31,10 @@ type Config struct {
 	Renderer                string
 	WorldlinePath           string
 	WorldlineBridgePath     string
+	UTAUResamplerPath       string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
+	PitchCurve              *render.PitchCurve
 	SelectionMode           voicebank.SelectionMode
 	JoinModelPath           string
 	JoinScoreScale          float64
@@ -81,12 +86,17 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("resolve voicebank units: %w", err)
 	}
 	var predictions []prosody.Prediction
+	var loadedProsody *prosody.Model
 	if cfg.ProsodyModelPath != "" {
 		model, loadErr := prosody.LoadModel(cfg.ProsodyModelPath)
 		if loadErr != nil {
 			return nil, fmt.Errorf("load prosody model: %w", loadErr)
 		}
-		predictions = model.Predict(morae)
+		loadedProsody = model
+		if model.RequiresExternalFeatures() && len(cfg.ProsodyFeatures) != len(morae) {
+			return nil, fmt.Errorf("prosody model %d/%s requires %d mora-level accent feature frames, got %d", model.Version, model.Mode, len(morae), len(cfg.ProsodyFeatures))
+		}
+		predictions = model.PredictWithFeatures(morae, cfg.ProsodyFeatures)
 		if cfg.ProsodyPitchOnly {
 			for i := range predictions {
 				predictions[i].DurationMS = 0
@@ -126,7 +136,18 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("build synthesis plan: %w", err)
 	}
 	synthesisPlan.Text = cfg.Text
-	applyPitch := cfg.ApplyPitch || cfg.ProsodyPitchOnly || len(cfg.PitchFactors) > 0
+	pitchCurve := cfg.PitchCurve
+	if pitchCurve == nil && loadedProsody != nil && loadedProsody.HasFrameContour() && rendererSupportsFramePitch(cfg.Renderer) {
+		timings := moraTimings(morae, synthesisPlan)
+		question := strings.ContainsAny(cfg.Text, "?？")
+		if contour := loadedProsody.PredictFrameContour(morae, cfg.ProsodyFeatures, timings, synthesisPlan.DurationMS+cfg.ReleaseMS, question); contour != nil {
+			pitchCurve = &render.PitchCurve{FrameMS: contour.FrameMS, Cents: contour.Cents}
+		}
+	}
+	// External contours are also useful as target information for unit
+	// selection. Merely supplying one must not opt into the experimental
+	// resampling path; direct waveform pitch processing stays explicit.
+	applyPitch := applyPitchEnabled(cfg)
 	pcm, err := render.Render(synthesisPlan, render.Config{
 		ReleaseMS:               cfg.ReleaseMS,
 		IntonationStrength:      cfg.IntonationStrength,
@@ -134,13 +155,64 @@ func Synthesize(cfg Config) (*Result, error) {
 		Backend:                 cfg.Renderer,
 		WorldlinePath:           cfg.WorldlinePath,
 		WorldlineBridgePath:     cfg.WorldlineBridgePath,
+		UTAUResamplerPath:       cfg.UTAUResamplerPath,
 		BoundaryBridgeMS:        cfg.BoundaryBridgeMS,
 		BoundaryBridgeThreshold: cfg.BoundaryBridgeThreshold,
+		PitchCurve:              pitchCurve,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 	return &Result{Voicebank: bank, Plan: synthesisPlan, Audio: pcm}, nil
+}
+
+func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.MoraTiming {
+	byPosition := make(map[int]plan.Unit, len(synthesisPlan.Units))
+	for _, unit := range synthesisPlan.Units {
+		byPosition[unit.Position] = unit
+	}
+	timings := make([]prosody.MoraTiming, len(morae))
+	cursor := 0.0
+	for position := 0; position < len(morae); {
+		if unit, ok := byPosition[position]; ok {
+			cursor = unit.NoteStartMS
+			timings[position] = prosody.MoraTiming{StartMS: cursor, DurationMS: unit.DurationMS}
+			cursor += unit.DurationMS
+			position++
+			continue
+		}
+		nextPosition := position + 1
+		for nextPosition < len(morae) {
+			if _, ok := byPosition[nextPosition]; ok {
+				break
+			}
+			nextPosition++
+		}
+		nextStart := synthesisPlan.DurationMS
+		if nextPosition < len(morae) {
+			nextStart = byPosition[nextPosition].NoteStartMS
+		}
+		duration := math.Max(0, nextStart-cursor) / float64(nextPosition-position)
+		for position < nextPosition {
+			timings[position] = prosody.MoraTiming{StartMS: cursor, DurationMS: duration}
+			cursor += duration
+			position++
+		}
+	}
+	return timings
+}
+
+func rendererSupportsFramePitch(renderer string) bool {
+	switch renderer {
+	case "worldline", "worldline-v2", "openutau-classic-worldline", "openutau-classic-worldline-local", "openutau-classic-worldline-faithful", "openutau-classic-worldline-faithful-phase", "waveform-openutau-pitch", "waveform-openutau-pitch-local", "waveform-openutau-pitch-local-dual", "waveform-openutau-pitch-local-dual-smooth", "waveform-openutau-pitch-post", "waveform-openutau-pitch-post-controlled", "waveform-openutau-pitch-post-spectral", "waveform-openutau-pitch-post-spectral2", "utau-classic":
+		return true
+	default:
+		return false
+	}
+}
+
+func applyPitchEnabled(cfg Config) bool {
+	return cfg.ApplyPitch || cfg.ProsodyPitchOnly
 }
 
 func joinModelScoreScale(model *connection.LearnedModel) float64 {

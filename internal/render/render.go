@@ -12,14 +12,24 @@ import (
 )
 
 type Config struct {
-	ReleaseMS          float64
-	IntonationStrength float64
-	ApplyPitch          bool
-	Backend             string
-	WorldlinePath       string
-	WorldlineBridgePath string
+	ReleaseMS               float64
+	IntonationStrength      float64
+	ApplyPitch              bool
+	Backend                 string
+	WorldlinePath           string
+	WorldlineBridgePath     string
+	UTAUResamplerPath       string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
+	PitchCurve              *PitchCurve
+}
+
+// PitchCurve is a phrase-relative, frame-sampled pitch deviation in cents.
+// Renderers interpolate it in cents so that the resulting frequency ratio is
+// continuous in log-F0 space.
+type PitchCurve struct {
+	FrameMS float64   `json:"frame_ms"`
+	Cents   []float64 `json:"cents"`
 }
 
 type sourceCache map[string]*audio.PCM
@@ -32,7 +42,23 @@ type effectiveTiming struct {
 }
 
 func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	if cfg.BoundaryBridgeMS > 0 && cfg.Backend != "" && cfg.Backend != "waveform" && cfg.Backend != "waveform-long" {
+	if cfg.PitchCurve != nil {
+		if cfg.PitchCurve.FrameMS < 0.1 || math.IsNaN(cfg.PitchCurve.FrameMS) || math.IsInf(cfg.PitchCurve.FrameMS, 0) || len(cfg.PitchCurve.Cents) == 0 {
+			return nil, errors.New("pitch curve requires frame_ms >= 0.1 and at least one value")
+		}
+		for index, cents := range cfg.PitchCurve.Cents {
+			if math.IsNaN(cents) || math.IsInf(cents, 0) {
+				return nil, fmt.Errorf("pitch curve value %d is not finite", index)
+			}
+			if math.Abs(cents) > 4800 {
+				return nil, fmt.Errorf("pitch curve value %d is outside the supported +/-4800 cent range", index)
+			}
+		}
+		if cfg.Backend == "" || cfg.Backend == "waveform" || cfg.Backend == "waveform-long" {
+			return nil, fmt.Errorf("frame pitch curve is not supported by waveform renderer %q", cfg.Backend)
+		}
+	}
+	if cfg.BoundaryBridgeMS > 0 && cfg.Backend != "" && cfg.Backend != "waveform" && cfg.Backend != "waveform-long" && cfg.Backend != "waveform-openutau-pitch" && cfg.Backend != "waveform-openutau-pitch-local" && cfg.Backend != "waveform-openutau-pitch-local-dual" && cfg.Backend != "waveform-openutau-pitch-local-dual-smooth" {
 		return nil, fmt.Errorf("boundary bridge requires waveform renderer, got %q", cfg.Backend)
 	}
 	switch cfg.Backend {
@@ -42,6 +68,34 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		return renderWaveformLong(synthesisPlan, cfg)
 	case "worldline":
 		return renderWorldline(synthesisPlan, cfg)
+	case "worldline-v2":
+		return renderWorldlineV2(synthesisPlan, cfg)
+	case "openutau-classic-worldline":
+		return renderOpenUtauClassicWorldline(synthesisPlan, cfg)
+	case "openutau-classic-worldline-local":
+		return renderOpenUtauClassicWorldlineLocalPitch(synthesisPlan, cfg)
+	case "openutau-classic-worldline-faithful":
+		return renderOpenUtauClassicWorldlineFaithful(synthesisPlan, cfg)
+	case "openutau-classic-worldline-faithful-phase":
+		return renderOpenUtauClassicWorldlineFaithfulPhase(synthesisPlan, cfg)
+	case "waveform-openutau-pitch":
+		return renderWaveformOpenUtauPitch(synthesisPlan, cfg)
+	case "waveform-openutau-pitch-local":
+		return renderWaveformOpenUtauPitchLocal(synthesisPlan, cfg)
+	case "waveform-openutau-pitch-local-dual":
+		return renderWaveformOpenUtauPitchLocalDual(synthesisPlan, cfg)
+	case "waveform-openutau-pitch-local-dual-smooth":
+		return renderWaveformOpenUtauPitchLocalDualSmooth(synthesisPlan, cfg)
+	case "waveform-openutau-pitch-post":
+		return renderWaveformOpenUtauPitchPost(synthesisPlan, cfg)
+	case "waveform-openutau-pitch-post-controlled":
+		return renderWaveformOpenUtauPitchPostControlled(synthesisPlan, cfg)
+	case "waveform-openutau-pitch-post-spectral":
+		return renderWaveformOpenUtauPitchPostSpectral(synthesisPlan, cfg)
+	case "waveform-openutau-pitch-post-spectral2":
+		return renderWaveformOpenUtauPitchPostSpectral2(synthesisPlan, cfg)
+	case "utau-classic":
+		return renderUTAUClassic(synthesisPlan, cfg)
 	case "worldline-hybrid":
 		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreNone)
 	case "worldline-hybrid-cv":
@@ -53,6 +107,32 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	default:
 		return nil, fmt.Errorf("unknown renderer backend %q", cfg.Backend)
 	}
+}
+
+func pitchCurveHasShift(curve *PitchCurve) bool {
+	if curve == nil {
+		return false
+	}
+	for _, cents := range curve.Cents {
+		if math.Abs(cents) > 0.1 {
+			return true
+		}
+	}
+	return false
+}
+
+func pitchCurveFactorAt(curve *PitchCurve, timeMS float64) float64 {
+	if curve == nil || curve.FrameMS <= 0 || len(curve.Cents) == 0 {
+		return 1
+	}
+	position := math.Max(0, timeMS) / curve.FrameMS
+	left := int(math.Floor(position))
+	if left >= len(curve.Cents)-1 {
+		return math.Pow(2, curve.Cents[len(curve.Cents)-1]/1200)
+	}
+	progress := position - float64(left)
+	cents := curve.Cents[left]*(1-progress) + curve.Cents[left+1]*progress
+	return math.Pow(2, cents/1200)
 }
 
 func renderWaveformLong(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {

@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 namespace UtauTTS.WorldlineBridge;
 
 internal sealed class Manifest {
+	[JsonPropertyName("engine")] public string Engine { get; set; } = "legacy";
     [JsonPropertyName("worldline_path")] public string WorldlinePath { get; set; } = "";
     [JsonPropertyName("output_path")] public string OutputPath { get; set; } = "";
     [JsonPropertyName("sample_rate")] public int SampleRate { get; set; }
@@ -26,6 +27,17 @@ internal sealed class Unit {
     [JsonPropertyName("cutoff_ms")] public double CutoffMs { get; set; }
     [JsonPropertyName("tone")] public int Tone { get; set; }
     [JsonPropertyName("consonant_velocity")] public double ConsonantVelocity { get; set; }
+	[JsonPropertyName("pitch_start_ms")] public double PitchStartMs { get; set; }
+	[JsonPropertyName("pitch_length_ms")] public double PitchLengthMs { get; set; }
+	[JsonPropertyName("volume")] public double Volume { get; set; } = 100;
+	[JsonPropertyName("modulation")] public double Modulation { get; set; }
+	[JsonPropertyName("tempo")] public double Tempo { get; set; } = 120;
+	[JsonPropertyName("envelope")] public EnvelopePoint[] Envelope { get; set; } = [];
+}
+
+internal sealed class EnvelopePoint {
+	[JsonPropertyName("x_ms")] public double XMs { get; set; }
+	[JsonPropertyName("y")] public double Y { get; set; }
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -79,12 +91,22 @@ internal static class Program {
         }
     }
 
-    private static void Render(Manifest manifest) {
+	private static void Render(Manifest manifest) {
         if (manifest.Units.Length == 0 || manifest.F0Curve.Length < 2) {
             throw new InvalidDataException("manifest has no synthesis data");
         }
-        var library = NativeLibrary.Load(Path.GetFullPath(manifest.WorldlinePath));
-        try {
+		var library = NativeLibrary.Load(Path.GetFullPath(manifest.WorldlinePath));
+		try {
+			if (string.Equals(manifest.Engine, "classic-worldline-convergence", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(manifest.Engine, "classic-worldline-faithful", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(manifest.Engine, "classic-worldline-faithful-phase", StringComparison.OrdinalIgnoreCase)) {
+				ClassicWorldline.Render(library, manifest);
+				return;
+			}
+			if (string.Equals(manifest.Engine, "v2", StringComparison.OrdinalIgnoreCase)) {
+				WorldlineV2.Render(library, manifest);
+				return;
+			}
             var create = Load<PhraseNew>(library, "PhraseSynthNew");
             var delete = Load<PhraseDelete>(library, "PhraseSynthDelete");
             var add = Load<PhraseAdd>(library, "PhraseSynthAddRequest");
@@ -167,7 +189,7 @@ internal static class Program {
         private static double[] Fill(int length, double value) => Enumerable.Repeat(value, length).ToArray();
     }
 
-    private static (int sampleRate, double[] samples) ReadPCM16(string path) {
+	internal static (int sampleRate, double[] samples) ReadPCM16(string path) {
         using var stream = File.OpenRead(path);
         using var reader = new BinaryReader(stream);
         if (new string(reader.ReadChars(4)) != "RIFF") throw new InvalidDataException($"not RIFF: {path}");
@@ -203,7 +225,7 @@ internal static class Program {
         return (sampleRate, samples);
     }
 
-    private static void WritePCM16(string path, int sampleRate, float[] samples) {
+	internal static void WritePCM16(string path, int sampleRate, float[] samples) {
         var peak = samples.Where(float.IsFinite).Select(Math.Abs).DefaultIfEmpty(0).Max();
         var scale = peak > 0.98f ? 0.98f / peak : 1f;
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);

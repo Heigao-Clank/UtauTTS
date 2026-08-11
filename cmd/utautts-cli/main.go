@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"utautts/internal/audio"
+	"utautts/internal/prosody"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -25,6 +26,8 @@ func main() {
 		pauseMS                 float64
 		releaseMS               float64
 		prosodyPath             string
+		prosodyFeaturesPath     string
+		prosodyFeaturesCase     string
 		prosodyPitchOnly        bool
 		pitchContourPath        string
 		pitchContourCase        string
@@ -33,6 +36,7 @@ func main() {
 		renderer                string
 		worldlinePath           string
 		worldlineBridgePath     string
+		utauResamplerPath       string
 		boundaryBridgeMS        float64
 		boundaryBridgeThreshold float64
 		selectionMode           string
@@ -50,14 +54,17 @@ func main() {
 	flag.Float64Var(&pauseMS, "pause-ms", 180, "punctuation pause in milliseconds")
 	flag.Float64Var(&releaseMS, "release-ms", 20, "unit release envelope in milliseconds")
 	flag.StringVar(&prosodyPath, "prosody", "", "optional learned prosody model JSON")
+	flag.StringVar(&prosodyFeaturesPath, "prosody-features", "", "optional per-case mora-level accent feature JSON")
+	flag.StringVar(&prosodyFeaturesCase, "prosody-feature-case", "", "case ID in --prosody-features")
 	flag.BoolVar(&prosodyPitchOnly, "prosody-pitch-only", false, "apply only learned pitch and keep fixed duration/energy")
-	flag.StringVar(&pitchContourPath, "pitch-contours", "", "optional per-case pitch contour JSON")
+	flag.StringVar(&pitchContourPath, "pitch-contours", "", "optional per-case pitch contour JSON (recorded in the plan; use --apply-pitch for direct waveform processing)")
 	flag.StringVar(&pitchContourCase, "pitch-case", "", "case ID in --pitch-contours")
 	flag.BoolVar(&applyPitch, "apply-pitch", false, "experimental waveform pitch resampling")
 	flag.Float64Var(&intonationStrength, "intonation-strength", 0, "experimental source-pitch stabilization and phrase contour strength (0..1)")
 	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend (default: waveform; other backends are experimental)")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
+	flag.StringVar(&utauResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler.exe")
 	flag.Float64Var(&boundaryBridgeMS, "boundary-bridge-ms", 0, "maximum width for phase-aligned waveform boundary repair candidates (0 disables)")
 	flag.Float64Var(&boundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair when handcrafted join score is at or below this value")
 	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
@@ -77,6 +84,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	prosodyFeatures, err := loadProsodyFeatures(prosodyFeaturesPath, prosodyFeaturesCase)
+	if err != nil {
+		log.Fatal(err)
+	}
 	result, err := tts.Synthesize(tts.Config{
 		VoicebankPath:           voicebankPath,
 		Text:                    text,
@@ -86,6 +97,7 @@ func main() {
 		PauseDurationMS:         pauseMS,
 		ReleaseMS:               releaseMS,
 		ProsodyModelPath:        prosodyPath,
+		ProsodyFeatures:         prosodyFeatures,
 		ProsodyPitchOnly:        prosodyPitchOnly,
 		PitchFactors:            pitchFactors,
 		ApplyPitch:              applyPitch,
@@ -93,6 +105,7 @@ func main() {
 		Renderer:                renderer,
 		WorldlinePath:           worldlinePath,
 		WorldlineBridgePath:     worldlineBridgePath,
+		UTAUResamplerPath:       utauResamplerPath,
 		BoundaryBridgeMS:        boundaryBridgeMS,
 		BoundaryBridgeThreshold: boundaryBridgeThreshold,
 		SelectionMode:           voicebank.SelectionMode(selectionMode),
@@ -118,6 +131,38 @@ func main() {
 
 	duration := float64(len(result.Audio.Data)) / float64(result.Audio.SampleRate)
 	fmt.Printf("wrote %s (%.2fs, %d Hz, %d units)\n", outPath, duration, result.Audio.SampleRate, len(result.Plan.Units))
+}
+
+func loadProsodyFeatures(path, caseID string) ([]prosody.FeatureFrame, error) {
+	if path == "" {
+		return nil, nil
+	}
+	if caseID == "" {
+		return nil, fmt.Errorf("--prosody-feature-case is required with --prosody-features")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var corpus struct {
+		Version int `json:"version"`
+		Cases   []struct {
+			ID       string                 `json:"id"`
+			Features []prosody.FeatureFrame `json:"features"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		return nil, err
+	}
+	if corpus.Version != 1 {
+		return nil, fmt.Errorf("unsupported prosody feature file version %d", corpus.Version)
+	}
+	for _, item := range corpus.Cases {
+		if item.ID == caseID {
+			return item.Features, nil
+		}
+	}
+	return nil, fmt.Errorf("prosody feature case %q not found in %s", caseID, path)
 }
 
 func loadPitchFactors(path, caseID string) ([]float64, error) {

@@ -19,6 +19,7 @@ import (
 const worldlineFrameMS = 10.0
 
 type worldlineManifest struct {
+	Engine        string                  `json:"engine,omitempty"`
 	WorldlinePath string                  `json:"worldline_path"`
 	OutputPath    string                  `json:"output_path"`
 	SampleRate    int                     `json:"sample_rate"`
@@ -26,23 +27,181 @@ type worldlineManifest struct {
 	Units         []worldlineManifestUnit `json:"units"`
 }
 
+func renderWorldlineV2(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "v2", false)
+}
+
+func renderOpenUtauClassicWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-convergence", false)
+}
+
+func renderOpenUtauClassicWorldlineLocalPitch(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-convergence", true)
+}
+
+func renderOpenUtauClassicWorldlineFaithful(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful", true)
+}
+
+func renderOpenUtauClassicWorldlineFaithfulPhase(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful-phase", true)
+}
+
+// renderWaveformOpenUtauPitchPost first completes the ordinary waveform
+// concatenation, then sends that one continuous phrase through the Classic
+// resampler. Unlike the vowel-only hybrid, it never alternates raw and WORLD
+// timbres every mora. Modulation 100 preserves the source phrase's local pitch
+// variation while the frame curve supplies the learned relative movement.
+func renderWaveformOpenUtauPitchPost(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 100, 0, 0)
+}
+
+// renderWaveformOpenUtauPitchPostControlled suppresses the source phrase's F0
+// modulation so a diagnostic comparison exposes the supplied contour itself.
+// The normal post backend retains modulation 100 for voice preservation.
+func renderWaveformOpenUtauPitchPostControlled(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 0, 0, 0)
+}
+
+// renderWaveformOpenUtauPitchPostSpectral keeps the pitch-bearing low band of
+// the continuous Worldline output, while restoring the raw waveform's upper
+// band for consonant identity. A complementary zero-phase FIR avoids both the
+// mora-rate timbre gating and same-band raw/processed beating.
+func renderWaveformOpenUtauPitchPostSpectral(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 100, 410, 1001)
+}
+
+// renderWaveformOpenUtauPitchPostSpectral2 retains the first two harmonics of
+// this voice (about 260-590 Hz) from the pitched branch. It diagnoses whether
+// the fundamental-only split sounds metallic because its upper harmonics keep
+// the original pitch.
+func renderWaveformOpenUtauPitchPostSpectral2(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 100, 690, 1601)
+}
+
+func renderWaveformOpenUtauPitchPostMode(synthesisPlan *plan.Plan, cfg Config, modulation, restoreAboveHz float64, restoreTaps int) (*audio.PCM, error) {
+	baseCfg := cfg
+	baseCfg.Backend = "waveform"
+	baseCfg.ApplyPitch = false
+	baseCfg.IntonationStrength = 0
+	baseCfg.PitchCurve = nil
+	base, err := renderWaveform(synthesisPlan, baseCfg)
+	if err != nil {
+		return nil, err
+	}
+	if !planHasPitchShift(synthesisPlan, cfg) {
+		return base, nil
+	}
+	library, err := resolveWorldlineLibrary(cfg.WorldlinePath)
+	if err != nil {
+		return nil, err
+	}
+	bridge, err := resolveWorldlineBridge(cfg.WorldlineBridgePath)
+	if err != nil {
+		return nil, err
+	}
+	reference := pitch.EstimateMedian(pcmFloats(base.Data), base.SampleRate)
+	if reference <= 0 {
+		reference = 220
+	}
+	durationMS := float64(len(base.Data)) * 1000 / float64(base.SampleRate)
+	requiredLengthMS := math.Ceil(durationMS/50+0.5) * 50
+	curveLength := max(2, int(math.Ceil(requiredLengthMS/worldlineFrameMS))+2)
+	f0Curve := make([]float64, curveLength)
+	for frame := range f0Curve {
+		f0Curve[frame] = reference * pitchCurveFactorAt(cfg.PitchCurve, float64(frame)*worldlineFrameMS)
+	}
+
+	tempDir, err := os.MkdirTemp("", "utautts-worldline-post-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tempDir)
+	sourcePath := filepath.Join(tempDir, "waveform.wav")
+	if err := audio.WriteWav(sourcePath, base); err != nil {
+		return nil, fmt.Errorf("write waveform post-process source: %w", err)
+	}
+	manifest := worldlineManifest{
+		Engine:        "classic-worldline-convergence",
+		WorldlinePath: library,
+		OutputPath:    filepath.Join(tempDir, "output.wav"),
+		SampleRate:    base.SampleRate,
+		F0Curve:       f0Curve,
+		Units: []worldlineManifestUnit{{
+			Source: sourcePath, PositionMS: 0, SkipMS: 0, LengthMS: durationMS,
+			FadeInMS: 0, FadeOutMS: 0, OffsetMS: 0, RequiredLengthMS: requiredLengthMS,
+			ConsonantMS: 0, CutoffMS: 0,
+			Tone: int(math.Round(69 + 12*math.Log2(reference/440))), ConsonantVelocity: 100,
+			PitchStartMS: 0, Volume: 100, Modulation: modulation, Tempo: 120,
+		}},
+	}
+	manifestPath := filepath.Join(tempDir, "manifest.json")
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(manifestPath, data, 0o600); err != nil {
+		return nil, err
+	}
+	command := exec.Command(bridge, manifestPath)
+	if output, err := command.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("worldline post-process bridge failed: %w: %s", err, output)
+	}
+	processed, err := audio.ReadWav(manifest.OutputPath)
+	if err != nil {
+		return nil, fmt.Errorf("read worldline post-process output: %w", err)
+	}
+	if processed.SampleRate != base.SampleRate || processed.Channels != 1 {
+		return nil, fmt.Errorf("worldline post-process format mismatch")
+	}
+	if len(processed.Data) < len(base.Data) {
+		processed.Data = append(processed.Data, make([]int16, len(base.Data)-len(processed.Data))...)
+	} else {
+		processed.Data = processed.Data[:len(base.Data)]
+	}
+	matched := matchLevelAndMean(pcmFloats(processed.Data), pcmFloats(base.Data))
+	for index, value := range matched {
+		value = math.Max(-1, math.Min(32767.0/32768.0, value))
+		processed.Data[index] = int16(math.Round(value * 32768))
+	}
+	if restoreAboveHz > 0 {
+		processed = restoreRawHighBand(base, processed, restoreAboveHz, restoreTaps)
+	}
+	return processed, nil
+}
+
 type worldlineManifestUnit struct {
-	Source            string  `json:"source"`
-	FRQPath           string  `json:"frq_path,omitempty"`
-	PositionMS        float64 `json:"position_ms"`
-	SkipMS            float64 `json:"skip_ms"`
-	LengthMS          float64 `json:"length_ms"`
-	FadeInMS          float64 `json:"fade_in_ms"`
-	FadeOutMS         float64 `json:"fade_out_ms"`
-	OffsetMS          float64 `json:"offset_ms"`
-	RequiredLengthMS  float64 `json:"required_length_ms"`
-	ConsonantMS       float64 `json:"consonant_ms"`
-	CutoffMS          float64 `json:"cutoff_ms"`
-	Tone              int     `json:"tone"`
-	ConsonantVelocity float64 `json:"consonant_velocity"`
+	Source            string                   `json:"source"`
+	FRQPath           string                   `json:"frq_path,omitempty"`
+	PositionMS        float64                  `json:"position_ms"`
+	SkipMS            float64                  `json:"skip_ms"`
+	LengthMS          float64                  `json:"length_ms"`
+	FadeInMS          float64                  `json:"fade_in_ms"`
+	FadeOutMS         float64                  `json:"fade_out_ms"`
+	OffsetMS          float64                  `json:"offset_ms"`
+	RequiredLengthMS  float64                  `json:"required_length_ms"`
+	ConsonantMS       float64                  `json:"consonant_ms"`
+	CutoffMS          float64                  `json:"cutoff_ms"`
+	Tone              int                      `json:"tone"`
+	ConsonantVelocity float64                  `json:"consonant_velocity"`
+	PitchStartMS      float64                  `json:"pitch_start_ms,omitempty"`
+	PitchLengthMS     float64                  `json:"pitch_length_ms,omitempty"`
+	Volume            float64                  `json:"volume,omitempty"`
+	Modulation        float64                  `json:"modulation,omitempty"`
+	Tempo             float64                  `json:"tempo,omitempty"`
+	Envelope          []worldlineEnvelopePoint `json:"envelope,omitempty"`
+}
+
+type worldlineEnvelopePoint struct {
+	XMS float64 `json:"x_ms"`
+	Y   float64 `json:"y"`
 }
 
 func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "legacy", false)
+}
+
+func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, localSourcePitch bool) (*audio.PCM, error) {
 	if synthesisPlan == nil || len(synthesisPlan.Units) == 0 {
 		return nil, errors.New("empty synthesis plan")
 	}
@@ -60,9 +219,21 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 
 	cache := sourceCache{}
 	timings := make([]effectiveTiming, len(synthesisPlan.Units))
+	var classicTimings []openUtauClassicTiming
+	phraseStartMS := 0.0
+	faithfulClassic := strings.HasPrefix(engine, "classic-worldline-faithful")
+	if faithfulClassic {
+		classicTimings, phraseStartMS = openUtauClassicTimings(synthesisPlan.Units)
+	}
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
 		timings[i] = normalizeTiming(*unit, cfg.ReleaseMS)
+		if len(classicTimings) == len(synthesisPlan.Units) && !unit.Silent {
+			timings[i].preutteranceMS = classicTimings[i].preutter
+			timings[i].overlapMS = classicTimings[i].overlap
+			timings[i].consonantMS = unit.ConsonantMS
+			timings[i].scale = 1
+		}
 		unit.TimingScale = timings[i].scale
 		unit.EffectivePreutteranceMS = timings[i].preutteranceMS
 		unit.EffectiveConsonantMS = timings[i].consonantMS
@@ -86,13 +257,18 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 			pitchFactors[i] *= unit.PitchFactor
 		}
 	}
+	f0Curve := worldlineF0Curve(synthesisPlan, pitches, pitchFactors, reference, max(2, int(math.Ceil((synthesisPlan.DurationMS+cfg.ReleaseMS)/worldlineFrameMS))+2))
+	if localSourcePitch {
+		f0Curve = worldlineLocalF0Curve(synthesisPlan, pitches, pitchFactors, reference, len(f0Curve))
+	}
 	manifest := worldlineManifest{
+		Engine:        engine,
 		WorldlinePath: library,
 		SampleRate:    sampleRate,
-		F0Curve: worldlineF0Curve(
-			synthesisPlan, pitches, pitchFactors, reference,
-			max(2, int(math.Ceil((synthesisPlan.DurationMS+cfg.ReleaseMS)/worldlineFrameMS))+2),
-		),
+		F0Curve:       f0Curve,
+	}
+	for frame := range manifest.F0Curve {
+		manifest.F0Curve[frame] *= pitchCurveFactorAt(cfg.PitchCurve, float64(frame)*worldlineFrameMS)
 	}
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
@@ -105,7 +281,7 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 			unitPitch = reference
 		}
 		unit.SourceF0Hz = pitches[i]
-		unit.TargetF0Hz = unitPitch * pitchFactors[i]
+		unit.TargetF0Hz = unitPitch * pitchFactors[i] * pitchCurveFactorAt(cfg.PitchCurve, unit.NoteStartMS)
 		unit.IntonationFactor = intonation[i]
 		consonantVelocity := 100.0
 		if timing.consonantMS > 0 && unit.ConsonantMS > 0 {
@@ -115,9 +291,35 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		positionMS := unit.NoteStartMS - timing.preutteranceMS
 		skipMS := 0.0
 		lengthMS := requiredLength
-		if positionMS < 0 {
-			skipMS = -positionMS
-			lengthMS -= skipMS
+		pitchStartMS := positionMS
+		volume, modulation, tempo := 100.0, 0.0, 120.0
+		var envelopePoints []worldlineEnvelopePoint
+		pitchLengthMS := 0.0
+		if strings.HasPrefix(engine, "classic-worldline-") {
+			// OpenUtau's ResamplerItem starts its bend array at the unscaled
+			// source preutterance and asks the resampler for a 50 ms rounded
+			// buffer. The convergence mixer then skips any leading excess.
+			pitchLeadingMS := unit.PreutteranceMS
+			skipMS = math.Max(0, pitchLeadingMS-timing.preutteranceMS)
+			pitchStartMS = unit.NoteStartMS - pitchLeadingMS
+			durCorrection := 0.0
+			if faithfulClassic {
+				phoneTiming := classicTimings[i]
+				skipMS = pitchLeadingMS - phoneTiming.preutter
+				durCorrection = phoneTiming.preutter - phoneTiming.tailIntrude + phoneTiming.tailOverlap
+				envelopePoints = openUtauEnvelopeFromTiming(*unit, phoneTiming)
+				pitchLengthMS = envelopePoints[4].XMS + pitchLeadingMS
+				positionMS = unit.NoteStartMS - phoneTiming.preutter - phraseStartMS
+			}
+			requiredLength = math.Max(unit.DurationMS+durCorrection+skipMS, unit.ConsonantMS)
+			requiredLength = math.Ceil(requiredLength/50+0.5) * 50
+			lengthMS = timing.preutteranceMS + unit.DurationMS + cfg.ReleaseMS
+			consonantVelocity = 100
+		}
+		if !faithfulClassic && positionMS < 0 {
+			leadingTrimMS := -positionMS
+			skipMS += leadingTrimMS
+			lengthMS -= leadingTrimMS
 			positionMS = 0
 		}
 		manifest.Units = append(manifest.Units, worldlineManifestUnit{
@@ -126,6 +328,8 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 			FadeOutMS: cfg.ReleaseMS, OffsetMS: unit.OffsetMS, RequiredLengthMS: requiredLength,
 			ConsonantMS: unit.ConsonantMS, CutoffMS: unit.CutoffMS,
 			Tone: int(math.Round(69 + 12*math.Log2(unitPitch/440))), ConsonantVelocity: consonantVelocity,
+			PitchStartMS: pitchStartMS, Volume: volume, Modulation: modulation, Tempo: tempo,
+			PitchLengthMS: pitchLengthMS, Envelope: envelopePoints,
 		})
 	}
 
@@ -151,6 +355,10 @@ func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read worldline output: %w", err)
 	}
+	if faithfulClassic && phraseStartMS < 0 {
+		trim := min(len(pcm.Data), msToFrames(-phraseStartMS, pcm.SampleRate))
+		pcm.Data = pcm.Data[trim:]
+	}
 	minimumFrames := msToFrames(synthesisPlan.DurationMS+cfg.ReleaseMS, pcm.SampleRate)
 	if len(pcm.Data) < minimumFrames {
 		pcm.Data = append(pcm.Data, make([]int16, minimumFrames-len(pcm.Data))...)
@@ -170,6 +378,95 @@ func findFRQPath(wavPath string) string {
 		}
 	}
 	return ""
+}
+
+type openUtauClassicTiming struct {
+	preutter    float64
+	overlap     float64
+	tailIntrude float64
+	tailOverlap float64
+	overlapped  bool
+}
+
+func openUtauClassicTimings(units []plan.Unit) ([]openUtauClassicTiming, float64) {
+	result := make([]openUtauClassicTiming, len(units))
+	previous := -1
+	first := -1
+	for index, unit := range units {
+		if unit.Silent {
+			continue
+		}
+		if first < 0 {
+			first = index
+		}
+		autoPreutter := unit.PreutteranceMS
+		autoOverlap := unit.OverlapMS
+		adjacent := false
+		if previous >= 0 {
+			previousUnit := units[previous]
+			gapMS := unit.NoteStartMS - (previousUnit.NoteStartMS + previousUnit.DurationMS)
+			previousDuration := previousUnit.DurationMS
+			maxPreutter := autoPreutter
+			if gapMS <= 0 {
+				adjacent = true
+				if autoOverlap > 0 && autoPreutter-autoOverlap > previousDuration*0.5 {
+					maxPreutter = previousDuration * 0.5 / (autoPreutter - autoOverlap) * autoPreutter
+				} else if autoOverlap <= 0 {
+					maxPreutter = math.Min(maxPreutter, previousDuration*0.9)
+				}
+				maxPreutter = math.Min(maxPreutter, previousDuration)
+				if result[previous].preutter < 5 {
+					maxPreutter = math.Min(maxPreutter, previousDuration+result[previous].preutter-5)
+				}
+			} else if gapMS < autoPreutter {
+				maxPreutter = gapMS
+			}
+			if autoPreutter > maxPreutter && autoPreutter > 0 {
+				ratio := maxPreutter / autoPreutter
+				autoPreutter = maxPreutter
+				autoOverlap *= ratio
+			}
+			if autoOverlap < 0 {
+				autoOverlap = math.Max(autoOverlap, math.Min(0, 35-previousDuration+autoPreutter))
+			}
+		}
+		autoPreutter = math.Max(0, autoPreutter)
+		result[index].preutter = autoPreutter
+		result[index].overlap = autoOverlap
+		result[index].overlapped = previous >= 0 && adjacent && autoOverlap > 0
+		if previous >= 0 {
+			if adjacent {
+				result[previous].tailIntrude = math.Max(autoPreutter, autoPreutter-autoOverlap)
+				result[previous].tailOverlap = math.Max(autoOverlap, 0)
+			}
+		}
+		previous = index
+	}
+	phraseStart := 0.0
+	if first >= 0 {
+		phraseStart = units[first].NoteStartMS - result[first].preutter
+	}
+	return result, phraseStart
+}
+
+func openUtauEnvelopeFromTiming(unit plan.Unit, timing openUtauClassicTiming) []worldlineEnvelopePoint {
+	fadeIn := 5.0
+	if timing.overlapped {
+		fadeIn = timing.overlap
+	}
+	fadeOut := 35.0
+	if timing.tailOverlap > 0 {
+		fadeOut = timing.tailOverlap
+	}
+	p0 := -timing.preutter
+	p1 := math.Max(p0+5, p0+fadeIn)
+	p2 := math.Max(0, p1)
+	p4 := unit.DurationMS - timing.tailIntrude + timing.tailOverlap
+	p3 := math.Max(p2, p4-fadeOut)
+	return []worldlineEnvelopePoint{
+		{XMS: p0, Y: 0}, {XMS: p1, Y: 1}, {XMS: p2, Y: 1},
+		{XMS: p3, Y: 1}, {XMS: p4, Y: 0},
+	}
 }
 
 func resolveWorldlineBridge(configured string) (string, error) {
@@ -277,6 +574,30 @@ func worldlineF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, refe
 			}
 		}
 		curve[frame] = value
+	}
+	return curve
+}
+
+// worldlineLocalF0Curve keeps each recording's measured F0 as that unit's
+// baseline. The hybrid renderer protects every phone boundary with raw audio,
+// so interpolating toward the next recording's unrelated F0 only adds an
+// audible hidden glissando inside the current vowel.
+func worldlineLocalF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, reference float64, length int) []float64 {
+	targets := make([]float64, len(pitches))
+	for index, value := range pitches {
+		if value <= 0 {
+			value = reference
+		}
+		targets[index] = value * factors[index]
+	}
+	curve := make([]float64, length)
+	unitIndex := 0
+	for frame := range curve {
+		timeMS := float64(frame) * worldlineFrameMS
+		for unitIndex+1 < len(synthesisPlan.Units) && synthesisPlan.Units[unitIndex+1].NoteStartMS <= timeMS {
+			unitIndex++
+		}
+		curve[frame] = targets[unitIndex]
 	}
 	return curve
 }

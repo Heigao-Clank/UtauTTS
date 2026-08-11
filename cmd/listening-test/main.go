@@ -14,6 +14,8 @@ import (
 	"utautts/internal/audio"
 	"utautts/internal/evaluation"
 	"utautts/internal/plan"
+	"utautts/internal/prosody"
+	"utautts/internal/render"
 	"utautts/internal/tts"
 )
 
@@ -63,9 +65,11 @@ type systemInfo struct {
 	JoinModelPath           string  `json:"join_model_path,omitempty"`
 	ProsodyModel            bool    `json:"prosody_model,omitempty"`
 	ProsodyPath             string  `json:"prosody_model_path,omitempty"`
+	ProsodyFeaturesPath     string  `json:"prosody_features_path,omitempty"`
 	ProsodyPitchOnly        bool    `json:"prosody_pitch_only,omitempty"`
 	ApplyPitch              bool    `json:"apply_pitch,omitempty"`
 	PitchContourPath        string  `json:"pitch_contour_path,omitempty"`
+	FramePitchContourPath   string  `json:"frame_pitch_contour_path,omitempty"`
 	IntonationStrength      float64 `json:"intonation_strength"`
 	BoundaryBridgeMS        float64 `json:"boundary_bridge_ms,omitempty"`
 	BoundaryBridgeThreshold float64 `json:"boundary_bridge_threshold,omitempty"`
@@ -80,6 +84,27 @@ type pitchContourCorpus struct {
 type pitchContourCase struct {
 	ID           string    `json:"id"`
 	PitchFactors []float64 `json:"pitch_factors"`
+}
+
+type framePitchContourCorpus struct {
+	Version int                     `json:"version"`
+	Cases   []framePitchContourCase `json:"cases"`
+}
+
+type framePitchContourCase struct {
+	ID      string    `json:"id"`
+	FrameMS float64   `json:"frame_ms"`
+	Cents   []float64 `json:"cents"`
+}
+
+type prosodyFeatureCorpus struct {
+	Version int                  `json:"version"`
+	Cases   []prosodyFeatureCase `json:"cases"`
+}
+
+type prosodyFeatureCase struct {
+	ID       string                 `json:"id"`
+	Features []prosody.FeatureFrame `json:"features"`
 }
 
 type publicManifest struct {
@@ -101,7 +126,7 @@ type answerKey struct {
 func main() {
 	var texts textList
 	var cfg tts.Config
-	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, commonProsody, prosodyA, prosodyB, contourAPath, contourBPath, corpusPath string
+	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, commonProsody, prosodyA, prosodyB, commonFeatures, featuresAPath, featuresBPath, contourAPath, contourBPath, frameContourAPath, frameContourBPath, corpusPath string
 	var seed int64
 	var pitchOnlyA, pitchOnlyB, applyPitchA, applyPitchB bool
 	var intonationStrengthA, intonationStrengthB float64
@@ -116,12 +141,17 @@ func main() {
 	flag.StringVar(&commonProsody, "prosody", "", "prosody model used by both systems")
 	flag.StringVar(&prosodyA, "system-a-prosody", "", "optional prosody model for system A")
 	flag.StringVar(&prosodyB, "system-b-prosody", "", "optional prosody model for system B")
+	flag.StringVar(&commonFeatures, "prosody-features", "", "mora-level accent feature corpus used by both systems")
+	flag.StringVar(&featuresAPath, "system-a-prosody-features", "", "optional accent feature corpus for system A")
+	flag.StringVar(&featuresBPath, "system-b-prosody-features", "", "optional accent feature corpus for system B")
 	flag.BoolVar(&pitchOnlyA, "system-a-prosody-pitch-only", false, "apply only prosody pitch prediction to system A")
 	flag.BoolVar(&pitchOnlyB, "system-b-prosody-pitch-only", false, "apply only prosody pitch prediction to system B")
 	flag.BoolVar(&applyPitchA, "system-a-apply-pitch", false, "enable experimental waveform pitch resampling for system A")
 	flag.BoolVar(&applyPitchB, "system-b-apply-pitch", false, "enable experimental waveform pitch resampling for system B")
 	flag.StringVar(&contourAPath, "system-a-pitch-contours", "", "optional per-case pitch contour JSON for system A")
 	flag.StringVar(&contourBPath, "system-b-pitch-contours", "", "optional per-case pitch contour JSON for system B")
+	flag.StringVar(&frameContourAPath, "system-a-frame-pitch-contours", "", "optional per-case frame pitch contour JSON for system A")
+	flag.StringVar(&frameContourBPath, "system-b-frame-pitch-contours", "", "optional per-case frame pitch contour JSON for system B")
 	flag.Float64Var(&intonationStrengthA, "system-a-intonation-strength", -1, "override intonation strength for system A (-1 uses --intonation-strength)")
 	flag.Float64Var(&intonationStrengthB, "system-b-intonation-strength", -1, "override intonation strength for system B (-1 uses --intonation-strength)")
 	flag.Float64Var(&boundaryBridgeMSA, "system-a-boundary-bridge-ms", 0, "maximum phase-aligned boundary repair width for system A (0 disables)")
@@ -141,6 +171,7 @@ func main() {
 	flag.Float64Var(&cfg.IntonationStrength, "intonation-strength", 0, "source-pitch stabilization and phrase contour strength (0..1)")
 	flag.StringVar(&cfg.WorldlinePath, "worldline", "", "path to worldline library")
 	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")
+	flag.StringVar(&cfg.UTAUResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler.exe")
 	flag.Parse()
 	if cfg.VoicebankPath == "" || outputDirectory == "" || (len(texts) == 0 && corpusPath == "") || (mode != "ab" && mode != "abx") {
 		flag.Usage()
@@ -180,11 +211,33 @@ func main() {
 	if prosodyB == "" {
 		prosodyB = commonProsody
 	}
+	if featuresAPath == "" {
+		featuresAPath = commonFeatures
+	}
+	if featuresBPath == "" {
+		featuresBPath = commonFeatures
+	}
+	featuresA, err := loadProsodyFeatureCorpus(featuresAPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	featuresB, err := loadProsodyFeatureCorpus(featuresBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 	contoursA, err := loadPitchContours(contourAPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	contoursB, err := loadPitchContours(contourBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	frameContoursA, err := loadFramePitchContours(frameContourAPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	frameContoursB, err := loadFramePitchContours(frameContourBPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -198,7 +251,9 @@ func main() {
 	for _, item := range cases {
 		text := item.text
 		cfg.Text = text
+		cfg.ProsodyFeatures = featuresA[item.id]
 		cfg.PitchFactors = contoursA[item.id]
+		cfg.PitchCurve = frameContoursA[item.id]
 		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly, cfg.ApplyPitch, cfg.IntonationStrength = rendererA, modelA, prosodyA, pitchOnlyA, applyPitchA, intonationStrengthA
 		cfg.BoundaryBridgeMS, cfg.BoundaryBridgeThreshold = boundaryBridgeMSA, boundaryBridgeThresholdA
 		first, err := tts.Synthesize(cfg)
@@ -207,6 +262,8 @@ func main() {
 			continue
 		}
 		cfg.PitchFactors = contoursB[item.id]
+		cfg.PitchCurve = frameContoursB[item.id]
+		cfg.ProsodyFeatures = featuresB[item.id]
 		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly, cfg.ApplyPitch, cfg.IntonationStrength = rendererB, modelB, prosodyB, pitchOnlyB, applyPitchB, intonationStrengthB
 		cfg.BoundaryBridgeMS, cfg.BoundaryBridgeThreshold = boundaryBridgeMSB, boundaryBridgeThresholdB
 		second, err := tts.Synthesize(cfg)
@@ -220,8 +277,8 @@ func main() {
 		}
 		trialID := len(manifest.Trials) + 1
 		left, right := first, second
-		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, ProsodyPitchOnly: pitchOnlyA, ApplyPitch: applyPitchA || pitchOnlyA || contourAPath != "", PitchContourPath: contourAPath, IntonationStrength: intonationStrengthA, BoundaryBridgeMS: boundaryBridgeMSA, BoundaryBridgeThreshold: boundaryBridgeThresholdA, LongUnitGroups: longUnitGroups(first.Plan.Units)}
-		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, ProsodyPitchOnly: pitchOnlyB, ApplyPitch: applyPitchB || pitchOnlyB || contourBPath != "", PitchContourPath: contourBPath, IntonationStrength: intonationStrengthB, BoundaryBridgeMS: boundaryBridgeMSB, BoundaryBridgeThreshold: boundaryBridgeThresholdB, LongUnitGroups: longUnitGroups(second.Plan.Units)}
+		leftInfo := systemInfo{Renderer: rendererA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, ProsodyFeaturesPath: featuresAPath, ProsodyPitchOnly: pitchOnlyA, ApplyPitch: applyPitchA || pitchOnlyA || contourAPath != "" || frameContourAPath != "", PitchContourPath: contourAPath, FramePitchContourPath: frameContourAPath, IntonationStrength: intonationStrengthA, BoundaryBridgeMS: boundaryBridgeMSA, BoundaryBridgeThreshold: boundaryBridgeThresholdA, LongUnitGroups: longUnitGroups(first.Plan.Units)}
+		rightInfo := systemInfo{Renderer: rendererB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, ProsodyFeaturesPath: featuresBPath, ProsodyPitchOnly: pitchOnlyB, ApplyPitch: applyPitchB || pitchOnlyB || contourBPath != "" || frameContourBPath != "", PitchContourPath: contourBPath, FramePitchContourPath: frameContourBPath, IntonationStrength: intonationStrengthB, BoundaryBridgeMS: boundaryBridgeMSB, BoundaryBridgeThreshold: boundaryBridgeThresholdB, LongUnitGroups: longUnitGroups(second.Plan.Units)}
 		if random.Intn(2) == 1 {
 			left, right, leftInfo, rightInfo = right, left, rightInfo, leftInfo
 		}
@@ -284,6 +341,56 @@ func loadPitchContours(path string) (map[string][]float64, error) {
 	}
 	for _, item := range corpus.Cases {
 		result[item.ID] = item.PitchFactors
+	}
+	return result, nil
+}
+
+func loadFramePitchContours(path string) (map[string]*render.PitchCurve, error) {
+	result := map[string]*render.PitchCurve{}
+	if path == "" {
+		return result, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read frame pitch contours: %w", err)
+	}
+	var corpus framePitchContourCorpus
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		return nil, fmt.Errorf("decode frame pitch contours: %w", err)
+	}
+	if corpus.Version != 1 {
+		return nil, fmt.Errorf("unsupported frame pitch contour version %d", corpus.Version)
+	}
+	for _, item := range corpus.Cases {
+		if item.ID == "" || item.FrameMS < 0.1 || len(item.Cents) == 0 {
+			return nil, fmt.Errorf("invalid frame pitch contour %q", item.ID)
+		}
+		result[item.ID] = &render.PitchCurve{FrameMS: item.FrameMS, Cents: append([]float64(nil), item.Cents...)}
+	}
+	return result, nil
+}
+
+func loadProsodyFeatureCorpus(path string) (map[string][]prosody.FeatureFrame, error) {
+	result := map[string][]prosody.FeatureFrame{}
+	if path == "" {
+		return result, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var corpus prosodyFeatureCorpus
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		return nil, err
+	}
+	if corpus.Version != 1 {
+		return nil, fmt.Errorf("unsupported prosody feature corpus version %d", corpus.Version)
+	}
+	for _, item := range corpus.Cases {
+		if item.ID == "" || len(item.Features) == 0 {
+			return nil, fmt.Errorf("invalid prosody feature case %q", item.ID)
+		}
+		result[item.ID] = item.Features
 	}
 	return result, nil
 }

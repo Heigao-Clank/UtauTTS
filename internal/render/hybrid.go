@@ -45,7 +45,7 @@ func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config, restoreCV cvRes
 	length := max(len(waveformPCM.Data), len(worldlinePCM.Data))
 	baseline := pcmFloats(waveformPCM.Data)
 	vocoder := pcmFloats(worldlinePCM.Data)
-	weights := directConsonantWeights(synthesisPlan, cfg.ReleaseMS, waveformPCM.SampleRate, length, baseline, vocoder, restoreCV)
+	weights := directConsonantWeights(synthesisPlan, cfg.ReleaseMS, waveformPCM.SampleRate, length, baseline, vocoder, restoreCV, pitchCurveHasShift(cfg.PitchCurve))
 	result := make([]int16, length)
 	for i := range result {
 		if weights[i] == 0 {
@@ -68,7 +68,7 @@ func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config, restoreCV cvRes
 	return &audio.PCM{SampleRate: waveformPCM.SampleRate, Channels: 1, Data: result}, nil
 }
 
-func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleRate, length int, baseline, synthesized []float64, restoreCV cvRestoreMode) []float64 {
+func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleRate, length int, baseline, synthesized []float64, restoreCV cvRestoreMode, framePitchShift bool) []float64 {
 	weights := make([]float64, length)
 	window := max(16, msToFrames(30, sampleRate))
 	hop := max(1, msToFrames(5, sampleRate))
@@ -89,7 +89,7 @@ func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleR
 			// pitch artifacts in the vowel. Protect the preutterance (the consonant
 			// attack) and only a short release after the note boundary instead.
 			releaseMS := 8.0
-			if unitHasPitchShift(unit) {
+			if framePitchShift || unitHasPitchShift(unit) {
 				// With pitch control active, periodic raw vowel and WORLD output do
 				// not share phase. End the protected raw region at the note boundary;
 				// the smoothing pass below still supplies a short transition.
