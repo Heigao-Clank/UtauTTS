@@ -1,12 +1,28 @@
 package oto
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
+	"unicode/utf16"
 
 	"golang.org/x/text/encoding/japanese"
 )
+
+func TestDecodeUTF16LEWithBOM(t *testing.T) {
+	units := utf16.Encode([]rune("音源の説明です。\r\n"))
+	data := []byte{0xff, 0xfe}
+	for _, unit := range units {
+		var encoded [2]byte
+		binary.LittleEndian.PutUint16(encoded[:], unit)
+		data = append(data, encoded[:]...)
+	}
+	text, encoding, err := Decode(data)
+	if err != nil || encoding != "UTF-16LE" || text != "音源の説明です。\r\n" {
+		t.Fatalf("Decode() = %q, %q, %v", text, encoding, err)
+	}
+}
 
 func TestReadIniUTF8DecimalsAndDiagnostics(t *testing.T) {
 	dir := t.TempDir()

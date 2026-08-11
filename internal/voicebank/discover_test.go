@@ -3,7 +3,10 @@ package voicebank
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"golang.org/x/text/encoding/japanese"
 )
 
 func TestDiscoverVoicebanksUsesMetadataNameAndSorts(t *testing.T) {
@@ -32,6 +35,59 @@ func TestDiscoverVoicebanksUsesMetadataNameAndSorts(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].Name != "乙" || got[1].Name != "甲" {
 		t.Fatalf("voicebanks = %#v", got)
+	}
+}
+
+func TestInspectFindsSafeImageAndPresentationText(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "portrait.bmp"), []byte("BM"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	character, _ := japanese.ShiftJIS.NewEncoder().Bytes([]byte("name=試験音源\nimage=portrait.bmp\n"))
+	readme, _ := japanese.ShiftJIS.NewEncoder().Bytes([]byte("これは説明です。\n"))
+	if err := os.WriteFile(filepath.Join(root, "character.txt"), character, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "README.TXT"), readme, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := Inspect(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Name != "試験音源" || summary.ImagePath != filepath.Join(root, "portrait.bmp") || summary.ReadmePath == "" {
+		t.Fatalf("summary = %#v", summary)
+	}
+	presentation, err := LoadPresentation(summary)
+	if err != nil || !strings.Contains(presentation.ReadmeText, "説明") || !strings.Contains(presentation.CharacterText, "image=") {
+		t.Fatalf("presentation = %#v, %v", presentation, err)
+	}
+}
+
+func TestInspectRejectsImageOutsideVoicebank(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "bank")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, "outside.bmp"), []byte("BM"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "character.txt"), []byte("image=../outside.bmp\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := Inspect(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.ImagePath != "" {
+		t.Fatalf("unsafe image path accepted: %q", summary.ImagePath)
 	}
 }
 

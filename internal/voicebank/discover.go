@@ -11,8 +11,17 @@ import (
 
 // Summary is the lightweight information needed to present a voicebank picker.
 type Summary struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name          string `json:"name"`
+	Path          string `json:"path"`
+	ImagePath     string `json:"image_path,omitempty"`
+	CharacterPath string `json:"character_path,omitempty"`
+	ReadmePath    string `json:"readme_path,omitempty"`
+}
+
+type Presentation struct {
+	Summary       Summary
+	CharacterText string
+	ReadmeText    string
 }
 
 // Discover finds voicebanks directly below root. If root itself is a
@@ -111,19 +120,66 @@ func Inspect(root string) (Summary, error) {
 		return Summary{}, ErrNoOto
 	}
 	name := filepath.Base(absRoot)
-	if path := findRootFile(absRoot, "character.txt"); path != "" {
+	characterPath := findRootFile(absRoot, "character.txt")
+	imagePath := ""
+	if characterPath != "" {
+		path := characterPath
 		if text, readErr := readMetadata(path); readErr == nil {
 			for _, line := range strings.Split(text, "\n") {
 				parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
-				if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), "name") {
-					if configured := strings.TrimSpace(parts[1]); configured != "" {
+				if len(parts) != 2 {
+					continue
+				}
+				key, configured := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+				switch {
+				case strings.EqualFold(key, "name"):
+					if configured != "" {
 						name = configured
 					}
+				case strings.EqualFold(key, "image"):
+					imagePath = safePresentationFile(absRoot, configured)
 				}
 			}
 		}
 	}
-	return Summary{Name: name, Path: absRoot}, nil
+	readmePath := findRootFile(absRoot, "readme.txt")
+	if readmePath == "" {
+		readmePath = findRootFile(absRoot, "readme.md")
+	}
+	return Summary{Name: name, Path: absRoot, ImagePath: imagePath, CharacterPath: characterPath, ReadmePath: readmePath}, nil
+}
+
+func safePresentationFile(root, relative string) string {
+	if relative == "" || filepath.IsAbs(relative) {
+		return ""
+	}
+	root = filepath.Clean(root)
+	candidate := filepath.Clean(filepath.Join(root, filepath.FromSlash(relative)))
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	if info, err := os.Stat(candidate); err != nil || info.IsDir() {
+		return ""
+	}
+	return candidate
+}
+
+func LoadPresentation(summary Summary) (Presentation, error) {
+	result := Presentation{Summary: summary}
+	var firstErr error
+	if summary.CharacterPath != "" {
+		result.CharacterText, firstErr = readMetadata(summary.CharacterPath)
+	}
+	if summary.ReadmePath != "" {
+		text, err := readMetadata(summary.ReadmePath)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		} else if err == nil {
+			result.ReadmeText = text
+		}
+	}
+	return result, firstErr
 }
 
 func looksLikeVoicebankRoot(root string) bool {
