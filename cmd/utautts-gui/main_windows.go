@@ -47,19 +47,21 @@ const (
 	cbResetContent  = 0x014B
 	cbSetCurSel     = 0x014E
 	cbSetItemHeight = 0x0154
+	cbnSelChange    = 1
 	defaultFont     = 17
 	colorBtnFace    = 15
 
-	idVoicebank = 1001
-	idReload    = 1002
-	idText      = 1003
-	idRenderer  = 1004
-	idIntonate  = 1005
-	idOutput    = 1006
-	idGenerate  = 1007
-	idPlay      = 1008
-	idSave      = 1009
-	idStop      = 1010
+	idVoicebank    = 1001
+	idReload       = 1002
+	idText         = 1003
+	idRenderer     = 1004
+	idIntonate     = 1005
+	idOutput       = 1006
+	idGenerate     = 1007
+	idPlay         = 1008
+	idSave         = 1009
+	idStop         = 1010
+	idRendererInfo = 1011
 
 	mbIconError = 0x10
 )
@@ -92,25 +94,26 @@ var (
 	coInitializeEx  = ole32.NewProc("CoInitializeEx")
 	coUninitialize  = ole32.NewProc("CoUninitialize")
 
-	mainWindow       uintptr
-	generateButton   uintptr
-	playButton       uintptr
-	stopButton       uintptr
-	saveButton       uintptr
-	reloadButton     uintptr
-	statusLabel      uintptr
-	controls         []uintptr
-	completionMutex  sync.Mutex
-	completionError  error
-	synthesisRunning bool
-	lastOutput       string
-	lastAudio        *audio.PCM
-	previewPath      string
-	initialVoicebank string
-	voiceDirectory   string
-	availableBanks   []voicebank.Summary
-	initialText      string
-	initialOutput    string
+	mainWindow        uintptr
+	generateButton    uintptr
+	playButton        uintptr
+	stopButton        uintptr
+	saveButton        uintptr
+	reloadButton      uintptr
+	statusLabel       uintptr
+	rendererInfoLabel uintptr
+	controls          []uintptr
+	completionMutex   sync.Mutex
+	completionError   error
+	synthesisRunning  bool
+	lastOutput        string
+	lastAudio         *audio.PCM
+	previewPath       string
+	initialVoicebank  string
+	voiceDirectory    string
+	availableBanks    []voicebank.Summary
+	initialText       string
+	initialOutput     string
 )
 
 type point struct {
@@ -119,16 +122,18 @@ type point struct {
 }
 
 type rendererOption struct {
-	label   string
-	backend string
+	label       string
+	backend     string
+	description string
 }
 
 var rendererOptions = []rendererOption{
-	{label: "waveform (推奨・明瞭度基準)", backend: "waveform"},
-	{label: "worldline-hybrid-cv-gentle (実験的)", backend: "worldline-hybrid-cv-gentle"},
-	{label: "worldline-hybrid-cv-balanced (実験的)", backend: "worldline-hybrid-cv-balanced"},
-	{label: "worldline-hybrid (実験的)", backend: "worldline-hybrid"},
-	{label: "waveform-long (実験的)", backend: "waveform-long"},
+	{label: "標準 waveform（推奨）", backend: "waveform", description: "原音の明瞭さを最優先する安定版です。イントネーション加工は行いません。"},
+	{label: "OpenUTAU Classic faithful（研究版）", backend: "openutau-classic-worldline-faithful", description: "接続品質が最良だった研究rendererです。worldlineとbridgeが必要です。v8任意文章モデルはGUIへまだ統合していません。"},
+	{label: "長い原音 waveform-long（研究版）", backend: "waveform-long", description: "連続する同一原音を長く使う診断方式です。通常利用では標準waveformを選んでください。"},
+	{label: "WORLD hybrid gentle（過去比較用）", backend: "worldline-hybrid-cv-gentle", description: "過去の比較を再現するbackendです。歯抜けや加工感が出るため推奨しません。"},
+	{label: "WORLD hybrid balanced（過去比較用）", backend: "worldline-hybrid-cv-balanced", description: "過去の比較を再現するbackendです。歯抜けや加工感が出るため推奨しません。"},
+	{label: "WORLD hybrid（過去比較用）", backend: "worldline-hybrid", description: "純粋な研究・回帰確認用です。通常の音声生成には使用しません。"},
 }
 
 type message struct {
@@ -190,7 +195,7 @@ func main() {
 	title := windowsString("UtauTTS")
 	mainWindow, _, _ = createWindowEx.Call(
 		0, uintptr(unsafe.Pointer(&className[0])), uintptr(unsafe.Pointer(&title[0])),
-		wsOverlappedWindow, 120, 100, 700, 535, 0, 0, instance, 0,
+		wsOverlappedWindow, 120, 100, 780, 610, 0, 0, instance, 0,
 	)
 	runtime.KeepAlive(className)
 	runtime.KeepAlive(title)
@@ -228,36 +233,39 @@ func createControls(parent, instance uintptr) error {
 	)
 	font, _, _ := getStockObject.Call(defaultFont)
 	label(parent, instance, "ボイスバンク（voiceディレクトリ）", 20, 18, 300, labelHeight)
-	voicebankCombo := control(wsExClientEdge, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|wsVScroll|cbsDropdownList, 20, 42, 550, comboDropHeight, parent, idVoicebank, instance)
+	voicebankCombo := control(wsExClientEdge, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|wsVScroll|cbsDropdownList, 20, 42, 630, comboDropHeight, parent, idVoicebank, instance)
 	setComboItemHeight(voicebankCombo, singleControlHeight-6)
-	reloadButton = control(0, "BUTTON", "再読込", wsChild|wsVisible|wsTabStop, 580, 42, 90, singleControlHeight, parent, idReload, instance)
+	reloadButton = control(0, "BUTTON", "再読込", wsChild|wsVisible|wsTabStop, 660, 42, 90, singleControlHeight, parent, idReload, instance)
 
 	label(parent, instance, "文章", 20, 82, 120, labelHeight)
-	control(wsExClientEdge, "EDIT", initialText, wsChild|wsVisible|wsTabStop|wsVScroll|esMultiline|esAutoVScroll|esWantReturn, 20, 106, 650, 190, parent, idText, instance)
+	control(wsExClientEdge, "EDIT", initialText, wsChild|wsVisible|wsTabStop|wsVScroll|esMultiline|esAutoVScroll|esWantReturn, 20, 106, 730, 190, parent, idText, instance)
 
-	label(parent, instance, "レンダラ", 20, 306, 90, labelHeight)
-	rendererCombo := control(0, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|cbsDropdownList, 110, 302, 200, comboDropHeight, parent, idRenderer, instance)
+	label(parent, instance, "音声モード", 20, 306, 95, labelHeight)
+	rendererCombo := control(0, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|cbsDropdownList, 115, 302, 350, comboDropHeight, parent, idRenderer, instance)
 	setComboItemHeight(rendererCombo, singleControlHeight-6)
 	for _, option := range rendererOptions {
 		comboAdd(rendererCombo, option.label)
 	}
 	sendMessage.Call(rendererCombo, cbSetCurSel, 0, 0)
 
-	label(parent, instance, "イントネーション（実験）", 330, 306, 150, labelHeight)
-	control(wsExClientEdge, "EDIT", "0", wsChild|wsVisible|wsTabStop, 485, 302, 50, singleControlHeight, parent, idIntonate, instance)
+	label(parent, instance, "従来抑揚 0〜1", 485, 306, 120, labelHeight)
+	control(wsExClientEdge, "EDIT", "0", wsChild|wsVisible|wsTabStop, 610, 302, 55, singleControlHeight, parent, idIntonate, instance)
+	label(parent, instance, "旧実験値", 675, 306, 75, labelHeight)
+	rendererInfoLabel = control(0, "STATIC", "", wsChild|wsVisible, 20, 340, 730, 42, parent, idRendererInfo, instance)
+	updateRendererInfo(parent)
 
-	label(parent, instance, "保存先WAV", 20, 346, 90, labelHeight)
-	control(wsExClientEdge, "EDIT", initialOutput, wsChild|wsVisible|wsTabStop|esReadOnly, 110, 342, 560, singleControlHeight, parent, idOutput, instance)
+	label(parent, instance, "保存先WAV", 20, 394, 90, labelHeight)
+	control(wsExClientEdge, "EDIT", initialOutput, wsChild|wsVisible|wsTabStop|esReadOnly, 110, 390, 640, singleControlHeight, parent, idOutput, instance)
 
-	generateButton = control(0, "BUTTON", "生成", wsChild|wsVisible|wsTabStop, 20, 390, 110, singleControlHeight, parent, idGenerate, instance)
-	playButton = control(0, "BUTTON", "再生", wsChild|wsVisible|wsTabStop, 140, 390, 110, singleControlHeight, parent, idPlay, instance)
-	stopButton = control(0, "BUTTON", "停止", wsChild|wsVisible|wsTabStop, 260, 390, 110, singleControlHeight, parent, idStop, instance)
-	saveButton = control(0, "BUTTON", "名前を付けて保存", wsChild|wsVisible|wsTabStop, 380, 390, 150, singleControlHeight, parent, idSave, instance)
-	statusLabel = label(parent, instance, "準備完了", 20, 432, 650, labelHeight)
+	generateButton = control(0, "BUTTON", "生成", wsChild|wsVisible|wsTabStop, 20, 438, 110, singleControlHeight, parent, idGenerate, instance)
+	playButton = control(0, "BUTTON", "再生", wsChild|wsVisible|wsTabStop, 140, 438, 110, singleControlHeight, parent, idPlay, instance)
+	stopButton = control(0, "BUTTON", "停止", wsChild|wsVisible|wsTabStop, 260, 438, 110, singleControlHeight, parent, idStop, instance)
+	saveButton = control(0, "BUTTON", "名前を付けて保存", wsChild|wsVisible|wsTabStop, 380, 438, 170, singleControlHeight, parent, idSave, instance)
+	statusLabel = label(parent, instance, "準備完了", 20, 486, 730, 40)
 	for _, handle := range controls {
 		sendMessage.Call(handle, wmSetFont, font, 1)
 	}
-	for _, id := range []int{idVoicebank, idReload, idText, idRenderer, idIntonate, idOutput, idGenerate, idPlay, idStop, idSave} {
+	for _, id := range []int{idVoicebank, idReload, idText, idRenderer, idRendererInfo, idIntonate, idOutput, idGenerate, idPlay, idStop, idSave} {
 		if child(parent, id) == 0 {
 			return fmt.Errorf("GUIコントロールを作成できませんでした: id=%d", id)
 		}
@@ -284,7 +292,13 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintpt
 	}()
 	switch msg {
 	case wmCommand:
-		switch int(wParam & 0xffff) {
+		commandID := int(wParam & 0xffff)
+		notification := int((wParam >> 16) & 0xffff)
+		if commandID == idRenderer && notification == cbnSelChange {
+			updateRendererInfo(hwnd)
+			return 0
+		}
+		switch commandID {
 		case idReload:
 			refreshVoicebanks(hwnd)
 		case idGenerate:
@@ -355,7 +369,7 @@ func startSynthesis(hwnd uintptr) {
 	enableWindow.Call(stopButton, 0)
 	enableWindow.Call(saveButton, 0)
 	synthesisRunning = true
-	setText(statusLabel, "生成中...")
+	setText(statusLabel, "生成中: "+rendererOptionAt(int(selectedRenderer)).label)
 	go func() {
 		var generated *audio.PCM
 		var preview string
@@ -392,10 +406,20 @@ func startSynthesis(hwnd uintptr) {
 }
 
 func rendererBackend(index int) string {
+	return rendererOptionAt(index).backend
+}
+
+func rendererOptionAt(index int) rendererOption {
 	if index < 0 || index >= len(rendererOptions) {
-		return rendererOptions[0].backend
+		return rendererOptions[0]
 	}
-	return rendererOptions[index].backend
+	return rendererOptions[index]
+}
+
+func updateRendererInfo(hwnd uintptr) {
+	combo := child(hwnd, idRenderer)
+	selected, _, _ := sendMessage.Call(combo, cbGetCurSel, 0, 0)
+	setText(rendererInfoLabel, rendererOptionAt(int(selected)).description)
 }
 
 func finishSynthesis(hwnd uintptr) {

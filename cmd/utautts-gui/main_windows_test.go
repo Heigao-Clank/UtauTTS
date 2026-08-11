@@ -15,16 +15,25 @@ func TestRendererBackend(t *testing.T) {
 		want  string
 	}{
 		{index: 0, want: "waveform"},
-		{index: 1, want: "worldline-hybrid-cv-gentle"},
-		{index: 2, want: "worldline-hybrid-cv-balanced"},
-		{index: 3, want: "worldline-hybrid"},
-		{index: 4, want: "waveform-long"},
+		{index: 1, want: "openutau-classic-worldline-faithful"},
+		{index: 2, want: "waveform-long"},
+		{index: 3, want: "worldline-hybrid-cv-gentle"},
+		{index: 4, want: "worldline-hybrid-cv-balanced"},
+		{index: 5, want: "worldline-hybrid"},
 		{index: -1, want: "waveform"},
 		{index: 99, want: "waveform"},
 	}
 	for _, test := range tests {
 		if got := rendererBackend(test.index); got != test.want {
 			t.Errorf("rendererBackend(%d) = %q, want %q", test.index, got, test.want)
+		}
+	}
+}
+
+func TestRendererOptionsExplainEveryMode(t *testing.T) {
+	for index, option := range rendererOptions {
+		if option.label == "" || option.backend == "" || option.description == "" {
+			t.Fatalf("renderer option %d is incomplete: %#v", index, option)
 		}
 	}
 }
