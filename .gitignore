@@ -13,3 +13,4 @@ tools/worldline-bridge/bin/
 tools/worldline-bridge/obj/
 /notes/
 /listening-results*.json
+.codex/
