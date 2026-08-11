@@ -12,24 +12,24 @@ CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応して�
 
 ## 現行仕様
 
-- [構成](architecture.md): 合成パイプライン、原音選択、レンダラの位置付け
-- [音源](voicebank.md): 対応ボイスバンクと同梱音源のライセンス
-- [HTTPサーバー](server.md): 起動方法とAPI
-- [境界補修実験](boundary-repair.md): 母音末尾を使った接続補助の比較方法
+- [構成](docs/architecture.md): 合成パイプライン、原音選択、レンダラの位置付け
+- [音源](docs/voicebank.md): 対応ボイスバンクと同梱音源のライセンス
+- [HTTPサーバー](docs/server.md): 起動方法とAPI
+- [境界補修実験](docs/boundary-repair.md): 母音末尾を使った接続補助の比較方法
 
 ## 学習と評価
 
-- [接続学習データセット](connection-dataset.md): join cost用の境界ペア生成
-- [モーラ長・韻律の学習](training.md): duration、F0、energyモデル
-- [系列イントネーションモデル](intonation-model.md): TCNとアクセント特徴の研究経緯
-- [接続品質の評価](evaluation.md): クリック、RMS、スペクトル、F0差
-- [AB・ABX聴感評価](listening-test.md): ブラインド比較と集計
+- [接続学習データセット](docs/connection-dataset.md): join cost用の境界ペア生成
+- [モーラ長・韻律の学習](docs/training.md): duration、F0、energyモデル
+- [系列イントネーションモデル](docs/intonation-model.md): TCNとアクセント特徴の研究経緯
+- [接続品質の評価](docs/evaluation.md): クリック、RMS、スペクトル、F0差
+- [AB・ABX聴感評価](docs/listening-test.md): ブラインド比較と集計
 - [今後の改善ロードマップ](docs/future-roadmap.md): 採用構成、任意文章対応、GUI統合の順序
 
 ## 実験結果
 
-- [接続モデル聴感評価](experiments/2026-08-10-listening/README.md)
-- [レンダラ・イントネーション評価](experiments/2026-08-10-rendering/README.md)
+- [接続モデル聴感評価](docs/experiments/2026-08-10-listening/README.md)
+- [レンダラ・イントネーション評価](docs/experiments/2026-08-10-rendering/README.md)
 
 ## リリースビルド
 
@@ -41,7 +41,7 @@ Windows x64、Go、.NET 8 SDK、インターネット接続が必要。
 
 次の成果物を生成します。
 
-- `release/UtauTTS-win-x64.zip`: GUI・CLI・診断・学習ツール
+- `release/UtauTTS-win-x64.zip`: GUI本体、`tools/`内のCLI・診断・学習ツール、`runtime/`内の音声処理依存
 - `release/UtauTTS-Server-win-x64.zip`: HTTPサーバーのみ
 
 ビルド時にOpenUtau 0.1.565の`worldline.dll`を取得し、SHA-256を検証してから同梱します。ライセンスは`THIRD_PARTY_NOTICES.txt`を参照してください。
@@ -67,7 +67,7 @@ GUIの「生成」は音声をプレビュー用に保持し、「再生」で�
 GUI版に同梱された足立レイを使う実行例です。`--renderer`を省略しても`waveform`になります。
 
 ```powershell
-.\UtauTTS\utautts-cli.exe `
+.\UtauTTS\tools\utautts-cli.exe `
   --renderer waveform `
   --voicebank ".\UtauTTS\voice\足立レイver3.5.0" `
   --text "あらゆる現実をすべて自分のほうへねじ曲げたのだ。" `
@@ -77,7 +77,7 @@ GUI版に同梱された足立レイを使う実行例です。`--renderer`を�
 イントネーションや学習ピッチをレンダラへ直接反映する経路は研究用です。リサンプルと時間伸縮によるケロケロ感や、WORLDによる子音脱落が確認されているため、明瞭度を評価するときは`waveform`と`--intonation-strength 0`を基準にしてください。
 
 ```powershell
-.\UtauTTS\utautts-cli.exe `
+.\UtauTTS\tools\utautts-cli.exe `
   --renderer waveform `
   --intonation-strength 0.6 `
   --apply-pitch `
@@ -87,7 +87,7 @@ GUI版に同梱された足立レイを使う実行例です。`--renderer`を�
   --plan-out "plan.json"
 ```
 
-配布物内のWORLDライブラリとブリッジは自動検出します。
+配布物内の`runtime`にあるWORLDライブラリとブリッジは自動検出します。
 
 ## HTTP API
 

@@ -37,4 +37,4 @@ Content-Type: application/json
 - `--port`: ポート。初期値は`8080`
 - `--prosody`: 学習済みモーラ長モデル
 
-`intonation_strength`の初期値は`0`、`apply_pitch`の初期値は`false`です。直接ピッチ加工は声質と明瞭度を損なう場合があるため、比較実験でのみ有効にしてください。WORLD系レンダラを使う場合、`worldline.dll`とブリッジは実行ファイルと同じディレクトリから自動検出します。第三者ライセンスは`THIRD_PARTY_NOTICES.txt`を参照してください。
+`intonation_strength`の初期値は`0`、`apply_pitch`の初期値は`false`です。直接ピッチ加工は声質と明瞭度を損なう場合があるため、比較実験でのみ有効にしてください。WORLD系レンダラを使う場合、`worldline.dll`とブリッジは配布物の`runtime`ディレクトリから自動検出します。旧形式との互換性のため、実行ファイルと同じディレクトリも探索します。第三者ライセンスは`THIRD_PARTY_NOTICES.txt`を参照してください。

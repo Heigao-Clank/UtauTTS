@@ -3,6 +3,9 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $releaseRoot = Join-Path $root 'release'
 $guiPath = Join-Path $releaseRoot 'UtauTTS'
 $serverPath = Join-Path $releaseRoot 'UtauTTS-Server'
+$guiToolsPath = Join-Path $guiPath 'tools'
+$guiRuntimePath = Join-Path $guiPath 'runtime'
+$serverRuntimePath = Join-Path $serverPath 'runtime'
 $guiZip = Join-Path $releaseRoot 'UtauTTS-win-x64.zip'
 $serverZip = Join-Path $releaseRoot 'UtauTTS-Server-win-x64.zip'
 $bundledVoicebankDirectory = Join-Path $root 'voice'
@@ -40,6 +43,7 @@ function Expand-BundledVoicebank([string]$Destination) {
 
 Reset-Directory $guiPath
 Reset-Directory $serverPath
+New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $serverRuntimePath | Out-Null
 foreach ($zip in @($guiZip, $serverZip)) {
     if (Test-Path -LiteralPath $zip) {
         Remove-Item -Force -LiteralPath $zip
@@ -69,7 +73,7 @@ try {
         @('prosody-train.exe', './cmd/prosody-train')
     )
     foreach ($item in $guiCommands) {
-        Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $guiPath $item[0]), $item[1])
+        Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $guiToolsPath $item[0]), $item[1])
     }
 
     Write-Host '=== Build server package ==='
@@ -80,17 +84,17 @@ try {
     }
     Invoke-Checked 'dotnet' @(
         'publish', 'tools/worldline-bridge/worldline-bridge.csproj',
-        '-c', 'Release', '-r', 'win-x64', '--self-contained', 'false', '-o', $guiPath
+        '-c', 'Release', '-r', 'win-x64', '--self-contained', 'false', '-o', $guiRuntimePath
     )
-    & (Join-Path $PSScriptRoot 'fetch-worldline.ps1') -OutputPath (Join-Path $guiPath 'worldline.dll')
+    & (Join-Path $PSScriptRoot 'fetch-worldline.ps1') -OutputPath (Join-Path $guiRuntimePath 'worldline.dll')
 
-    Get-ChildItem -LiteralPath $guiPath -Filter 'utautts-worldline-bridge*' | Copy-Item -Destination $serverPath
-    Copy-Item -LiteralPath (Join-Path $guiPath 'worldline.dll') -Destination $serverPath
+    Get-ChildItem -LiteralPath $guiRuntimePath -Filter 'utautts-worldline-bridge*' | Copy-Item -Destination $serverRuntimePath
+    Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline.dll') -Destination $serverRuntimePath
 
     Copy-Item -LiteralPath 'README.md', 'THIRD_PARTY_NOTICES.txt' -Destination $guiPath
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
-    Copy-Item -LiteralPath 'docs/architecture.md', 'docs/training.md', 'docs/evaluation.md', 'docs/connection-dataset.md', 'docs/listening-test.md', 'docs/voicebank.md' -Destination $guiDocs
+    Copy-Item -Path 'docs/*' -Destination $guiDocs -Recurse
 
     $guiVoiceDirectory = Join-Path $guiPath 'voice'
     New-Item -ItemType Directory -Force -Path $guiVoiceDirectory | Out-Null

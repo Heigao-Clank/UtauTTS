@@ -2,6 +2,7 @@ package render
 
 import (
 	"math"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,6 +11,28 @@ import (
 	"utautts/internal/pitch"
 	"utautts/internal/plan"
 )
+
+func TestPackagedRuntimeCandidates(t *testing.T) {
+	root := filepath.FromSlash("C:/package/UtauTTS")
+	name := "worldline.dll"
+	rootCandidates := packagedRuntimeCandidates(filepath.Join(root, "utautts.exe"), name)
+	if want := filepath.Join(root, "runtime", name); !containsString(rootCandidates, want) {
+		t.Fatalf("root candidates %v do not contain %q", rootCandidates, want)
+	}
+	toolCandidates := packagedRuntimeCandidates(filepath.Join(root, "tools", "utautts-cli.exe"), name)
+	if want := filepath.Join(root, "runtime", name); !containsString(toolCandidates, want) {
+		t.Fatalf("tool candidates %v do not contain shared runtime %q", toolCandidates, want)
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
 
 func TestRenderIsDeterministicAndUsesAbsolutePlacement(t *testing.T) {
 	dir := t.TempDir()

@@ -444,6 +444,8 @@ def load_worldline(path: str | Path | None = None, method: int = 1) -> Worldline
     here = Path(__file__).resolve().parents[1]
     candidates.extend(
         [
+            here / "release" / "UtauTTS" / "runtime" / "worldline.dll",
+            here / "release" / "UtauTTS-Server" / "runtime" / "worldline.dll",
             here / "release" / "UtauTTS" / "worldline.dll",
             here / "release" / "UtauTTS-Server" / "worldline.dll",
             here / "out" / "worldline-v2-smoke" / "bin" / "worldline-current.dll",

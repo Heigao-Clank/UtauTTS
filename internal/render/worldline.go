@@ -481,9 +481,10 @@ func resolveWorldlineBridge(configured string) (string, error) {
 		name += ".exe"
 	}
 	if current, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(current), name)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
+		for _, candidate := range packagedRuntimeCandidates(current, name) {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
 		}
 	}
 	if candidate, err := exec.LookPath(name); err == nil {
@@ -506,15 +507,31 @@ func resolveWorldlineLibrary(configured string) (string, error) {
 		name = "libworldline.dylib"
 	}
 	if current, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(current), name)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
+		for _, candidate := range packagedRuntimeCandidates(current, name) {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
 		}
 	}
 	if candidate, err := exec.LookPath(name); err == nil {
 		return candidate, nil
 	}
 	return "", fmt.Errorf("worldline library not found; pass --worldline")
+}
+
+// packagedRuntimeCandidates supports both the historical flat package and the
+// organized release layout. Auxiliary commands live in tools/, one level below
+// the shared runtime directory.
+func packagedRuntimeCandidates(executable, name string) []string {
+	directory := filepath.Dir(executable)
+	candidates := []string{
+		filepath.Join(directory, name),
+		filepath.Join(directory, "runtime", name),
+	}
+	if strings.EqualFold(filepath.Base(directory), "tools") {
+		candidates = append(candidates, filepath.Join(filepath.Dir(directory), "runtime", name))
+	}
+	return candidates
 }
 
 func measureWorldlinePitches(synthesisPlan *plan.Plan, cache sourceCache) ([]float64, int, error) {
