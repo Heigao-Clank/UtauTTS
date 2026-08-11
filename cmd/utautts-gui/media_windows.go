@@ -19,6 +19,7 @@ var (
 	comdlg32    = syscall.NewLazyDLL("comdlg32.dll")
 	playSound   = winmm.NewProc("PlaySoundW")
 	getSaveFile = comdlg32.NewProc("GetSaveFileNameW")
+	getOpenFile = comdlg32.NewProc("GetOpenFileNameW")
 )
 
 const (
@@ -31,10 +32,8 @@ const (
 	ofnNoChangeDir     = 0x00000008
 	ofnPathMustExist   = 0x00000800
 	ofnExplorer        = 0x00080000
+	ofnFileMustExist   = 0x00001000
 )
-
-// openFileName mirrors the Windows OPENFILENAMEW structure. Keep the pointer
-// fields as uintptr so the layout is correct for the 64-bit GUI build.
 type openFileName struct {
 	StructSize       uint32
 	Owner            uintptr
@@ -59,6 +58,46 @@ type openFileName struct {
 	Reserved         uintptr
 	Reserved2        uint32
 	FlagsEx          uint32
+}
+
+func openJSONDialog(owner uintptr, titleText, currentPath string) (string, error) {
+	return openPathDialog(owner, titleText, currentPath, []string{
+		"JSONファイル (*.json)", "*.json",
+		"すべてのファイル (*.*)", "*.*",
+	})
+}
+
+func openExecutableDialog(owner uintptr, titleText, currentPath string) (string, error) {
+	return openPathDialog(owner, titleText, currentPath, []string{
+		"実行ファイル (*.exe;*.dll)", "*.exe;*.dll",
+		"すべてのファイル (*.*)", "*.*",
+	})
+}
+
+func openPathDialog(owner uintptr, titleText, currentPath string, filters []string) (string, error) {
+	fileBuffer := make([]uint16, 32768)
+	if currentPath != "" {
+		copy(fileBuffer, windowsString(currentPath))
+	}
+	filter := doubleNullWindowsString(filters)
+	title := windowsString(titleText)
+	dialog := openFileName{
+		StructSize: uint32(unsafe.Sizeof(openFileName{})), Owner: owner,
+		Filter: &filter[0], FilterIndex: 1, File: &fileBuffer[0], MaxFile: uint32(len(fileBuffer)),
+		Title: &title[0], Flags: ofnNoChangeDir | ofnPathMustExist | ofnFileMustExist | ofnExplorer,
+	}
+	result, _, callErr := getOpenFile.Call(uintptr(unsafe.Pointer(&dialog)))
+	runtime.KeepAlive(filter)
+	runtime.KeepAlive(title)
+	runtime.KeepAlive(fileBuffer)
+	if result == 0 {
+		return "", nil
+	}
+	path := syscall.UTF16ToString(fileBuffer)
+	if path == "" {
+		return "", fmt.Errorf("選択したファイルのパスが空です: %v", callErr)
+	}
+	return path, nil
 }
 
 func writePreviewFile(pcm *audio.PCM) (string, error) {
@@ -135,8 +174,6 @@ func saveAudioDialog(owner uintptr, pcm *audio.PCM, suggestedPath string) (strin
 	runtime.KeepAlive(defExt)
 	runtime.KeepAlive(fileBuffer)
 	if result == 0 {
-		// Cancellation is a normal user action. The common dialog does not
-		// expose a useful error for it without CommDlgExtendedError.
 		return "", nil
 	}
 	path := syscall.UTF16ToString(fileBuffer)

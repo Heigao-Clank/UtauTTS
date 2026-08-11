@@ -97,12 +97,38 @@ func finishVoicebankRefresh(hwnd uintptr) {
 	enableWindow.Call(combo, 1)
 	if len(result.banks) > 0 {
 		sendMessage.Call(combo, cbSetCurSel, uintptr(selected), 0)
+		updateVoicebankPortrait(selected)
+		updateVoicebankSummary(selected)
 		setText(statusLabel, fmt.Sprintf("%d音源を読込: %s", len(result.banks), result.root))
 	} else if result.err != nil {
+		updateVoicebankPortrait(-1)
+		updateVoicebankSummary(-1)
 		setText(statusLabel, "音源がありません: "+result.root)
 	} else {
+		updateVoicebankPortrait(-1)
+		updateVoicebankSummary(-1)
 		setText(statusLabel, "音源がありません")
 	}
+}
+
+func updateVoicebankSummary(index int) {
+	if voiceSummaryLabel == 0 {
+		return
+	}
+	if index < 0 || index >= len(availableBanks) {
+		setText(voiceSummaryLabel, "音源情報はありません")
+		return
+	}
+	bank := availableBanks[index]
+	image := "画像なし"
+	if bank.ImagePath != "" {
+		image = "画像: " + filepath.Base(bank.ImagePath)
+	}
+	readme := "readmeなし"
+	if bank.ReadmePath != "" {
+		readme = "説明: " + filepath.Base(bank.ReadmePath)
+	}
+	setText(voiceSummaryLabel, bank.Name+"\r\n"+bank.Path+"\r\n"+image+" / "+readme+"（画像を押すと詳細を表示）")
 }
 
 func voicebankDisplayName(index int) string {
