@@ -107,5 +107,7 @@ go run ./cmd/connection-dataset --voicebank "release/UtauTTS/voice/足立レイv
 go run ./cmd/connection-train --dataset "out/connections.jsonl" --out "out/join-model.json"
 go run ./cmd/utautts-cli --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --text "こんにちは。" --join-model "out/join-model.json" --out "out/learned.wav"
 go run ./cmd/connection-lattice --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --text "こんにちは。" --join-model "out/join-model.json" --out "out/lattice.json"
+go run ./cmd/voicebank-capability --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --corpus "docs/evaluation-corpus.json" --out "out/capability.json"
 go run ./cmd/connection-benchmark --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --join-model "out/join-model.json" --corpus "docs/evaluation-corpus.json" --out "out/benchmark.json"
+go run ./cmd/boundary-benchmark --voicebank "release/UtauTTS/voice/足立レイver3.5.0" --corpus "docs/evaluation-corpus.json" --out "out/boundary-benchmark.json"
 ```

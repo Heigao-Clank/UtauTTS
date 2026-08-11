@@ -63,8 +63,9 @@ func main() {
 	if err := writeJSON(outputPath, result); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("positions=%d multi=%d same-target=%d handcrafted-changed=%d learned-changed=%d learned-from-handcrafted=%d\n",
+	fmt.Printf("positions=%d multi=%d same-target=%d pitch-choice=%d wide-pitch=%d wide-within-group=%d handcrafted-changed=%d learned-changed=%d learned-from-handcrafted=%d\n",
 		len(audit.Positions), audit.MultiCandidatePositions, audit.SameTargetPositions,
+		audit.PitchChoicePositions, audit.WidePitchPositions, audit.WidePitchWithinGroup,
 		audit.HandcraftedChanges, audit.LearnedChanges, audit.LearnedFromHandcrafted)
 }
 
