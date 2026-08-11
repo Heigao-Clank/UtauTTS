@@ -31,6 +31,8 @@ type comparisonCase struct {
 	Name                   string                  `json:"name"`
 	Mode                   voicebank.SelectionMode `json:"mode"`
 	JoinCostMode           string                  `json:"join_cost_mode"`
+	BoundaryBridgeMS       float64                 `json:"boundary_bridge_ms,omitempty"`
+	BoundaryBridgeCount    int                     `json:"boundary_bridge_count,omitempty"`
 	SynthesisElapsedMS     float64                 `json:"synthesis_elapsed_ms"`
 	ChangedUnits           int                     `json:"changed_units_from_target_only"`
 	ChangedFromHandcrafted int                     `json:"changed_units_from_handcrafted_viterbi"`
@@ -59,6 +61,8 @@ func main() {
 	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")
 	flag.StringVar(&joinModelPath, "join-model", "", "optional learned join-cost model JSON")
 	flag.Float64Var(&cfg.JoinScoreScale, "join-scale", 0, "learned logit score scale (default: model or 4)")
+	flag.Float64Var(&cfg.BoundaryBridgeMS, "boundary-bridge-ms", 0, "also compare phase-aligned boundary repair candidates up to this width (0 disables)")
+	flag.Float64Var(&cfg.BoundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair at or below this handcrafted join score")
 	flag.Parse()
 	if cfg.VoicebankPath == "" || (cfg.Text == "" && cfg.Reading == "") || outputDirectory == "" {
 		flag.Usage()
@@ -71,6 +75,7 @@ func main() {
 	type comparisonSpec struct {
 		name, joinModelPath string
 		mode                voicebank.SelectionMode
+		boundaryBridge      bool
 	}
 	specs := []comparisonSpec{
 		{name: "target-only", mode: voicebank.SelectionTargetOnly},
@@ -80,11 +85,24 @@ func main() {
 	if joinModelPath != "" {
 		specs = append(specs, comparisonSpec{name: "learned-viterbi", mode: voicebank.SelectionViterbi, joinModelPath: joinModelPath})
 	}
+	if cfg.BoundaryBridgeMS > 0 {
+		requestedBridgeMS := cfg.BoundaryBridgeMS
+		bridgeModel := ""
+		bridgeName := "handcrafted-viterbi-bridge"
+		if joinModelPath != "" {
+			bridgeModel = joinModelPath
+			bridgeName = "learned-viterbi-bridge"
+		}
+		specs = append(specs, comparisonSpec{name: bridgeName, mode: voicebank.SelectionViterbi, joinModelPath: bridgeModel, boundaryBridge: true})
+		cfg.BoundaryBridgeMS = requestedBridgeMS
+	}
 	report := comparisonReport{
 		Version: reportVersion, Text: cfg.Text, Reading: cfg.Reading,
 		Voicebank: cfg.VoicebankPath, Renderer: cfg.Renderer,
 	}
+	requestedBridgeMS := cfg.BoundaryBridgeMS
 	cfg.SelectionMode = voicebank.SelectionTargetOnly
+	cfg.BoundaryBridgeMS = 0
 	if _, err := tts.Synthesize(cfg); err != nil {
 		log.Fatalf("warm-up synthesis: %v", err)
 	}
@@ -92,6 +110,11 @@ func main() {
 	for _, spec := range specs {
 		cfg.SelectionMode = spec.mode
 		cfg.JoinModelPath = spec.joinModelPath
+		if !spec.boundaryBridge {
+			cfg.BoundaryBridgeMS = 0
+		} else {
+			cfg.BoundaryBridgeMS = requestedBridgeMS
+		}
 		started := time.Now()
 		result, err := tts.Synthesize(cfg)
 		if err != nil {
@@ -122,14 +145,15 @@ func main() {
 		}
 		caseReport := comparisonCase{
 			Name: spec.name, Mode: spec.mode, JoinCostMode: result.Plan.JoinCostMode, SynthesisElapsedMS: elapsedMS,
+			BoundaryBridgeMS: result.Plan.BoundaryBridgeMS, BoundaryBridgeCount: len(result.Plan.BoundaryBridges),
 			ChangedUnits:           countSelectionDifferences(baseline, result.Plan),
 			ChangedFromHandcrafted: countSelectionDifferences(handcrafted, result.Plan),
 			WAVPath:                filepath.Base(wavPath), PlanPath: filepath.Base(planPath),
 			EvaluationPath: filepath.Base(evaluationPath), Evaluation: metrics,
 		}
 		report.Cases = append(report.Cases, caseReport)
-		fmt.Printf("%-21s target-changed=%d handcrafted-changed=%d click=%.5f spectrum=%.3fdB elapsed=%.1fms\n",
-			spec.name, caseReport.ChangedUnits, caseReport.ChangedFromHandcrafted, metrics.MeanClick, metrics.MeanSpectrumDB, elapsedMS)
+		fmt.Printf("%-27s target-changed=%d handcrafted-changed=%d click=%.5f peak=%.5f spectrum=%.3fdB elapsed=%.1fms\n",
+			spec.name, caseReport.ChangedUnits, caseReport.ChangedFromHandcrafted, metrics.MeanClick, metrics.MeanPeakClick, metrics.MeanSpectrumDB, elapsedMS)
 	}
 	if err := writeJSON(filepath.Join(outputDirectory, "comparison.json"), report); err != nil {
 		log.Fatal(err)

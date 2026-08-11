@@ -14,13 +14,12 @@ import (
 type Config struct {
 	ReleaseMS          float64
 	IntonationStrength float64
-	// ApplyPitch enables the experimental waveform resampling path. The
-	// default false value keeps the waveform renderer intelligible and
-	// pitch-neutral even when a plan contains predicted pitch factors.
 	ApplyPitch          bool
 	Backend             string
 	WorldlinePath       string
 	WorldlineBridgePath string
+	BoundaryBridgeMS        float64
+	BoundaryBridgeThreshold float64
 }
 
 type sourceCache map[string]*audio.PCM
@@ -33,6 +32,9 @@ type effectiveTiming struct {
 }
 
 func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	if cfg.BoundaryBridgeMS > 0 && cfg.Backend != "" && cfg.Backend != "waveform" && cfg.Backend != "waveform-long" {
+		return nil, fmt.Errorf("boundary bridge requires waveform renderer, got %q", cfg.Backend)
+	}
 	switch cfg.Backend {
 	case "", "waveform":
 		return renderWaveform(synthesisPlan, cfg)
@@ -71,7 +73,15 @@ func renderWaveformLong(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error
 		unit.EffectiveOverlapMS = timing.overlapMS
 		unit.IntonationFactor = 1
 	}
-	return renderWaveform(&collapsed, cfg)
+	pcm, err := renderWaveform(&collapsed, cfg)
+	if err != nil {
+		return nil, err
+	}
+	synthesisPlan.BoundaryBridgeMS = collapsed.BoundaryBridgeMS
+	synthesisPlan.BoundaryBridgeThreshold = collapsed.BoundaryBridgeThreshold
+	synthesisPlan.BoundaryBridges = collapsed.BoundaryBridges
+	synthesisPlan.BoundaryRepairDecisions = collapsed.BoundaryRepairDecisions
+	return pcm, nil
 }
 
 func collapseLongUnits(units []plan.Unit) []plan.Unit {
@@ -130,11 +140,20 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	if cfg.ReleaseMS <= 0 {
 		cfg.ReleaseMS = 20
 	}
+	synthesisPlan.BoundaryBridgeMS = 0
+	synthesisPlan.BoundaryBridgeThreshold = 0
+	synthesisPlan.BoundaryBridges = nil
+	synthesisPlan.BoundaryRepairDecisions = nil
+	if cfg.BoundaryBridgeMS > 0 {
+		synthesisPlan.BoundaryBridgeMS = cfg.BoundaryBridgeMS
+		synthesisPlan.BoundaryBridgeThreshold = cfg.BoundaryBridgeThreshold
+	}
 
 	cache := sourceCache{}
 	sampleRate := 0
 	var mix []float64
 	var mixWeights []float64
+	rendered := make([]renderedUnit, 0, len(synthesisPlan.Units))
 	timings := make([]effectiveTiming, len(synthesisPlan.Units))
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
@@ -200,6 +219,11 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		if sourceStart >= len(wave) {
 			continue
 		}
+		rendered = append(rendered, renderedUnit{
+			index: unitIndex, unit: *unit, timing: timing, wave: wave,
+			startFrame:   startFrame,
+			fadeInFrames: msToFrames(fadeInDurationMS(timing), sampleRate),
+		})
 		endFrame := startFrame + len(wave) - sourceStart
 		if endFrame > len(mix) {
 			mix = append(mix, make([]float64, endFrame-len(mix))...)
@@ -217,6 +241,7 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 			mixWeights[position] += gain
 		}
 	}
+	applyBoundaryBridges(mix, mixWeights, rendered, synthesisPlan, cfg, sampleRate)
 	if sampleRate == 0 || len(mix) == 0 {
 		return nil, errors.New("render produced no samples")
 	}

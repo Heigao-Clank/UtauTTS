@@ -13,24 +13,26 @@ import (
 )
 
 type Config struct {
-	VoicebankPath       string
-	Text                string
-	Reading             string
-	Tone                string
-	MoraDurationMS      float64
-	PauseDurationMS     float64
-	ReleaseMS           float64
-	ProsodyModelPath    string
-	ProsodyPitchOnly    bool
-	PitchFactors        []float64
-	ApplyPitch          bool
-	IntonationStrength  float64
-	Renderer            string
-	WorldlinePath       string
-	WorldlineBridgePath string
-	SelectionMode       voicebank.SelectionMode
-	JoinModelPath       string
-	JoinScoreScale      float64
+	VoicebankPath           string
+	Text                    string
+	Reading                 string
+	Tone                    string
+	MoraDurationMS          float64
+	PauseDurationMS         float64
+	ReleaseMS               float64
+	ProsodyModelPath        string
+	ProsodyPitchOnly        bool
+	PitchFactors            []float64
+	ApplyPitch              bool
+	IntonationStrength      float64
+	Renderer                string
+	WorldlinePath           string
+	WorldlineBridgePath     string
+	BoundaryBridgeMS        float64
+	BoundaryBridgeThreshold float64
+	SelectionMode           voicebank.SelectionMode
+	JoinModelPath           string
+	JoinScoreScale          float64
 }
 
 type Result struct {
@@ -126,12 +128,14 @@ func Synthesize(cfg Config) (*Result, error) {
 	synthesisPlan.Text = cfg.Text
 	applyPitch := cfg.ApplyPitch || cfg.ProsodyPitchOnly || len(cfg.PitchFactors) > 0
 	pcm, err := render.Render(synthesisPlan, render.Config{
-		ReleaseMS:           cfg.ReleaseMS,
-		IntonationStrength:  cfg.IntonationStrength,
-		ApplyPitch:          applyPitch,
-		Backend:             cfg.Renderer,
-		WorldlinePath:       cfg.WorldlinePath,
-		WorldlineBridgePath: cfg.WorldlineBridgePath,
+		ReleaseMS:               cfg.ReleaseMS,
+		IntonationStrength:      cfg.IntonationStrength,
+		ApplyPitch:              applyPitch,
+		Backend:                 cfg.Renderer,
+		WorldlinePath:           cfg.WorldlinePath,
+		WorldlineBridgePath:     cfg.WorldlineBridgePath,
+		BoundaryBridgeMS:        cfg.BoundaryBridgeMS,
+		BoundaryBridgeThreshold: cfg.BoundaryBridgeThreshold,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render: %w", err)

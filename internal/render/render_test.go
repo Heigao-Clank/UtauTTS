@@ -70,6 +70,13 @@ func TestRenderRejectsUnknownBackend(t *testing.T) {
 	}
 }
 
+func TestBoundaryBridgeRequiresWaveformRenderer(t *testing.T) {
+	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "worldline", BoundaryBridgeMS: 20})
+	if err == nil {
+		t.Fatal("boundary bridge was accepted by non-waveform renderer")
+	}
+}
+
 func TestRenderAllowsSilentClosureUnit(t *testing.T) {
 	path := t.TempDir() + "/unit.wav"
 	data := make([]int16, 200)
@@ -435,5 +442,108 @@ func TestStretchPreservesPrefixAndLength(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got[:50], source[:50]) {
 		t.Fatal("protected prefix changed")
+	}
+}
+
+func TestBridgeEnvelopeIsBoundedAndFadesAtEdges(t *testing.T) {
+	if got := bridgeEnvelope(0, 9); got != 0 {
+		t.Fatalf("start envelope = %f, want 0", got)
+	}
+	if got := bridgeEnvelope(8, 9); got != 0 {
+		t.Fatalf("end envelope = %f, want 0", got)
+	}
+	peak := 0.0
+	for frame := 0; frame < 9; frame++ {
+		value := bridgeEnvelope(frame, 9)
+		if value < 0 || value > 1 {
+			t.Fatalf("envelope[%d] = %f, want [0, 1]", frame, value)
+		}
+		peak = math.Max(peak, value)
+	}
+	if peak < 0.99 {
+		t.Fatalf("envelope peak = %f, want near 1", peak)
+	}
+}
+
+func TestBestAlignedVowelSegmentFindsPhaseShift(t *testing.T) {
+	unit := renderedUnit{
+		unit:   plan.Unit{DurationMS: 80},
+		timing: effectiveTiming{preutteranceMS: 20, consonantMS: 40},
+		wave:   make([]float64, 120),
+	}
+	for index := range unit.wave {
+		unit.wave[index] = math.Sin(0.013 * float64(index*index))
+	}
+	target := append([]float64(nil), unit.wave[75:95]...)
+	got, lag, correlation := bestAlignedVowelSegment(unit, target, 20, 1000)
+	if len(got) != 20 || lag != -5 || correlation < 0.999 {
+		t.Fatalf("aligned segment len=%d lag=%d correlation=%f", len(got), lag, correlation)
+	}
+}
+
+func TestChooseBoundaryRepairKeepsNormalOrImprovesPeak(t *testing.T) {
+	const sampleRate = 1000
+	mix := make([]float64, 220)
+	weights := make([]float64, len(mix))
+	previousWave := make([]float64, 120)
+	for index := range mix {
+		mix[index] = 0.2 * math.Sin(2*math.Pi*float64(index)/20)
+		weights[index] = 1
+	}
+	for index := range previousWave {
+		previousWave[index] = 0.2 * math.Sin(2*math.Pi*float64(index)/20)
+	}
+	// A local impulse represents a boundary transient. The aligned source tail
+	// should reduce it; otherwise normal connection remains the fallback.
+	mix[110] += 0.8
+	previous := renderedUnit{
+		unit: plan.Unit{DurationMS: 80}, timing: effectiveTiming{preutteranceMS: 20}, wave: previousWave,
+	}
+	current := renderedUnit{startFrame: 100, fadeInFrames: 20}
+	choice := chooseBoundaryRepair(mix, weights, previous, current, 20, sampleRate)
+	if !choice.applied {
+		t.Fatal("clear transient did not select an improving repair")
+	}
+	if choice.selected.peak >= choice.baseline.peak {
+		t.Fatalf("selected peak=%f baseline=%f", choice.selected.peak, choice.baseline.peak)
+	}
+}
+
+func TestWaveformBoundaryBridgeIsOptionalAndAudited(t *testing.T) {
+	dir := t.TempDir()
+	paths := []string{dir + "/left.wav", dir + "/right.wav"}
+	for fileIndex, frequency := range []float64{180, 260} {
+		data := make([]int16, 6400)
+		for frame := range data {
+			data[frame] = int16(7000 * math.Sin(2*math.Pi*frequency*float64(frame)/16000))
+		}
+		if err := audio.WriteWav(paths[fileIndex], &audio.PCM{SampleRate: 16000, Channels: 1, Data: data}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := &plan.Plan{DurationMS: 200, Units: []plan.Unit{
+		{Position: 0, Mora: "a", Source: paths[0], NoteStartMS: 0, DurationMS: 100, ConsonantMS: 10, PreutteranceMS: 40},
+		{Position: 1, Mora: "i", Source: paths[1], NoteStartMS: 100, DurationMS: 100, ConsonantMS: 10, PreutteranceMS: 40},
+	}}
+	if _, err := Render(base, Config{ReleaseMS: 20}); err != nil {
+		t.Fatal(err)
+	}
+	if len(base.BoundaryBridges) != 0 || base.BoundaryBridgeMS != 0 {
+		t.Fatalf("disabled bridge changed plan: %#v", base)
+	}
+
+	experiment := &plan.Plan{DurationMS: 200, Units: append([]plan.Unit(nil), base.Units...)}
+	if _, err := Render(experiment, Config{ReleaseMS: 20, BoundaryBridgeMS: 20, BoundaryBridgeThreshold: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if len(experiment.BoundaryRepairDecisions) != 1 {
+		t.Fatalf("repair decision count = %d, want 1", len(experiment.BoundaryRepairDecisions))
+	}
+	decision := experiment.BoundaryRepairDecisions[0]
+	if decision.SelectedKind != "normal" && decision.SelectedKind != "phase-aligned-vowel-tail" {
+		t.Fatalf("repair decision = %#v", decision)
+	}
+	if decision.Applied && len(experiment.BoundaryBridges) != 1 {
+		t.Fatalf("applied decision has %d bridge records", len(experiment.BoundaryBridges))
 	}
 }

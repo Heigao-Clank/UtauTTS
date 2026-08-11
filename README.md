@@ -15,6 +15,7 @@ CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応して�
 - [構成](architecture.md): 合成パイプライン、原音選択、レンダラの位置付け
 - [音源](voicebank.md): 対応ボイスバンクと同梱音源のライセンス
 - [HTTPサーバー](server.md): 起動方法とAPI
+- [境界補修実験](boundary-repair.md): 母音末尾を使った接続補助の比較方法
 
 ## 学習と評価
 

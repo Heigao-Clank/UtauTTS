@@ -13,7 +13,7 @@ UtauTTSはボイスバンク自体を学習せず、既存原音の選択・時�
 
 Windows GUIはGoからWin32 APIを直接呼び、標準の`EDIT`・`BUTTON`・`COMBOBOX`だけを使用します。合成は別ゴルーチンで実行し、既存の`tts`パッケージを直接呼びます。
 
-合成計画v7には原音、候補数、選択方式、join cost方式、target score、join score、学習モデルの接続確率、累積path score、実効タイミング、原音F0、目標F0、適用したイントネーション係数を記録します。旧`selection_score`は互換性のため残し、target scoreと選択された直前ユニットからのjoin scoreの和を格納します。
+合成計画v9には原音、候補数、選択方式、join cost方式、target score、join score、学習モデルの接続確率、累積path score、実効タイミング、原音F0、目標F0、適用したイントネーション係数を記録します。旧`selection_score`は互換性のため残し、target scoreと選択された直前ユニットからのjoin scoreの和を格納します。実験的な`boundary_bridge_ms`を指定した場合は、通常接続を含む補修候補の判断を`boundary_repair_decisions`、適用した補修だけを`boundary_bridges`へ記録します。
 
 原音選択は次の3方式を同じ候補集合で比較できます。
 

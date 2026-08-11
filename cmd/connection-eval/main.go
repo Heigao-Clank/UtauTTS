@@ -47,7 +47,7 @@ func main() {
 		if err := os.WriteFile(outputPath, encoded, 0o644); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("wrote %s (%d connected boundaries; mean click %.5f)\n", outputPath, report.ConnectedCount, report.MeanClick)
+		fmt.Printf("wrote %s (%d connected boundaries; mean click %.5f; mean peak %.5f)\n", outputPath, report.ConnectedCount, report.MeanClick, report.MeanPeakClick)
 		return
 	}
 	_, _ = os.Stdout.Write(encoded)

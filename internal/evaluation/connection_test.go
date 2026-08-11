@@ -24,7 +24,7 @@ func TestAnalyzeDetectsConnectedBoundaryClick(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.ConnectedCount != 1 || report.MaxClick < 0.45 || len(report.Boundaries) != 1 {
+	if report.ConnectedCount != 1 || report.MaxClick < 0.45 || report.MaxPeakClick < report.MaxClick || report.MeanDeltaRMS <= 0 || len(report.Boundaries) != 1 {
 		t.Fatalf("report = %#v", report)
 	}
 }

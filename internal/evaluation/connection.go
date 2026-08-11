@@ -9,7 +9,7 @@ import (
 	"utautts/internal/plan"
 )
 
-const Version = 2
+const Version = 3
 
 type Report struct {
 	Version          int      `json:"version"`
@@ -17,6 +17,9 @@ type Report struct {
 	ConnectedCount   int      `json:"connected_count"`
 	MeanClick        float64  `json:"mean_click"`
 	MaxClick         float64  `json:"max_click"`
+	MeanPeakClick    float64  `json:"mean_peak_click"`
+	MaxPeakClick     float64  `json:"max_peak_click"`
+	MeanDeltaRMS     float64  `json:"mean_delta_rms"`
 	MeanRMSDeltaDB   float64  `json:"mean_rms_delta_db"`
 	MeanSpectrumDB   float64  `json:"mean_spectrum_delta_db"`
 	MeanF0DeltaCents float64  `json:"mean_f0_delta_cents,omitempty"`
@@ -31,6 +34,8 @@ type Metric struct {
 	HandoffEndMS    float64 `json:"handoff_end_ms"`
 	Connected       bool    `json:"connected"`
 	Click           float64 `json:"click"`
+	PeakClick       float64 `json:"peak_click"`
+	DeltaRMS        float64 `json:"delta_rms"`
 	RMSDeltaDB      float64 `json:"rms_delta_db"`
 	SpectrumDeltaDB float64 `json:"spectrum_delta_db"`
 	F0DeltaCents    float64 `json:"f0_delta_cents,omitempty"`
@@ -49,7 +54,7 @@ func Analyze(pcm *audio.PCM, synthesisPlan *plan.Plan) (*Report, error) {
 	wave := acoustic.Mono(pcm)
 	window := max(32, int(math.Round(float64(pcm.SampleRate)*0.02)))
 	report := &Report{Version: Version, SampleRate: pcm.SampleRate}
-	var clickSum, rmsSum, spectrumSum, f0Sum float64
+	var clickSum, peakClickSum, deltaRMSSum, rmsSum, spectrumSum, f0Sum float64
 	var f0Count int
 	for i := 1; i < len(synthesisPlan.Units); i++ {
 		unit := synthesisPlan.Units[i]
@@ -63,11 +68,16 @@ func Analyze(pcm *audio.PCM, synthesisPlan *plan.Plan) (*Report, error) {
 		right := wave[frame:min(len(wave), frame+window)]
 		leftFeatures := acoustic.AnalyzeFrame(left, pcm.SampleRate, 20, false)
 		rightFeatures := acoustic.AnalyzeFrame(right, pcm.SampleRate, 20, false)
+		transitionStart := max(1, int(math.Floor(handoffStartMS*float64(pcm.SampleRate)/1000))-window/10)
+		transitionEnd := min(len(wave), int(math.Ceil(handoffEndMS*float64(pcm.SampleRate)/1000))+window/10)
+		peakClick, deltaRMS := derivativeMetrics(wave[transitionStart-1 : transitionEnd])
 		metric := Metric{
 			UnitIndex: i, Position: unit.Position, TimeMS: timeMS,
 			HandoffStartMS: handoffStartMS, HandoffEndMS: handoffEndMS,
 			Connected:       unit.Position == synthesisPlan.Units[i-1].Position+1,
 			Click:           math.Abs(wave[frame] - wave[frame-1]),
+			PeakClick:       peakClick,
+			DeltaRMS:        deltaRMS,
 			RMSDeltaDB:      math.Abs(leftFeatures.RMSDB - rightFeatures.RMSDB),
 			SpectrumDeltaDB: acoustic.MeanSpectrumDelta(leftFeatures.SpectrumDB, rightFeatures.SpectrumDB),
 		}
@@ -82,9 +92,12 @@ func Analyze(pcm *audio.PCM, synthesisPlan *plan.Plan) (*Report, error) {
 		}
 		report.ConnectedCount++
 		clickSum += metric.Click
+		peakClickSum += metric.PeakClick
+		deltaRMSSum += metric.DeltaRMS
 		rmsSum += metric.RMSDeltaDB
 		spectrumSum += metric.SpectrumDeltaDB
 		report.MaxClick = max(report.MaxClick, metric.Click)
+		report.MaxPeakClick = max(report.MaxPeakClick, metric.PeakClick)
 		if metric.F0DeltaCents > 0 {
 			f0Sum += metric.F0DeltaCents
 			f0Count++
@@ -95,12 +108,27 @@ func Analyze(pcm *audio.PCM, synthesisPlan *plan.Plan) (*Report, error) {
 	}
 	n := float64(report.ConnectedCount)
 	report.MeanClick = clickSum / n
+	report.MeanPeakClick = peakClickSum / n
+	report.MeanDeltaRMS = deltaRMSSum / n
 	report.MeanRMSDeltaDB = rmsSum / n
 	report.MeanSpectrumDB = spectrumSum / n
 	if f0Count > 0 {
 		report.MeanF0DeltaCents = f0Sum / float64(f0Count)
 	}
 	return report, nil
+}
+
+func derivativeMetrics(wave []float64) (peak, rms float64) {
+	if len(wave) < 2 {
+		return 0, 0
+	}
+	energy := 0.0
+	for index := 1; index < len(wave); index++ {
+		delta := wave[index] - wave[index-1]
+		peak = max(peak, math.Abs(delta))
+		energy += delta * delta
+	}
+	return peak, math.Sqrt(energy / float64(len(wave)-1))
 }
 
 func handoffRange(unit plan.Unit) (float64, float64) {

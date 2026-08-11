@@ -14,28 +14,30 @@ import (
 
 func main() {
 	var (
-		voicebankPath       string
-		otoPath             string
-		reading             string
-		text                string
-		tone                string
-		outPath             string
-		planPath            string
-		moraMS              float64
-		pauseMS             float64
-		releaseMS           float64
-		prosodyPath         string
-		prosodyPitchOnly    bool
-		pitchContourPath    string
-		pitchContourCase    string
-		applyPitch          bool
-		intonationStrength  float64
-		renderer            string
-		worldlinePath       string
-		worldlineBridgePath string
-		selectionMode       string
-		joinModelPath       string
-		joinScoreScale      float64
+		voicebankPath           string
+		otoPath                 string
+		reading                 string
+		text                    string
+		tone                    string
+		outPath                 string
+		planPath                string
+		moraMS                  float64
+		pauseMS                 float64
+		releaseMS               float64
+		prosodyPath             string
+		prosodyPitchOnly        bool
+		pitchContourPath        string
+		pitchContourCase        string
+		applyPitch              bool
+		intonationStrength      float64
+		renderer                string
+		worldlinePath           string
+		worldlineBridgePath     string
+		boundaryBridgeMS        float64
+		boundaryBridgeThreshold float64
+		selectionMode           string
+		joinModelPath           string
+		joinScoreScale          float64
 	)
 	flag.StringVar(&voicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&otoPath, "oto", "", "deprecated alias for --voicebank")
@@ -56,6 +58,8 @@ func main() {
 	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend (default: waveform; other backends are experimental)")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
+	flag.Float64Var(&boundaryBridgeMS, "boundary-bridge-ms", 0, "maximum width for phase-aligned waveform boundary repair candidates (0 disables)")
+	flag.Float64Var(&boundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair when handcrafted join score is at or below this value")
 	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
 	flag.StringVar(&joinModelPath, "join-model", "", "optional learned join-cost model JSON")
 	flag.Float64Var(&joinScoreScale, "join-scale", 0, "learned logit score scale (default: model or 4)")
@@ -74,24 +78,26 @@ func main() {
 		log.Fatal(err)
 	}
 	result, err := tts.Synthesize(tts.Config{
-		VoicebankPath:       voicebankPath,
-		Text:                text,
-		Reading:             reading,
-		Tone:                tone,
-		MoraDurationMS:      moraMS,
-		PauseDurationMS:     pauseMS,
-		ReleaseMS:           releaseMS,
-		ProsodyModelPath:    prosodyPath,
-		ProsodyPitchOnly:    prosodyPitchOnly,
-		PitchFactors:        pitchFactors,
-		ApplyPitch:          applyPitch,
-		IntonationStrength:  intonationStrength,
-		Renderer:            renderer,
-		WorldlinePath:       worldlinePath,
-		WorldlineBridgePath: worldlineBridgePath,
-		SelectionMode:       voicebank.SelectionMode(selectionMode),
-		JoinModelPath:       joinModelPath,
-		JoinScoreScale:      joinScoreScale,
+		VoicebankPath:           voicebankPath,
+		Text:                    text,
+		Reading:                 reading,
+		Tone:                    tone,
+		MoraDurationMS:          moraMS,
+		PauseDurationMS:         pauseMS,
+		ReleaseMS:               releaseMS,
+		ProsodyModelPath:        prosodyPath,
+		ProsodyPitchOnly:        prosodyPitchOnly,
+		PitchFactors:            pitchFactors,
+		ApplyPitch:              applyPitch,
+		IntonationStrength:      intonationStrength,
+		Renderer:                renderer,
+		WorldlinePath:           worldlinePath,
+		WorldlineBridgePath:     worldlineBridgePath,
+		BoundaryBridgeMS:        boundaryBridgeMS,
+		BoundaryBridgeThreshold: boundaryBridgeThreshold,
+		SelectionMode:           voicebank.SelectionMode(selectionMode),
+		JoinModelPath:           joinModelPath,
+		JoinScoreScale:          joinScoreScale,
 	})
 	if err != nil {
 		log.Fatal(err)

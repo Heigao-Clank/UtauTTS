@@ -8,7 +8,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 7
+const Version = 9
 
 type Config struct {
 	MoraDurationMS   float64
@@ -21,16 +21,53 @@ type Config struct {
 }
 
 type Plan struct {
-	Version          int     `json:"version"`
-	Voicebank        string  `json:"voicebank"`
-	Text             string  `json:"text,omitempty"`
-	Reading          string  `json:"reading"`
-	SelectionMode    string  `json:"selection_mode"`
-	JoinCostMode     string  `json:"join_cost_mode"`
-	JoinModelVersion int     `json:"join_model_version,omitempty"`
-	JoinScoreScale   float64 `json:"join_score_scale,omitempty"`
-	DurationMS       float64 `json:"duration_ms"`
-	Units            []Unit  `json:"units"`
+	Version                 int                      `json:"version"`
+	Voicebank               string                   `json:"voicebank"`
+	Text                    string                   `json:"text,omitempty"`
+	Reading                 string                   `json:"reading"`
+	SelectionMode           string                   `json:"selection_mode"`
+	JoinCostMode            string                   `json:"join_cost_mode"`
+	JoinModelVersion        int                      `json:"join_model_version,omitempty"`
+	JoinScoreScale          float64                  `json:"join_score_scale,omitempty"`
+	BoundaryBridgeMS        float64                  `json:"boundary_bridge_ms,omitempty"`
+	BoundaryBridgeThreshold float64                  `json:"boundary_bridge_threshold,omitempty"`
+	BoundaryBridges         []BoundaryBridge         `json:"boundary_bridges,omitempty"`
+	BoundaryRepairDecisions []BoundaryRepairDecision `json:"boundary_repair_decisions,omitempty"`
+	DurationMS              float64                  `json:"duration_ms"`
+	Units                   []Unit                   `json:"units"`
+}
+
+// BoundaryBridge records an optional short transition repair applied by a
+// renderer. It does not add a mora or change the linguistic unit sequence.
+type BoundaryBridge struct {
+	UnitIndex   int     `json:"unit_index"`
+	Position    int     `json:"position"`
+	StartMS     float64 `json:"start_ms"`
+	EndMS       float64 `json:"end_ms"`
+	DurationMS  float64 `json:"duration_ms"`
+	LagMS       float64 `json:"lag_ms,omitempty"`
+	JoinScore   float64 `json:"join_score"`
+	Correlation float64 `json:"correlation,omitempty"`
+	Source      string  `json:"source"`
+	Kind        string  `json:"kind"`
+}
+
+// BoundaryRepairDecision records normal-versus-repair candidate selection,
+// including decisions that deliberately keep the unmodified connection.
+type BoundaryRepairDecision struct {
+	UnitIndex        int     `json:"unit_index"`
+	Position         int     `json:"position"`
+	CandidateCount   int     `json:"candidate_count"`
+	SelectedKind     string  `json:"selected_kind"`
+	Applied          bool    `json:"applied"`
+	DurationMS       float64 `json:"duration_ms,omitempty"`
+	LagMS            float64 `json:"lag_ms,omitempty"`
+	JoinScore        float64 `json:"join_score"`
+	Correlation      float64 `json:"correlation,omitempty"`
+	BaselinePeak     float64 `json:"baseline_peak_delta"`
+	SelectedPeak     float64 `json:"selected_peak_delta"`
+	BaselineDeltaRMS float64 `json:"baseline_delta_rms"`
+	SelectedDeltaRMS float64 `json:"selected_delta_rms"`
 }
 
 type Unit struct {

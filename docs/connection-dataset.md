@@ -94,7 +94,7 @@ go run ./cmd/utautts-cli `
   --out out/learned.wav
 ```
 
-学習確率はclipped logitで−8から＋8の音響join scoreへ変換します。同一録音を順方向に使う場合の＋8は別に維持します。合成計画v7の`join_cost_mode`、`join_model_version`、各原音の`join_probability`と`join_score`から判断を監査できます。
+学習確率はclipped logitで−8から＋8の音響join scoreへ変換します。同一録音を順方向に使う場合の＋8は別に維持します。合成計画v9の`join_cost_mode`、`join_model_version`、各原音の`join_probability`と`join_score`から判断を監査できます。境界補修実験を使った計画では`boundary_repair_decisions`と`boundary_bridges`も監査対象になります。
 
 標準のlogit倍率は4です。`--join-scale`で変更できますが、倍率を上げるほど良くなるとは限りません。未知文を複数用意し、`connection-benchmark`で手設計方式に対する改善と悪化を両方確認します。
 
