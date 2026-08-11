@@ -24,6 +24,7 @@ CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応して�
 - [系列イントネーションモデル](intonation-model.md): TCNとアクセント特徴の研究経緯
 - [接続品質の評価](evaluation.md): クリック、RMS、スペクトル、F0差
 - [AB・ABX聴感評価](listening-test.md): ブラインド比較と集計
+- [今後の改善ロードマップ](docs/future-roadmap.md): 採用構成、任意文章対応、GUI統合の順序
 
 ## 実験結果
 
