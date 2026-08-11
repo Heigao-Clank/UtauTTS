@@ -45,6 +45,20 @@ PitchFactorを与えない、または`ApplyPitch`を有効にしない`waveform
 
 ### worldline（実験的）
 
+OpenUtau 0.1.565由来のnative libraryを旧`PhraseSynth` C API経由で呼び、フレーズ単位のWORLD合成を行います。現行OpenUtauの`PhraseSynthV2`とは解析・時間写像・特徴混合の実装が異なるため、OpenUtauと同等のピッチ品質を再現した経路ではありません。次のレンダラ実験では現行`PhraseSynthV2`相当を別backendとして実装し、PitchFactor 1の明瞭度から比較します。
+
+### worldline-v2（現行OpenUtau追試用）
+
+現行OpenUtauの`PhraseSynthV2`から、44.1 kHz・10ms hop・2048 FFTのWORLDLINE-R v1特徴経路を依存なしで移植した実験backendです。各原音のF0・スペクトル包絡・非周期成分を解析し、子音と母音を別々に時間写像し、重複する特徴を混合してからフレーズ全体を一度だけ合成します。有声フレームだけへ密な絶対F0曲線を適用します。
+
+同梱中のOpenUtau 0.1.565 `worldline.dll`には必要な解析APIがないため、このbackendには現行OpenUtauソースからビルドしたnative libraryを`--worldline`で明示します。標準配布backendにはまだ含めません。
+
+足立レイ12文の聴感比較では、標準`waveform` 11、`worldline-v2` 0、同程度1となり、現行OpenUtau相当の特徴経路でも子音の歯抜けを解消できませんでした。棒読みv2対学習F0 v2も12件すべて同程度で、韻律差より子音欠落が支配しました。このbackendは実装差の調査用に限定し、標準候補にはしません。
+
+### utau-classic（UTAU resampler追試用）
+
+UTAU互換`resampler.exe`へ、原音F0に近いMIDI noteと5 tick間隔のcent曲線を渡し、加工済みの各原音を標準waveformと同じ時間配置・envelopeで接続する実験backendです。`--utau-resampler`を省略したWindows環境では`Program Files (x86)/UTAU/resampler.exe`を探索します。WORLD特徴化を介さずにUTAU/OpenUtau Classic型のピッチ加工を評価するための経路で、標準backendにはまだしません。
+
 OpenUtau由来のWORLDフレーズ合成を別プロセスの.NETブリッジから呼び出します。各原音をF0・スペクトル包絡・非周期成分へ分解し、フレーズ単位で合成します。利用可能な`.frq`は自動的に渡します。
 
 ### worldline-hybrid（実験的）

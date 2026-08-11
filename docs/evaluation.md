@@ -49,12 +49,23 @@ go run ./cmd/connection-compare `
 
 `connection-lattice`は採用されなかった候補を含め、target score、直前層から到達できる最良の手設計join score、学習join scoreと確率、各方式の選択候補をJSONへ保存します。
 
+各候補の母音定常部から実測した`source_f0_hz`、測定可否、音源サブグループも保存します。位置ごとの`pitch_span_cents`と`within_group_pitch_span_cents`により、見かけ上のF0幅が異なる音源種別の混在によるものか、同じ収録グループ内の多音高候補かを区別できます。
+
 ```powershell
 go run ./cmd/connection-lattice `
   --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
   --text "こんにちは。" `
   --join-model out/connection-model/model.json `
   --out out/lattice.json
+```
+
+固定コーパス全体でボイスバンクの候補能力を集計する場合は`voicebank-capability`を使います。
+
+```powershell
+go run ./cmd/voicebank-capability `
+  --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
+  --corpus docs/evaluation-corpus.json `
+  --out out/capability/adachi.json
 ```
 
 ## 複数文ベンチマーク

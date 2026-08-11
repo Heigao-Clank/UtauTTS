@@ -64,3 +64,26 @@ go run ./cmd/prosody-dataset `
 v6は旧推定境界データを使い、中心化後の教師を学習時から0.97〜1.03へ制限した。評価コーパスの上下限張り付きは144/169から48/169へ減り、輪郭の標準偏差は49.3から36.8 centsになった。Open JTalk規則輪郭の35.8 centsに近い振幅で、規則輪郭をなぞるだけではない連続差を残している。
 
 v5対v6の聴感比較はv5 1、v6 1、同程度10で、人間にはほぼ差がなかった。この後、複数音源で学習ピッチを直接レンダリングすると、音源によらずケロケロ感、クリック、WORLD経路の子音脱落が生じることを確認した。現在はモデル容量の拡大と直接ピッチ加工を停止し、PitchFactorなしの`waveform`を明瞭度基準にしている。次の研究では、予測F0を波形加工量ではなく、収録時F0が自然に合う原音を選ぶtarget costとして使う。
+
+## アクセント特徴付きモデルのGo推論
+
+モデルv5/v6はGoランタイムから読み込める。これらはアクセント句、核、単語境界、品詞を必要とするため、特徴を与えずゼロ埋めで推論することは禁止している。実験用のOpen JTalk特徴は次のように生成する。
+
+```powershell
+$env:PYTHONPATH=(Resolve-Path .tmp-openjtalk).Path
+python tools/openjtalk-prosody-features.py `
+  --corpus docs/evaluation-corpus.json `
+  --out out/prosody/openjtalk-accent-features-v1.json
+```
+
+```powershell
+go run ./cmd/utautts-cli `
+  --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
+  --text "こんにちは、今日はいい天気です。" `
+  --prosody out/prosody/jsut-5000-accent-tcn-v6-bounded.json `
+  --prosody-features out/prosody/openjtalk-accent-features-v1.json `
+  --prosody-feature-case greeting `
+  --out out/prosody-plan-only.wav
+```
+
+この状態では予測PitchFactorを合成計画へ記録するだけで、波形F0は変更しない。直接ピッチ加工を比較するときだけ`--apply-pitch`を明示する。通常配布でOpen JTalkを必須依存にしないため、今後は同じ特徴を生成する小型の実行時アクセント推定器を用意する。

@@ -31,3 +31,15 @@ go run ./cmd/connection-compare `
 合成計画v9の`boundary_repair_decisions`には、通常接続を維持した境界も含め、候補数、選択方式、幅、lag、波形相関、補修前後のピーク差と微分RMSが記録されます。実際に適用された補修だけは`boundary_bridges`にも残ります。クリック、RMS、スペクトル、F0 の値は `connection-eval` で確認できますが、最終判断は聞き取りやすさ、歯抜け感、クリック、ざらつきを分けた聴感比較で行います。
 
 現在の実装は候補ラティスへ補助エッジを追加する前の決定論的な実験です。効果が確認できた場合に限り、通常接続・クロスフェード・母音継続・VCV/長いユニットを既存の Viterbi 選択肢として統合します。
+
+2026-08-11には、位相同期した母音末尾から次原音へ置換型で遷移する拡張候補も試した。しかし3音源のブラインド比較は、足立レイが標準5・拡張0・同程度6、utaが標準3・拡張0・同程度8、重音テトが標準2・拡張0・同程度10だった。非同率はすべて標準を選び、拡張側だけにクリックを感じる例もあったため棄却した。接続研究はここで一旦完了とし、標準`waveform`と任意の保守的補修を固定する。
+
+固定コーパス全体の客観値を集計するには次を使います。
+
+```powershell
+go run ./cmd/boundary-benchmark `
+  --voicebank "release/UtauTTS/voice/足立レイver3.5.0" `
+  --corpus docs/evaluation-corpus.json `
+  --boundary-bridge-ms 20 `
+  --out out/boundary-benchmark/adachi.json
+```
