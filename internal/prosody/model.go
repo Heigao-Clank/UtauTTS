@@ -7,25 +7,40 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"utautts/internal/frontend"
 )
 
 const ModelVersion = 3
 
-const SequenceModelVersion = 4
+const (
+	SequenceModelVersion         = 4
+	AccentSequenceModelVersion   = 5
+	BoundedSequenceModelVersion  = 6
+	LegacyFramePitchModelVersion = 7
+	FramePitchModelVersion       = 8
+	StandardAccentModelVersion   = 9
+)
 
 type Model struct {
-	Version         int                 `json:"version"`
-	FeatureVersion  int                 `json:"feature_version"`
-	Mode            string              `json:"mode"`
-	DurationWeights map[string]float64  `json:"duration_weights"`
-	PitchWeights    map[string]float64  `json:"pitch_weights,omitempty"`
-	EnergyWeights   map[string]float64  `json:"energy_weights,omitempty"`
-	SequencePitch   *SequencePitchModel `json:"sequence_pitch,omitempty"`
-	Metrics         Metrics             `json:"metrics"`
-	Training        TrainingInfo        `json:"training"`
+	Version         int                  `json:"version"`
+	FeatureVersion  int                  `json:"feature_version"`
+	Mode            string               `json:"mode"`
+	DurationWeights map[string]float64   `json:"duration_weights"`
+	PitchWeights    map[string]float64   `json:"pitch_weights,omitempty"`
+	EnergyWeights   map[string]float64   `json:"energy_weights,omitempty"`
+	SequencePitch   *SequencePitchModel  `json:"sequence_pitch,omitempty"`
+	FramePitch      *FramePitchModel     `json:"frame_pitch,omitempty"`
+	StandardAccent  *StandardAccentModel `json:"standard_accent,omitempty"`
+	Metrics         Metrics              `json:"metrics"`
+	Training        TrainingInfo         `json:"training"`
 }
+
+// FeatureFrame contains optional sparse linguistic features for one mora.
+// Base mora/position features are always computed in Go; callers use these
+// frames for information such as accent phrases, nuclei and part of speech.
+type FeatureFrame map[string]float64
 
 // SequencePitchModel is a compact temporal convolution network. Its JSON form
 // is deliberately runtime-independent so models trained with PyTorch can be
@@ -45,6 +60,48 @@ type SequencePitchLayer struct {
 	Dilation int           `json:"dilation"`
 	Weights  [][][]float64 `json:"weights"` // output x input x kernel(3)
 	Bias     []float64     `json:"bias"`
+}
+
+// FramePitchModel predicts a phrase-relative continuous cents contour. It
+// shares the portable residual TCN representation with SequencePitchModel, but
+// runs on fixed-duration frames rather than one position per mora.
+type FramePitchModel struct {
+	FeatureNames      []string             `json:"feature_names"`
+	InputWeights      [][]float64          `json:"input_weights"`
+	InputBias         []float64            `json:"input_bias"`
+	Layers            []SequencePitchLayer `json:"layers"`
+	OutputWeight      []float64            `json:"output_weight"`
+	OutputBias        float64              `json:"output_bias"`
+	FrameMS           float64              `json:"frame_ms"`
+	LowCents          float64              `json:"low_cents"`
+	HighCents         float64              `json:"high_cents"`
+	RenderStrength    float64              `json:"render_strength,omitempty"`
+	RenderSmoothingMS float64              `json:"render_smoothing_ms,omitempty"`
+	RenderP99Cents    float64              `json:"render_p99_cents,omitempty"`
+	RenderMaxCents    float64              `json:"render_max_cents,omitempty"`
+}
+
+// StandardAccentModel is a deterministic Tokyo-accent baseline. Learned
+// models can later predict a bounded residual around this contour instead of
+// relearning lexical accent direction from a small acoustic corpus.
+type StandardAccentModel struct {
+	FrameMS           float64 `json:"frame_ms"`
+	AccentRangeCents  float64 `json:"accent_range_cents"`
+	DeclinationCents  float64 `json:"declination_cents"`
+	QuestionRiseCents float64 `json:"question_rise_cents"`
+	SmoothingMS       float64 `json:"smoothing_ms"`
+	P99Cents          float64 `json:"p99_cents"`
+	MaxCents          float64 `json:"max_cents"`
+}
+
+type MoraTiming struct {
+	StartMS    float64
+	DurationMS float64
+}
+
+type PitchContour struct {
+	FrameMS float64
+	Cents   []float64
 }
 
 type TrainingInfo struct {
@@ -77,13 +134,27 @@ func LoadModel(path string) (*Model, error) {
 	}
 	legacy := model.Version == 2 && model.FeatureVersion == 1 && model.Mode == "speech_duration_residual"
 	current := model.Version == ModelVersion && model.FeatureVersion == 1 && model.Mode == "speech_prosody_residual"
-	sequence := model.Version == SequenceModelVersion && model.FeatureVersion == 1 && model.Mode == "intonation_tcn"
-	if !legacy && !current && !sequence {
+	sequence := model.FeatureVersion == 1 && ((model.Version == SequenceModelVersion && model.Mode == "intonation_tcn") ||
+		(model.Version == AccentSequenceModelVersion && model.Mode == "intonation_tcn_accent") ||
+		(model.Version == BoundedSequenceModelVersion && model.Mode == "intonation_tcn_accent_bounded"))
+	frame := model.FeatureVersion == 1 && (model.Version == LegacyFramePitchModelVersion || model.Version == FramePitchModelVersion) && model.Mode == "intonation_frame_tcn_accent_bounded"
+	standardAccent := model.FeatureVersion == 1 && model.Version == StandardAccentModelVersion && model.Mode == "standard_japanese_accent"
+	if !legacy && !current && !sequence && !frame && !standardAccent {
 		return nil, fmt.Errorf("unsupported prosody model version %d/%d", model.Version, model.FeatureVersion)
 	}
 	if sequence {
 		if err := validateSequencePitch(model.SequencePitch); err != nil {
 			return nil, fmt.Errorf("invalid sequence pitch model: %w", err)
+		}
+	}
+	if frame {
+		if err := validateFramePitch(model.FramePitch); err != nil {
+			return nil, fmt.Errorf("invalid frame pitch model: %w", err)
+		}
+	}
+	if standardAccent {
+		if err := validateStandardAccent(model.StandardAccent); err != nil {
+			return nil, fmt.Errorf("invalid standard accent model: %w", err)
 		}
 	}
 	return &model, nil
@@ -104,11 +175,15 @@ func (m *Model) Save(path string) error {
 }
 
 func (m *Model) Predict(morae []frontend.Mora) []Prediction {
+	return m.PredictWithFeatures(morae, nil)
+}
+
+func (m *Model) PredictWithFeatures(morae []frontend.Mora, frames []FeatureFrame) []Prediction {
 	result := make([]Prediction, len(morae))
 	durations := centeredFactors(m.DurationWeights, morae, 0.8, 1.25)
 	pitches := centeredFactors(m.PitchWeights, morae, 0.97, 1.03)
 	if m.SequencePitch != nil {
-		pitches = m.SequencePitch.predict(morae)
+		pitches = m.SequencePitch.predict(morae, frames)
 	}
 	energies := centeredFactors(m.EnergyWeights, morae, 0.9, 1.1)
 	for i := range morae {
@@ -119,6 +194,309 @@ func (m *Model) Predict(morae []frontend.Mora) []Prediction {
 		}
 	}
 	return result
+}
+
+// RequiresExternalFeatures reports whether the exported sequence model uses
+// linguistic inputs that the mora-only Go frontend cannot derive by itself.
+func (m *Model) RequiresExternalFeatures() bool {
+	if m.StandardAccent != nil {
+		return true
+	}
+	names := []string(nil)
+	if m.SequencePitch != nil {
+		names = m.SequencePitch.FeatureNames
+	} else if m.FramePitch != nil {
+		names = m.FramePitch.FeatureNames
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, "accent_") || strings.HasPrefix(name, "word_") ||
+			strings.HasPrefix(name, "pos=") || strings.HasPrefix(name, "pos_group1=") {
+			return true
+		}
+	}
+	return false
+}
+
+// HasFrameContour reports whether the model produces a renderer-facing frame
+// pitch curve, either learned or from the standard-accent baseline.
+func (m *Model) HasFrameContour() bool {
+	return m != nil && (m.FramePitch != nil || m.StandardAccent != nil)
+}
+
+func validateStandardAccent(model *StandardAccentModel) error {
+	if model == nil || model.FrameMS < 1 || model.AccentRangeCents <= 0 || model.MaxCents <= 0 {
+		return fmt.Errorf("invalid standard accent metadata")
+	}
+	return nil
+}
+
+func validateFramePitch(model *FramePitchModel) error {
+	if model == nil || model.FrameMS < 1 || model.LowCents >= model.HighCents || model.LowCents > 0 || model.HighCents < 0 {
+		return fmt.Errorf("invalid frame pitch metadata")
+	}
+	portable := &SequencePitchModel{
+		FeatureNames: model.FeatureNames, InputWeights: model.InputWeights, InputBias: model.InputBias,
+		Layers: model.Layers, OutputWeight: model.OutputWeight, OutputBias: model.OutputBias,
+		Low: 0.01, High: 100,
+	}
+	return validateSequencePitch(portable)
+}
+
+// PredictFrameContour expands mora/accent features onto the synthesized time
+// axis and evaluates the portable frame TCN. The output is centered per phrase,
+// matching training's speaker-independent relative-F0 target.
+func (m *Model) PredictFrameContour(morae []frontend.Mora, frames []FeatureFrame, timings []MoraTiming, durationMS float64, question bool) *PitchContour {
+	if m.StandardAccent != nil {
+		return m.StandardAccent.predict(morae, frames, timings, durationMS, question)
+	}
+	model := m.FramePitch
+	if model == nil || len(morae) == 0 || len(timings) != len(morae) || validateFramePitch(model) != nil {
+		return nil
+	}
+	count := max(2, int(math.Ceil(durationMS/model.FrameMS))+1)
+	featureIndex := make(map[string]int, len(model.FeatureNames))
+	for index, name := range model.FeatureNames {
+		featureIndex[name] = index
+	}
+	hidden := len(model.InputBias)
+	state := make([][]float64, count)
+	speech := make([]bool, count)
+	moraIndex := 0
+	for frameIndex := 0; frameIndex < count; frameIndex++ {
+		timeMS := float64(frameIndex) * model.FrameMS
+		for moraIndex+1 < len(timings) && timeMS >= timings[moraIndex].StartMS+timings[moraIndex].DurationMS {
+			moraIndex++
+		}
+		features := featuresFor(morae, moraIndex)
+		if moraIndex < len(frames) {
+			for name, value := range frames[moraIndex] {
+				features[name] = value
+			}
+		}
+		duration := math.Max(1, timings[moraIndex].DurationMS)
+		progress := clamp((timeMS-timings[moraIndex].StartMS)/duration, 0, 1)
+		framePosition := float64(frameIndex) / float64(max(1, count-1))
+		features["mora_progress"] = progress
+		features["mora_progress2"] = progress * progress
+		features["frame_position"] = framePosition
+		features["frame_from_end"] = 1 - framePosition
+		features["final_distance"] = 1 - framePosition
+		if question {
+			features["question_distance"] = 1 - framePosition
+		}
+		state[frameIndex] = append([]float64(nil), model.InputBias...)
+		for name, value := range features {
+			column, ok := featureIndex[name]
+			if !ok {
+				continue
+			}
+			for output := 0; output < hidden; output++ {
+				state[frameIndex][output] += model.InputWeights[output][column] * value
+			}
+		}
+		for output := range state[frameIndex] {
+			state[frameIndex][output] = math.Tanh(state[frameIndex][output])
+		}
+		speech[frameIndex] = !morae[moraIndex].Pause
+	}
+	for _, layer := range model.Layers {
+		next := make([][]float64, len(state))
+		for position := range state {
+			next[position] = make([]float64, hidden)
+			for output := 0; output < hidden; output++ {
+				value := state[position][output] + layer.Bias[output]
+				for input := 0; input < hidden; input++ {
+					for kernel := 0; kernel < 3; kernel++ {
+						source := position + (kernel-1)*layer.Dilation
+						if source >= 0 && source < len(state) {
+							value += layer.Weights[output][input][kernel] * state[source][input]
+						}
+					}
+				}
+				next[position][output] = math.Tanh(value)
+			}
+		}
+		state = next
+	}
+	values := make([]float64, count)
+	var voiced []float64
+	for position := range state {
+		value := model.OutputBias
+		for index, weight := range model.OutputWeight {
+			value += weight * state[position][index]
+		}
+		values[position] = value
+		if speech[position] {
+			voiced = append(voiced, value)
+		}
+	}
+	center := median(voiced)
+	strength := model.RenderStrength
+	if strength <= 0 || strength > 1 {
+		strength = 1
+	}
+	for position := range values {
+		if !speech[position] {
+			values[position] = 0
+		} else {
+			values[position] -= center
+		}
+	}
+	if model.RenderStrength > 0 {
+		smoothingMS := model.RenderSmoothingMS
+		if smoothingMS <= 0 {
+			smoothingMS = 20
+		}
+		values = smoothFramePitchPhrases(values, speech, model.FrameMS, smoothingMS)
+	}
+	for position := range values {
+		if speech[position] {
+			values[position] *= strength
+		}
+	}
+	if model.RenderStrength > 0 {
+		p99 := model.RenderP99Cents
+		if p99 <= 0 {
+			p99 = 75
+		}
+		if observed := absolutePercentile(values, speech, 0.99); observed > p99 {
+			gain := p99 / observed
+			for position := range values {
+				if speech[position] {
+					values[position] *= gain
+				}
+			}
+		}
+		maximum := model.RenderMaxCents
+		if maximum <= 0 {
+			maximum = 90
+		}
+		for position := range values {
+			values[position] = clamp(values[position], -maximum, maximum)
+		}
+	}
+	for position := range values {
+		values[position] = clamp(values[position], model.LowCents, model.HighCents)
+	}
+	return &PitchContour{FrameMS: model.FrameMS, Cents: values}
+}
+
+func (model *StandardAccentModel) predict(morae []frontend.Mora, frames []FeatureFrame, timings []MoraTiming, durationMS float64, question bool) *PitchContour {
+	if model == nil || len(morae) == 0 || len(frames) != len(morae) || len(timings) != len(morae) || validateStandardAccent(model) != nil {
+		return nil
+	}
+	count := max(2, int(math.Ceil(durationMS/model.FrameMS))+1)
+	values := make([]float64, count)
+	speech := make([]bool, count)
+	lastSpeechMora := -1
+	for index := range morae {
+		if !morae[index].Pause {
+			lastSpeechMora = index
+		}
+	}
+	moraIndex := 0
+	for frameIndex := 0; frameIndex < count; frameIndex++ {
+		timeMS := float64(frameIndex) * model.FrameMS
+		for moraIndex+1 < len(timings) && timeMS >= timings[moraIndex].StartMS+timings[moraIndex].DurationMS {
+			moraIndex++
+		}
+		if morae[moraIndex].Pause {
+			continue
+		}
+		speech[frameIndex] = true
+		feature := frames[moraIndex]
+		value := -0.5 * model.AccentRangeCents
+		if feature["accent_high"] >= 0.5 {
+			value = 0.5 * model.AccentRangeCents
+		}
+		value -= model.DeclinationCents * clamp(feature["accent_position"], 0, 1)
+		if question && moraIndex == lastSpeechMora && model.QuestionRiseCents > 0 {
+			duration := math.Max(1, timings[moraIndex].DurationMS)
+			progress := clamp((timeMS-timings[moraIndex].StartMS)/duration, 0, 1)
+			if progress > 0.5 {
+				rise := (progress - 0.5) / 0.5
+				value += model.QuestionRiseCents * rise * rise
+			}
+		}
+		values[frameIndex] = value
+	}
+	values = smoothFramePitchPhrases(values, speech, model.FrameMS, model.SmoothingMS)
+	voiced := make([]float64, 0, len(values))
+	for index, value := range values {
+		if speech[index] {
+			voiced = append(voiced, value)
+		}
+	}
+	center := median(voiced)
+	for index := range values {
+		if speech[index] {
+			values[index] -= center
+		}
+	}
+	if model.P99Cents > 0 {
+		if observed := absolutePercentile(values, speech, 0.99); observed > model.P99Cents {
+			gain := model.P99Cents / observed
+			for index := range values {
+				if speech[index] {
+					values[index] *= gain
+				}
+			}
+		}
+	}
+	for index := range values {
+		values[index] = clamp(values[index], -model.MaxCents, model.MaxCents)
+	}
+	return &PitchContour{FrameMS: model.FrameMS, Cents: values}
+}
+
+func smoothFramePitchPhrases(values []float64, speech []bool, frameMS, sigmaMS float64) []float64 {
+	result := append([]float64(nil), values...)
+	if frameMS <= 0 || sigmaMS <= 0 || len(values) != len(speech) {
+		return result
+	}
+	sigma := sigmaMS / frameMS
+	radius := max(1, int(math.Ceil(3*sigma)))
+	weights := make([]float64, 2*radius+1)
+	for offset := -radius; offset <= radius; offset++ {
+		weights[offset+radius] = math.Exp(-0.5 * math.Pow(float64(offset)/sigma, 2))
+	}
+	for start := 0; start < len(values); {
+		if !speech[start] {
+			start++
+			continue
+		}
+		end := start + 1
+		for end < len(values) && speech[end] {
+			end++
+		}
+		for position := start; position < end; position++ {
+			sum, weightSum := 0.0, 0.0
+			for offset := -radius; offset <= radius; offset++ {
+				source := max(start, min(end-1, position+offset))
+				weight := weights[offset+radius]
+				sum += values[source] * weight
+				weightSum += weight
+			}
+			result[position] = sum / weightSum
+		}
+		start = end
+	}
+	return result
+}
+
+func absolutePercentile(values []float64, mask []bool, quantile float64) float64 {
+	selected := make([]float64, 0, len(values))
+	for index, value := range values {
+		if index < len(mask) && mask[index] {
+			selected = append(selected, math.Abs(value))
+		}
+	}
+	if len(selected) == 0 {
+		return 0
+	}
+	sort.Float64s(selected)
+	index := int(math.Ceil(clamp(quantile, 0, 1)*float64(len(selected)))) - 1
+	return selected[max(0, min(len(selected)-1, index))]
 }
 
 func validateSequencePitch(model *SequencePitchModel) error {
@@ -155,7 +533,7 @@ func validateSequencePitch(model *SequencePitchModel) error {
 	return nil
 }
 
-func (m *SequencePitchModel) predict(morae []frontend.Mora) []float64 {
+func (m *SequencePitchModel) predict(morae []frontend.Mora, frames []FeatureFrame) []float64 {
 	result := make([]float64, len(morae))
 	for i := range result {
 		result[i] = 1
@@ -171,7 +549,13 @@ func (m *SequencePitchModel) predict(morae []frontend.Mora) []float64 {
 	state := make([][]float64, len(morae))
 	for position := range morae {
 		state[position] = append([]float64(nil), m.InputBias...)
-		for name, value := range featuresFor(morae, position) {
+		features := featuresFor(morae, position)
+		if position < len(frames) {
+			for name, value := range frames[position] {
+				features[name] = value
+			}
+		}
+		for name, value := range features {
 			column, ok := featureIndex[name]
 			if !ok {
 				continue
