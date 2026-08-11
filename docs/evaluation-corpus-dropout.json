@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "utautts-ja-dropout-v1",
+  "cases": [
+    {"id": "voiceless", "text": "小さな靴を机に置いた。", "tags": ["unvoiced", "closure"]},
+    {"id": "geminate", "text": "切符を持って学校へ行った。", "tags": ["closure"]},
+    {"id": "nasal", "text": "新幹線の窓から山を見る。", "tags": ["nasal"]},
+    {"id": "fricative", "text": "涼しい風が砂浜を吹き抜ける。", "tags": ["fricative"]}
+  ]
+}
