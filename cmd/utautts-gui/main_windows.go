@@ -135,12 +135,12 @@ type rendererOption struct {
 }
 
 var rendererOptions = []rendererOption{
-	{label: "標準 waveform（推奨）", backend: "waveform", description: "原音の明瞭さを最優先する安定版です。イントネーション加工は行いません。"},
-	{label: "OpenUTAU Classic faithful（研究版）", backend: "openutau-classic-worldline-faithful", description: "接続品質が最良だった研究rendererです。frame pitchモデルの曲線を適用できます。"},
-	{label: "長い原音 waveform-long（研究版）", backend: "waveform-long", description: "連続する同一原音を長く使う診断方式です。通常利用では標準waveformを選んでください。"},
-	{label: "WORLD hybrid gentle（過去比較用）", backend: "worldline-hybrid-cv-gentle", description: "過去の比較を再現するbackendです。歯抜けや加工感が出るため推奨しません。"},
-	{label: "WORLD hybrid balanced（過去比較用）", backend: "worldline-hybrid-cv-balanced", description: "過去の比較を再現するbackendです。歯抜けや加工感が出るため推奨しません。"},
-	{label: "WORLD hybrid（過去比較用）", backend: "worldline-hybrid", description: "純粋な研究・回帰確認用です。通常の音声生成には使用しません。"},
+	{label: "OpenUTAU Classic faithful", backend: "openutau-classic-worldline-faithful", description: "接続品質が最良だったRendererです。frame pitchモデルの曲線を適用できます。"},
+	{label: "標準Waveform", backend: "waveform", description: "原音の明瞭さを最優先する安定版です。イントネーション加工は行いません。"},
+	{label: "Waveform long（非推奨）", backend: "waveform-long", description: "連続する同一原音を長く使う診断方式です。通常利用では標準waveformを選んでください。"},
+	{label: "WORLD hybrid（非推奨）", backend: "worldline-hybrid", description: "純粋な研究・回帰確認用です。通常の音声生成には使用しません。"},
+	{label: "WORLD hybrid gentle（非推奨）", backend: "worldline-hybrid-cv-gentle", description: "歯抜けや加工感が出るため推奨しません。"},
+	{label: "WORLD hybrid balanced（非推奨）", backend: "worldline-hybrid-cv-balanced", description: "歯抜けや加工感が出るため推奨しません。"},
 }
 
 const defaultRendererBackend = "openutau-classic-worldline-faithful"
