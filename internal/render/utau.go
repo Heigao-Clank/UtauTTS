@@ -40,7 +40,7 @@ func renderUTAUClassic(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error)
 	}
 	defer os.RemoveAll(work)
 
-	cache := sourceCache{}
+	cache := newSourceCache()
 	timings := make([]effectiveTiming, len(synthesisPlan.Units))
 	for i := range synthesisPlan.Units {
 		timings[i] = normalizeTiming(synthesisPlan.Units[i], cfg.ReleaseMS)
@@ -53,9 +53,9 @@ func renderUTAUClassic(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error)
 	}
 	intonation := identityFactors(len(synthesisPlan.Units))
 	if cfg.IntonationStrength > 0 {
-		intonation = analyzeIntonation(synthesisPlan, timings, cache, cfg.IntonationStrength)
+		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
 	}
-	pitches, _, err := measureWorldlinePitches(synthesisPlan, cache)
+	pitches, _, err := measureWorldlinePitches(synthesisPlan, &cache)
 	if err != nil {
 		return nil, err
 	}

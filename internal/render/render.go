@@ -24,15 +24,35 @@ type Config struct {
 	PitchCurve              *PitchCurve
 }
 
-// PitchCurve is a phrase-relative, frame-sampled pitch deviation in cents.
-// Renderers interpolate it in cents so that the resulting frequency ratio is
-// continuous in log-F0 space.
+var boundaryBridgeRenderers = map[string]struct{}{
+	"": {}, "waveform": {}, "waveform-long": {},
+	"waveform-openutau-pitch": {}, "waveform-openutau-pitch-local": {},
+	"waveform-openutau-pitch-local-dual": {}, "waveform-openutau-pitch-local-dual-smooth": {},
+}
+
 type PitchCurve struct {
 	FrameMS float64   `json:"frame_ms"`
 	Cents   []float64 `json:"cents"`
 }
 
-type sourceCache map[string]*audio.PCM
+type sourceCache struct {
+	raw        map[string]*audio.PCM
+	mono       map[string]*audio.PCM
+	normalized map[sourceCacheKey]*audio.PCM
+}
+
+type sourceCacheKey struct {
+	path       string
+	sampleRate int
+}
+
+func newSourceCache() sourceCache {
+	return sourceCache{
+		raw:        make(map[string]*audio.PCM),
+		mono:       make(map[string]*audio.PCM),
+		normalized: make(map[sourceCacheKey]*audio.PCM),
+	}
+}
 
 type effectiveTiming struct {
 	preutteranceMS float64
@@ -58,7 +78,7 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 			return nil, fmt.Errorf("frame pitch curve is not supported by waveform renderer %q", cfg.Backend)
 		}
 	}
-	if cfg.BoundaryBridgeMS > 0 && cfg.Backend != "" && cfg.Backend != "waveform" && cfg.Backend != "waveform-long" && cfg.Backend != "waveform-openutau-pitch" && cfg.Backend != "waveform-openutau-pitch-local" && cfg.Backend != "waveform-openutau-pitch-local-dual" && cfg.Backend != "waveform-openutau-pitch-local-dual-smooth" {
+	if cfg.BoundaryBridgeMS > 0 && !rendererSupportsBoundaryBridge(cfg.Backend) {
 		return nil, fmt.Errorf("boundary bridge requires waveform renderer, got %q", cfg.Backend)
 	}
 	switch cfg.Backend {
@@ -119,6 +139,11 @@ func pitchCurveHasShift(curve *PitchCurve) bool {
 		}
 	}
 	return false
+}
+
+func rendererSupportsBoundaryBridge(renderer string) bool {
+	_, ok := boundaryBridgeRenderers[renderer]
+	return ok
 }
 
 func pitchCurveFactorAt(curve *PitchCurve, timeMS float64) float64 {
@@ -229,7 +254,7 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		synthesisPlan.BoundaryBridgeThreshold = cfg.BoundaryBridgeThreshold
 	}
 
-	cache := sourceCache{}
+	cache := newSourceCache()
 	sampleRate := 0
 	var mix []float64
 	var mixWeights []float64
@@ -246,7 +271,7 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	}
 	intonation := identityFactors(len(synthesisPlan.Units))
 	if cfg.ApplyPitch {
-		intonation = analyzeIntonation(synthesisPlan, timings, cache, cfg.IntonationStrength)
+		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
 	}
 	for unitIndex := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[unitIndex]
@@ -254,16 +279,18 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		if unit.Silent {
 			continue
 		}
-		raw, err := cache.load(unit.Source)
+		mono, err := cache.loadMono(unit.Source)
 		if err != nil {
 			return nil, fmt.Errorf("read unit %q (%s): %w", unit.Alias, unit.Source, err)
 		}
-		mono := toMono(raw)
 		if sampleRate == 0 {
 			sampleRate = mono.SampleRate
 		}
 		if mono.SampleRate != sampleRate {
-			mono = resampleRate(mono, sampleRate)
+			mono, err = cache.loadNormalized(unit.Source, sampleRate)
+			if err != nil {
+				return nil, fmt.Errorf("normalize unit %q: %w", unit.Alias, err)
+			}
 		}
 		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.ConsonantMS, unit.CutoffMS)
 		if err != nil {
@@ -349,7 +376,7 @@ func identityFactors(size int) []float64 {
 	return result
 }
 
-func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cache sourceCache, strength float64) []float64 {
+func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cache *sourceCache, strength float64) []float64 {
 	factors := make([]float64, len(synthesisPlan.Units))
 	for i := range factors {
 		factors[i] = 1
@@ -365,11 +392,10 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 		if unit.Silent {
 			continue
 		}
-		raw, err := cache.load(unit.Source)
+		mono, err := cache.loadMono(unit.Source)
 		if err != nil {
 			continue
 		}
-		mono := toMono(raw)
 		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.ConsonantMS, unit.CutoffMS)
 		if err != nil {
 			continue
@@ -516,15 +542,64 @@ func resampleForPitch(source []float64, factor float64) []float64 {
 	return linearResample(source, max(16, int(math.Round(float64(len(source))/factor))))
 }
 
-func (c sourceCache) load(path string) (*audio.PCM, error) {
-	if pcm, ok := c[path]; ok {
+func (c *sourceCache) ensureMaps() {
+	if c.raw == nil {
+		c.raw = make(map[string]*audio.PCM)
+	}
+	if c.mono == nil {
+		c.mono = make(map[string]*audio.PCM)
+	}
+	if c.normalized == nil {
+		c.normalized = make(map[sourceCacheKey]*audio.PCM)
+	}
+}
+
+func (c *sourceCache) load(path string) (*audio.PCM, error) {
+	c.ensureMaps()
+	if pcm, ok := c.raw[path]; ok {
 		return pcm, nil
 	}
 	pcm, err := audio.ReadWav(path)
 	if err != nil {
 		return nil, err
 	}
-	c[path] = pcm
+	c.raw[path] = pcm
+	return pcm, nil
+}
+
+func (c *sourceCache) loadMono(path string) (*audio.PCM, error) {
+	c.ensureMaps()
+	if pcm, ok := c.mono[path]; ok {
+		return pcm, nil
+	}
+	raw, err := c.load(path)
+	if err != nil {
+		return nil, err
+	}
+	pcm := toMono(raw)
+	c.mono[path] = pcm
+	return pcm, nil
+}
+
+func (c *sourceCache) loadNormalized(path string, sampleRate int) (*audio.PCM, error) {
+	if sampleRate <= 0 {
+		return c.loadMono(path)
+	}
+	c.ensureMaps()
+	key := sourceCacheKey{path: path, sampleRate: sampleRate}
+	if pcm, ok := c.normalized[key]; ok {
+		return pcm, nil
+	}
+	mono, err := c.loadMono(path)
+	if err != nil {
+		return nil, err
+	}
+	if mono.SampleRate == sampleRate {
+		c.normalized[key] = mono
+		return mono, nil
+	}
+	pcm := resampleRate(mono, sampleRate)
+	c.normalized[key] = pcm
 	return pcm, nil
 }
 

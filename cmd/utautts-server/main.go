@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"utautts/internal/audio"
+	"utautts/internal/prosody"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -39,6 +42,17 @@ type Server struct {
 	openJTalkPath       string
 	openJTalkDictionary string
 	voiceDir            string
+	cacheMu             sync.Mutex
+	loadedVoicebanks    map[string]*voicebank.Bank
+	modelMu             sync.Mutex
+	loadedProsody       cachedProsodyModel
+}
+
+type cachedProsodyModel struct {
+	path    string
+	modTime time.Time
+	size    int64
+	model   *prosody.Model
 }
 
 func main() {
@@ -60,6 +74,7 @@ func main() {
 		voicebanks: map[string]Voicebank{}, prosodyModelPath: prosodyPath,
 		renderer: renderer, worldlinePath: worldlinePath, worldlineBridgePath: worldlineBridgePath, voiceDir: voiceDir,
 		openJTalkPath: openJTalkPath, openJTalkDictionary: openJTalkDictionary,
+		loadedVoicebanks: map[string]*voicebank.Bank{},
 	}
 	if err := srv.loadVoiceDirectory(); err != nil {
 		log.Printf("warning: load voicebanks from %s: %v", voiceDir, err)
@@ -103,7 +118,52 @@ func (s *Server) loadVoiceDirectory() error {
 	s.mu.Lock()
 	s.voicebanks = next
 	s.mu.Unlock()
+	s.cacheMu.Lock()
+	s.loadedVoicebanks = make(map[string]*voicebank.Bank)
+	s.cacheMu.Unlock()
 	return nil
+}
+
+func (s *Server) cachedVoicebank(path string) (*voicebank.Bank, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.loadedVoicebanks == nil {
+		s.loadedVoicebanks = make(map[string]*voicebank.Bank)
+	}
+	if bank := s.loadedVoicebanks[absPath]; bank != nil {
+		return bank, nil
+	}
+	bank, err := voicebank.Load(absPath)
+	if err != nil {
+		return nil, err
+	}
+	s.loadedVoicebanks[absPath] = bank
+	return bank, nil
+}
+
+func (s *Server) cachedProsodyModel() (*prosody.Model, error) {
+	if s.prosodyModelPath == "" {
+		return nil, nil
+	}
+	info, err := os.Stat(s.prosodyModelPath)
+	if err != nil {
+		return nil, err
+	}
+	s.modelMu.Lock()
+	defer s.modelMu.Unlock()
+	if cached := s.loadedProsody; cached.model != nil && cached.path == s.prosodyModelPath && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
+		return cached.model, nil
+	}
+	model, err := prosody.LoadModel(s.prosodyModelPath)
+	if err != nil {
+		return nil, err
+	}
+	s.loadedProsody = cachedProsodyModel{path: s.prosodyModelPath, size: info.Size(), modTime: info.ModTime(), model: model}
+	return model, nil
 }
 
 func inspectVoicebank(path string) (Voicebank, error) {
@@ -199,15 +259,27 @@ func (s *Server) handleSynthesize(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "voicebank not found"})
 		return
 	}
+	bank, err := s.cachedVoicebank(vb.Path)
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": fmt.Sprintf("load voicebank: %v", err)})
+		return
+	}
+	model, err := s.cachedProsodyModel()
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": fmt.Sprintf("load prosody model: %v", err)})
+		return
+	}
 
 	result, err := tts.Synthesize(tts.Config{
 		VoicebankPath:           vb.Path,
+		Voicebank:               bank,
 		Text:                    request.Text,
 		Reading:                 request.Kana,
 		Tone:                    request.Tone,
 		MoraDurationMS:          request.MoraDurationMS,
 		PauseDurationMS:         request.PauseDurationMS,
 		ProsodyModelPath:        s.prosodyModelPath,
+		ProsodyModel:            model,
 		IntonationStrength:      request.IntonationStrength,
 		ApplyPitch:              request.ApplyPitch,
 		Renderer:                s.renderer,

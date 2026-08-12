@@ -217,7 +217,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		return nil, err
 	}
 
-	cache := sourceCache{}
+	cache := newSourceCache()
 	timings := make([]effectiveTiming, len(synthesisPlan.Units))
 	var classicTimings []openUtauClassicTiming
 	phraseStartMS := 0.0
@@ -240,8 +240,8 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		unit.EffectiveOverlapMS = timings[i].overlapMS
 		unit.IntonationFactor = 1
 	}
-	intonation := analyzeIntonation(synthesisPlan, timings, cache, cfg.IntonationStrength)
-	pitches, sampleRate, err := measureWorldlinePitches(synthesisPlan, cache)
+	intonation := analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
+	pitches, sampleRate, err := measureWorldlinePitches(synthesisPlan, &cache)
 	if err != nil {
 		return nil, err
 	}
@@ -534,18 +534,17 @@ func packagedRuntimeCandidates(executable, name string) []string {
 	return candidates
 }
 
-func measureWorldlinePitches(synthesisPlan *plan.Plan, cache sourceCache) ([]float64, int, error) {
+func measureWorldlinePitches(synthesisPlan *plan.Plan, cache *sourceCache) ([]float64, int, error) {
 	values := make([]float64, len(synthesisPlan.Units))
 	sampleRate := 0
 	for i, unit := range synthesisPlan.Units {
 		if unit.Silent {
 			continue
 		}
-		raw, err := cache.load(unit.Source)
+		mono, err := cache.loadMono(unit.Source)
 		if err != nil {
 			return nil, 0, err
 		}
-		mono := toMono(raw)
 		if sampleRate == 0 {
 			sampleRate = mono.SampleRate
 		}
@@ -595,10 +594,6 @@ func worldlineF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, refe
 	return curve
 }
 
-// worldlineLocalF0Curve keeps each recording's measured F0 as that unit's
-// baseline. The hybrid renderer protects every phone boundary with raw audio,
-// so interpolating toward the next recording's unrelated F0 only adds an
-// audible hidden glissando inside the current vowel.
 func worldlineLocalF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, reference float64, length int) []float64 {
 	targets := make([]float64, len(pitches))
 	for index, value := range pitches {

@@ -37,17 +37,11 @@ type Model struct {
 	Training        TrainingInfo         `json:"training"`
 }
 
-// FeatureFrame contains optional sparse linguistic features for one mora.
-// Base mora/position features are always computed in Go; callers use these
-// frames for information such as accent phrases, nuclei and part of speech.
 type FeatureFrame map[string]float64
 
-// SequencePitchModel is a compact temporal convolution network. Its JSON form
-// is deliberately runtime-independent so models trained with PyTorch can be
-// evaluated by the Go synthesizer without an ONNX runtime.
 type SequencePitchModel struct {
 	FeatureNames []string             `json:"feature_names"`
-	InputWeights [][]float64          `json:"input_weights"` // hidden x features
+	InputWeights [][]float64          `json:"input_weights"`
 	InputBias    []float64            `json:"input_bias"`
 	Layers       []SequencePitchLayer `json:"layers"`
 	OutputWeight []float64            `json:"output_weight"`
@@ -58,7 +52,7 @@ type SequencePitchModel struct {
 
 type SequencePitchLayer struct {
 	Dilation int           `json:"dilation"`
-	Weights  [][][]float64 `json:"weights"` // output x input x kernel(3)
+	Weights  [][][]float64 `json:"weights"`
 	Bias     []float64     `json:"bias"`
 }
 
@@ -242,9 +236,6 @@ func validateFramePitch(model *FramePitchModel) error {
 	return validateSequencePitch(portable)
 }
 
-// PredictFrameContour expands mora/accent features onto the synthesized time
-// axis and evaluates the portable frame TCN. The output is centered per phrase,
-// matching training's speaker-independent relative-F0 target.
 func (m *Model) PredictFrameContour(morae []frontend.Mora, frames []FeatureFrame, timings []MoraTiming, durationMS float64, question bool) *PitchContour {
 	if m.StandardAccent != nil {
 		return m.StandardAccent.predict(morae, frames, timings, durationMS, question)
@@ -258,6 +249,7 @@ func (m *Model) PredictFrameContour(morae []frontend.Mora, frames []FeatureFrame
 	for index, name := range model.FeatureNames {
 		featureIndex[name] = index
 	}
+	baseFeatures := indexedFeatureVectors(morae, frames, featureIndex)
 	hidden := len(model.InputBias)
 	state := make([][]float64, count)
 	speech := make([]bool, count)
@@ -267,32 +259,22 @@ func (m *Model) PredictFrameContour(morae []frontend.Mora, frames []FeatureFrame
 		for moraIndex+1 < len(timings) && timeMS >= timings[moraIndex].StartMS+timings[moraIndex].DurationMS {
 			moraIndex++
 		}
-		features := featuresFor(morae, moraIndex)
-		if moraIndex < len(frames) {
-			for name, value := range frames[moraIndex] {
-				features[name] = value
-			}
-		}
 		duration := math.Max(1, timings[moraIndex].DurationMS)
 		progress := clamp((timeMS-timings[moraIndex].StartMS)/duration, 0, 1)
 		framePosition := float64(frameIndex) / float64(max(1, count-1))
-		features["mora_progress"] = progress
-		features["mora_progress2"] = progress * progress
-		features["frame_position"] = framePosition
-		features["frame_from_end"] = 1 - framePosition
-		features["final_distance"] = 1 - framePosition
-		if question {
-			features["question_distance"] = 1 - framePosition
-		}
 		state[frameIndex] = append([]float64(nil), model.InputBias...)
-		for name, value := range features {
-			column, ok := featureIndex[name]
-			if !ok {
-				continue
-			}
+		for _, feature := range baseFeatures[moraIndex] {
 			for output := 0; output < hidden; output++ {
-				state[frameIndex][output] += model.InputWeights[output][column] * value
+				state[frameIndex][output] += model.InputWeights[output][feature.column] * feature.value
 			}
+		}
+		addIndexedFeature(state[frameIndex], model.InputWeights, featureIndex, "mora_progress", progress)
+		addIndexedFeature(state[frameIndex], model.InputWeights, featureIndex, "mora_progress2", progress*progress)
+		addIndexedFeature(state[frameIndex], model.InputWeights, featureIndex, "frame_position", framePosition)
+		addIndexedFeature(state[frameIndex], model.InputWeights, featureIndex, "frame_from_end", 1-framePosition)
+		addIndexedFeature(state[frameIndex], model.InputWeights, featureIndex, "final_distance", 1-framePosition)
+		if question {
+			addIndexedFeature(state[frameIndex], model.InputWeights, featureIndex, "question_distance", 1-framePosition)
 		}
 		for output := range state[frameIndex] {
 			state[frameIndex][output] = math.Tanh(state[frameIndex][output])
@@ -545,23 +527,14 @@ func (m *SequencePitchModel) predict(morae []frontend.Mora, frames []FeatureFram
 	for i, name := range m.FeatureNames {
 		featureIndex[name] = i
 	}
+	baseFeatures := indexedFeatureVectors(morae, frames, featureIndex)
 	hidden := len(m.InputBias)
 	state := make([][]float64, len(morae))
 	for position := range morae {
 		state[position] = append([]float64(nil), m.InputBias...)
-		features := featuresFor(morae, position)
-		if position < len(frames) {
-			for name, value := range frames[position] {
-				features[name] = value
-			}
-		}
-		for name, value := range features {
-			column, ok := featureIndex[name]
-			if !ok {
-				continue
-			}
+		for _, feature := range baseFeatures[position] {
 			for output := 0; output < hidden; output++ {
-				state[position][output] += m.InputWeights[output][column] * value
+				state[position][output] += m.InputWeights[output][feature.column] * feature.value
 			}
 		}
 		for output := range state[position] {
@@ -662,6 +635,46 @@ func featuresFor(morae []frontend.Mora, position int) map[string]float64 {
 		result["next=<EOS>"] = 1
 	}
 	return result
+}
+
+// indexedFeatureVectors converts the static per-mora features once per
+// synthesis instead of rebuilding and merging a map for every frame. Frame
+// features such as mora_progress are added separately by the frame loop.
+type indexedFeature struct {
+	column int
+	value  float64
+}
+
+func indexedFeatureVectors(morae []frontend.Mora, frames []FeatureFrame, index map[string]int) [][]indexedFeature {
+	result := make([][]indexedFeature, len(morae))
+	for position := range morae {
+		features := featuresFor(morae, position)
+		if position < len(frames) {
+			for name, value := range frames[position] {
+				features[name] = value
+			}
+		}
+		row := make([]indexedFeature, 0, len(features))
+		for name, value := range features {
+			if column, ok := index[name]; ok {
+				if value != 0 {
+					row = append(row, indexedFeature{column: column, value: value})
+				}
+			}
+		}
+		result[position] = row
+	}
+	return result
+}
+
+func addIndexedFeature(state []float64, weights [][]float64, index map[string]int, name string, value float64) {
+	column, ok := index[name]
+	if !ok || value == 0 {
+		return
+	}
+	for output := range state {
+		state[output] += weights[output][column] * value
+	}
 }
 
 func addCategorical(features map[string]float64, prefix string, mora frontend.Mora) {

@@ -16,7 +16,8 @@ import (
 )
 
 type Config struct {
-	VoicebankPath           string
+	VoicebankPath string
+	Voicebank               *voicebank.Bank
 	Text                    string
 	Reading                 string
 	Tone                    string
@@ -24,6 +25,7 @@ type Config struct {
 	PauseDurationMS         float64
 	ReleaseMS               float64
 	ProsodyModelPath        string
+	ProsodyModel            *prosody.Model
 	ProsodyFeatures         []prosody.FeatureFrame
 	ProsodyPitchOnly        bool
 	OpenJTalkPath           string
@@ -49,15 +51,30 @@ type Result struct {
 	Audio     *audio.PCM
 }
 
+var framePitchRenderers = map[string]struct{}{
+	"worldline": {}, "worldline-v2": {},
+	"openutau-classic-worldline": {}, "openutau-classic-worldline-local": {},
+	"openutau-classic-worldline-faithful": {}, "openutau-classic-worldline-faithful-phase": {},
+	"waveform-openutau-pitch": {}, "waveform-openutau-pitch-local": {},
+	"waveform-openutau-pitch-local-dual": {}, "waveform-openutau-pitch-local-dual-smooth": {},
+	"waveform-openutau-pitch-post": {}, "waveform-openutau-pitch-post-controlled": {},
+	"waveform-openutau-pitch-post-spectral": {}, "waveform-openutau-pitch-post-spectral2": {},
+	"utau-classic": {},
+}
+
 func Synthesize(cfg Config) (*Result, error) {
-	bank, err := voicebank.Load(cfg.VoicebankPath)
-	if err != nil {
-		return nil, fmt.Errorf("load voicebank: %w", err)
+	bank := cfg.Voicebank
+	var err error
+	if bank == nil {
+		bank, err = voicebank.Load(cfg.VoicebankPath)
+		if err != nil {
+			return nil, fmt.Errorf("load voicebank: %w", err)
+		}
 	}
-	var loadedProsody *prosody.Model
+	loadedProsody := cfg.ProsodyModel
 	prosodyFeatures := cfg.ProsodyFeatures
 	var runtimeFeatures *openjtalk.Analysis
-	if cfg.ProsodyModelPath != "" {
+	if loadedProsody == nil && cfg.ProsodyModelPath != "" {
 		loadedProsody, err = prosody.LoadModel(cfg.ProsodyModelPath)
 		if err != nil {
 			return nil, fmt.Errorf("load prosody model: %w", err)
@@ -168,9 +185,6 @@ func Synthesize(cfg Config) (*Result, error) {
 			pitchCurve = &render.PitchCurve{FrameMS: contour.FrameMS, Cents: contour.Cents}
 		}
 	}
-	// External contours are also useful as target information for unit
-	// selection. Merely supplying one must not opt into the experimental
-	// resampling path; direct waveform pitch processing stays explicit.
 	applyPitch := applyPitchEnabled(cfg)
 	pcm, err := render.Render(synthesisPlan, render.Config{
 		ReleaseMS:               cfg.ReleaseMS,
@@ -247,12 +261,8 @@ func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.Mora
 }
 
 func rendererSupportsFramePitch(renderer string) bool {
-	switch renderer {
-	case "worldline", "worldline-v2", "openutau-classic-worldline", "openutau-classic-worldline-local", "openutau-classic-worldline-faithful", "openutau-classic-worldline-faithful-phase", "waveform-openutau-pitch", "waveform-openutau-pitch-local", "waveform-openutau-pitch-local-dual", "waveform-openutau-pitch-local-dual-smooth", "waveform-openutau-pitch-post", "waveform-openutau-pitch-post-controlled", "waveform-openutau-pitch-post-spectral", "waveform-openutau-pitch-post-spectral2", "utau-classic":
-		return true
-	default:
-		return false
-	}
+	_, ok := framePitchRenderers[renderer]
+	return ok
 }
 
 func applyPitchEnabled(cfg Config) bool {

@@ -775,7 +775,7 @@ func TestAnalyzeIntonationMeasuresAndLimitsCorrection(t *testing.T) {
 		{Position: 0, Source: paths[0]}, {Position: 1, Source: paths[1]}, {Position: 2, Source: paths[2]},
 	}}
 	timings := []effectiveTiming{{scale: 1}, {scale: 1}, {scale: 1}}
-	factors := analyzeIntonation(p, timings, sourceCache{}, 1)
+	factors := analyzeIntonation(p, timings, &sourceCache{}, 1)
 	if len(factors) != 3 {
 		t.Fatalf("factor count = %d", len(factors))
 	}
@@ -792,6 +792,49 @@ func TestAnalyzeIntonationMeasuresAndLimitsCorrection(t *testing.T) {
 	}
 }
 
+func TestSourceCacheReusesMonoAndNormalizedAudio(t *testing.T) {
+	path := t.TempDir() + "/stereo.wav"
+	data := []int16{1000, -1000, 2000, -2000, 3000, -3000, 4000, -4000}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 16000, Channels: 2, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := sourceCache{}
+	first, err := cache.loadMono(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := cache.loadMono(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("mono source was converted more than once")
+	}
+	if first.Channels != 1 || len(first.Data) != len(data)/2 {
+		t.Fatalf("unexpected mono source: %#v", first)
+	}
+
+	native, err := cache.loadNormalized(path, 16000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resampled, err := cache.loadNormalized(path, 8000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resampledAgain, err := cache.loadNormalized(path, 8000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if native != first || resampled != resampledAgain {
+		t.Fatal("normalized source cache did not reuse its entries")
+	}
+	if resampled.SampleRate != 8000 || len(resampled.Data) != len(first.Data)/2 {
+		t.Fatalf("unexpected resampled source: %#v", resampled)
+	}
+}
+
 func TestAnalyzeIntonationAuditIncludesLearnedPitchFactor(t *testing.T) {
 	path := t.TempDir() + "/tone.wav"
 	data := make([]int16, 8000)
@@ -802,7 +845,7 @@ func TestAnalyzeIntonationAuditIncludesLearnedPitchFactor(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &plan.Plan{Units: []plan.Unit{{Position: 0, Source: path, PitchFactor: 1.03}}}
-	factors := analyzeIntonation(p, []effectiveTiming{{scale: 1}}, sourceCache{}, 1)
+	factors := analyzeIntonation(p, []effectiveTiming{{scale: 1}}, &sourceCache{}, 1)
 	if math.Abs(p.Units[0].TargetF0Hz-p.Units[0].SourceF0Hz*factors[0]*1.03) > 0.1 {
 		t.Fatalf("target F0=%f source=%f", p.Units[0].TargetF0Hz, p.Units[0].SourceF0Hz)
 	}

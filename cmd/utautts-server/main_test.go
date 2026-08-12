@@ -90,6 +90,55 @@ func TestHealthReportsConfiguredRenderer(t *testing.T) {
 	}
 }
 
+func TestServerCachesVoicebankLoads(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "oto.ini"), []byte("a.wav=縺・0,0,0,0,0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{}
+	first, err := server.cachedVoicebank(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := server.cachedVoicebank(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("voicebank was loaded more than once")
+	}
+}
+
+func TestServerReloadInvalidatesVoicebankCache(t *testing.T) {
+	root := t.TempDir()
+	bankDir := filepath.Join(root, "bank")
+	if err := os.Mkdir(bankDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=縺・0,0,0,0,0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{voicebanks: map[string]Voicebank{}, voiceDir: root}
+	if err := server.loadVoiceDirectory(); err != nil {
+		t.Fatal(err)
+	}
+	path := server.voicebankList()[0].Path
+	first, err := server.cachedVoicebank(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.loadVoiceDirectory(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := server.cachedVoicebank(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("voicebank cache survived an explicit directory reload")
+	}
+}
+
 func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
 	root := t.TempDir()
 	makeBank := func(directory, name string) {

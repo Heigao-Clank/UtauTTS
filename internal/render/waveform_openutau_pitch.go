@@ -116,14 +116,28 @@ func restoreRawHighBand(raw, processed *audio.PCM, cutoffHz float64, taps int) *
 	lowRaw := make([]float64, len(raw.Data))
 	lowProcessed := make([]float64, len(raw.Data))
 	for position := range raw.Data {
-		for tap, weight := range kernel {
-			source := position + tap - half
-			if source < 0 || source >= len(raw.Data) {
-				continue
+		// The windowed-sinc kernel is symmetric. Visit the left/right tap
+		// pair in the same order as the original full traversal, preserving
+		// its floating-point result while nearly halving the inner-loop work.
+		for offset := half; offset > 0; offset-- {
+			weight := kernel[half-offset]
+			left := position - offset
+			right := position + offset
+			switch {
+			case left >= 0 && right < len(raw.Data):
+				lowRaw[position] += weight * (float64(raw.Data[left]) + float64(raw.Data[right]))
+				lowProcessed[position] += weight * (float64(processed.Data[left]) + float64(processed.Data[right]))
+			case left >= 0:
+				lowRaw[position] += weight * float64(raw.Data[left])
+				lowProcessed[position] += weight * float64(processed.Data[left])
+			case right < len(raw.Data):
+				lowRaw[position] += weight * float64(raw.Data[right])
+				lowProcessed[position] += weight * float64(processed.Data[right])
 			}
-			lowRaw[position] += weight * float64(raw.Data[source])
-			lowProcessed[position] += weight * float64(processed.Data[source])
 		}
+		weight := kernel[half]
+		lowRaw[position] += weight * float64(raw.Data[position])
+		lowProcessed[position] += weight * float64(processed.Data[position])
 	}
 	rawEnergy, processedEnergy := 0.0, 0.0
 	for index := range lowRaw {
