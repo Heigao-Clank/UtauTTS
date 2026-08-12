@@ -4,6 +4,7 @@ package connection
 import (
 	"math"
 	"path/filepath"
+	"sync"
 
 	"utautts/internal/acoustic"
 	"utautts/internal/audio"
@@ -61,6 +62,7 @@ func (features LearningFeatures) Valid() bool {
 
 // Extractor caches WAV analysis because every unit participates in many pairs.
 type Extractor struct {
+	mutex sync.Mutex
 	cache map[oto.Entry]Boundary
 }
 
@@ -69,6 +71,11 @@ func NewExtractor() *Extractor {
 }
 
 func (e *Extractor) Boundary(entry oto.Entry) Boundary {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+	if e.cache == nil {
+		e.cache = make(map[oto.Entry]Boundary)
+	}
 	if value, ok := e.cache[entry]; ok {
 		return value
 	}

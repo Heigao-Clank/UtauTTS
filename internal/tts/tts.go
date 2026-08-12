@@ -16,7 +16,7 @@ import (
 )
 
 type Config struct {
-	VoicebankPath string
+	VoicebankPath           string
 	Voicebank               *voicebank.Bank
 	Text                    string
 	Reading                 string
@@ -66,7 +66,7 @@ func Synthesize(cfg Config) (*Result, error) {
 	bank := cfg.Voicebank
 	var err error
 	if bank == nil {
-		bank, err = voicebank.Load(cfg.VoicebankPath)
+		bank, err = loadVoicebankCached(cfg.VoicebankPath)
 		if err != nil {
 			return nil, fmt.Errorf("load voicebank: %w", err)
 		}
@@ -75,12 +75,12 @@ func Synthesize(cfg Config) (*Result, error) {
 	prosodyFeatures := cfg.ProsodyFeatures
 	var runtimeFeatures *openjtalk.Analysis
 	if loadedProsody == nil && cfg.ProsodyModelPath != "" {
-		loadedProsody, err = prosody.LoadModel(cfg.ProsodyModelPath)
+		loadedProsody, err = loadProsodyModelCached(cfg.ProsodyModelPath)
 		if err != nil {
 			return nil, fmt.Errorf("load prosody model: %w", err)
 		}
 		if loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
-			runtimeFeatures, err = openjtalk.Analyze(cfg.Text, openjtalk.Config{
+			runtimeFeatures, err = analyzeOpenJTalkCached(cfg.Text, openjtalk.Config{
 				HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
 			})
 			if err != nil {

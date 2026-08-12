@@ -71,7 +71,10 @@ func (b *Bank) ResolveWithConfig(morae []frontend.Mora, cfg ResolveConfig) ([]Se
 	if err != nil {
 		return nil, err
 	}
-	return selectBestPaths(layers, mode, cfg.JoinModel), nil
+	if b.extractor == nil {
+		b.extractor = connection.NewExtractor()
+	}
+	return selectBestPaths(layers, mode, cfg.JoinModel, b.extractor), nil
 }
 
 func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selection, error) {

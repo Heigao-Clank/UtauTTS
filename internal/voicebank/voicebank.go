@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"utautts/internal/connection"
 	"utautts/internal/oto"
 )
 
@@ -27,6 +28,7 @@ type Bank struct {
 	Entries     map[string][]oto.Entry
 	PrefixMap   map[string]Affix
 	Diagnostics []Diagnostic
+	extractor   *connection.Extractor
 }
 
 func Load(root string) (*Bank, error) {
@@ -72,6 +74,7 @@ func Load(root string) (*Bank, error) {
 		OtoFiles:  otoFiles,
 		Entries:   map[string][]oto.Entry{},
 		PrefixMap: map[string]Affix{},
+		extractor: connection.NewExtractor(),
 	}
 	bank.loadMetadata()
 	for _, path := range otoFiles {

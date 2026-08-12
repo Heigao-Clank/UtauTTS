@@ -18,9 +18,12 @@ type pathState struct {
 // is the target cost baseline and joinScore is the pairwise concatenation
 // score. Keeping those concerns separate makes it possible to replace either
 // heuristic with a learned model without changing the search.
-func selectBestPaths(layers [][]Selection, mode SelectionMode, model *connection.LearnedModel) []Selection {
+func selectBestPaths(layers [][]Selection, mode SelectionMode, model *connection.LearnedModel, extractor *connection.Extractor) []Selection {
 	result := make([]Selection, 0, len(layers))
-	cache := connection.NewExtractor()
+	cache := extractor
+	if cache == nil {
+		cache = connection.NewExtractor()
+	}
 	for start := 0; start < len(layers); {
 		for start < len(layers) && len(layers[start]) == 0 {
 			start++

@@ -63,11 +63,14 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 	if err != nil {
 		return nil, err
 	}
-	targetPath := selectBestPaths(layers, SelectionTargetOnly, nil)
-	handcraftedPath := selectBestPaths(layers, SelectionViterbi, nil)
+	if b.extractor == nil {
+		b.extractor = connection.NewExtractor()
+	}
+	targetPath := selectBestPaths(layers, SelectionTargetOnly, nil, b.extractor)
+	handcraftedPath := selectBestPaths(layers, SelectionViterbi, nil, b.extractor)
 	var learnedPath []Selection
 	if model != nil {
-		learnedPath = selectBestPaths(layers, SelectionViterbi, model)
+		learnedPath = selectBestPaths(layers, SelectionViterbi, model, b.extractor)
 	}
 	targetByPosition := selectionsByPosition(targetPath)
 	handcraftedByPosition := selectionsByPosition(handcraftedPath)

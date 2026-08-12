@@ -1,0 +1,121 @@
+package tts
+
+import (
+	"os"
+	"path/filepath"
+	"sync"
+
+	"utautts/internal/openjtalk"
+	"utautts/internal/prosody"
+	"utautts/internal/voicebank"
+)
+
+// The GUI synthesizes several variants with the same voicebank, text, and
+// model. Keep the expensive immutable inputs alive between requests. These
+// caches are deliberately process-local; ClearCaches is used after a user
+// refreshes a voicebank directory.
+var synthesisCache = struct {
+	sync.RWMutex
+	banks    map[string]*voicebank.Bank
+	models   map[string]modelCacheEntry
+	analyses map[analysisCacheKey]*openjtalk.Analysis
+}{
+	banks:    make(map[string]*voicebank.Bank),
+	models:   make(map[string]modelCacheEntry),
+	analyses: make(map[analysisCacheKey]*openjtalk.Analysis),
+}
+
+type modelCacheEntry struct {
+	size    int64
+	modTime int64
+	model   *prosody.Model
+}
+
+type analysisCacheKey struct {
+	text       string
+	helper     string
+	dictionary string
+}
+
+func loadVoicebankCached(path string) (*voicebank.Bank, error) {
+	key, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	synthesisCache.RLock()
+	bank := synthesisCache.banks[key]
+	synthesisCache.RUnlock()
+	if bank != nil {
+		return bank, nil
+	}
+	bank, err = voicebank.Load(key)
+	if err != nil {
+		return nil, err
+	}
+	synthesisCache.Lock()
+	if existing := synthesisCache.banks[key]; existing != nil {
+		bank = existing
+	} else {
+		synthesisCache.banks[key] = bank
+	}
+	synthesisCache.Unlock()
+	return bank, nil
+}
+
+func loadProsodyModelCached(path string) (*prosody.Model, error) {
+	key, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(key)
+	if err != nil {
+		return nil, err
+	}
+	modTime := info.ModTime().UnixNano()
+	synthesisCache.RLock()
+	entry, ok := synthesisCache.models[key]
+	synthesisCache.RUnlock()
+	if ok && entry.size == info.Size() && entry.modTime == modTime && entry.model != nil {
+		return entry.model, nil
+	}
+	model, err := prosody.LoadModel(key)
+	if err != nil {
+		return nil, err
+	}
+	synthesisCache.Lock()
+	synthesisCache.models[key] = modelCacheEntry{size: info.Size(), modTime: modTime, model: model}
+	synthesisCache.Unlock()
+	return model, nil
+}
+
+func analyzeOpenJTalkCached(text string, cfg openjtalk.Config) (*openjtalk.Analysis, error) {
+	key := analysisCacheKey{text: text, helper: cfg.HelperPath, dictionary: cfg.DictionaryPath}
+	synthesisCache.RLock()
+	analysis := synthesisCache.analyses[key]
+	synthesisCache.RUnlock()
+	if analysis != nil {
+		return analysis, nil
+	}
+	analysis, err := openjtalk.Analyze(text, cfg)
+	if err != nil {
+		return nil, err
+	}
+	synthesisCache.Lock()
+	if existing := synthesisCache.analyses[key]; existing != nil {
+		analysis = existing
+	} else {
+		synthesisCache.analyses[key] = analysis
+	}
+	synthesisCache.Unlock()
+	return analysis, nil
+}
+
+// ClearCaches drops immutable synthesis inputs after a voicebank or runtime
+// resource refresh. In-flight synthesis keeps its local pointers safely.
+func ClearCaches() {
+	synthesisCache.Lock()
+	synthesisCache.banks = make(map[string]*voicebank.Bank)
+	synthesisCache.models = make(map[string]modelCacheEntry)
+	synthesisCache.analyses = make(map[analysisCacheKey]*openjtalk.Analysis)
+	synthesisCache.Unlock()
+}

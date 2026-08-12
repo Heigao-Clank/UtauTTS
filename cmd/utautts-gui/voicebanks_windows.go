@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
 
@@ -32,6 +33,7 @@ func refreshVoicebanks(hwnd uintptr) {
 		return
 	}
 	root := voicebank.ResolveDirectory(voiceDirectory)
+	tts.ClearCaches()
 	started := time.Now()
 	log.Printf("voicebank scan started: configured=%q resolved=%q", voiceDirectory, root)
 	combo := child(hwnd, idVoicebank)
