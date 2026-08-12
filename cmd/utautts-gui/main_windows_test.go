@@ -81,6 +81,28 @@ func TestRendererOptionsExplainEveryMode(t *testing.T) {
 	}
 }
 
+func TestGUIConfigValidationAndRendererDefinition(t *testing.T) {
+	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion, Renderers: []rendererDefinition{{Label: "Custom", Backend: "waveform"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion, Renderers: []rendererDefinition{{Label: "", Backend: "waveform"}}}); err == nil {
+		t.Fatal("invalid renderer definition was accepted")
+	}
+	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion + 1}); err == nil {
+		t.Fatal("unsupported config version was accepted")
+	}
+}
+
+func TestOutputFilenameSanitizesWindowsCharacters(t *testing.T) {
+	previous := availableBanks
+	t.Cleanup(func() { availableBanks = previous })
+	availableBanks = []voicebank.Summary{{Name: "音源:テスト", Path: `C:\voice\bank`}}
+	name := outputFilename(utteranceState{VoicebankPath: `C:\voice\bank`, Text: `a/b:c?d`})
+	if name != "音源_テスト_a_b_c_d.wav" {
+		t.Fatalf("output filename = %q", name)
+	}
+}
+
 func TestSanitizeDisplayName(t *testing.T) {
 	if got := sanitizeDisplayName("  音源\x00名\r\n  "); got != "音源 名" {
 		t.Fatalf("sanitizeDisplayName() = %q", got)

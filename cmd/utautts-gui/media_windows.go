@@ -34,6 +34,7 @@ const (
 	ofnExplorer        = 0x00080000
 	ofnFileMustExist   = 0x00001000
 )
+
 type openFileName struct {
 	StructSize       uint32
 	Owner            uintptr
@@ -65,6 +66,40 @@ func openJSONDialog(owner uintptr, titleText, currentPath string) (string, error
 		"JSONファイル (*.json)", "*.json",
 		"すべてのファイル (*.*)", "*.*",
 	})
+}
+
+func saveJSONDialog(owner uintptr, titleText, currentPath string) (string, error) {
+	name := filepath.Base(currentPath)
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		name = "utautts-project.json"
+	}
+	fileBuffer := make([]uint16, 32768)
+	copy(fileBuffer, windowsString(name))
+	filter := doubleNullWindowsString([]string{
+		"UtauTTSプロジェクト (*.json)", "*.json",
+		"すべてのファイル (*.*)", "*.*",
+	})
+	title := windowsString(titleText)
+	defExt := windowsString("json")
+	dialog := openFileName{
+		StructSize: uint32(unsafe.Sizeof(openFileName{})), Owner: owner,
+		Filter: &filter[0], FilterIndex: 1, File: &fileBuffer[0], MaxFile: uint32(len(fileBuffer)),
+		Title: &title[0], Flags: ofnOverwritePrompt | ofnNoChangeDir | ofnPathMustExist | ofnExplorer,
+		DefExt: &defExt[0],
+	}
+	result, _, callErr := getSaveFile.Call(uintptr(unsafe.Pointer(&dialog)))
+	runtime.KeepAlive(filter)
+	runtime.KeepAlive(title)
+	runtime.KeepAlive(defExt)
+	runtime.KeepAlive(fileBuffer)
+	if result == 0 {
+		return "", nil
+	}
+	path := syscall.UTF16ToString(fileBuffer)
+	if path == "" {
+		return "", fmt.Errorf("保存先が空です: %v", callErr)
+	}
+	return path, nil
 }
 
 func openExecutableDialog(owner uintptr, titleText, currentPath string) (string, error) {
@@ -179,6 +214,9 @@ func saveAudioDialog(owner uintptr, pcm *audio.PCM, suggestedPath string) (strin
 	path := syscall.UTF16ToString(fileBuffer)
 	if path == "" {
 		return "", fmt.Errorf("保存先が空です")
+	}
+	if pcm == nil {
+		return path, nil
 	}
 	if err := audio.WriteWav(path, pcm); err != nil {
 		return "", fmt.Errorf("WAVを保存できませんでした: %w (dialog: %v)", err, callErr)

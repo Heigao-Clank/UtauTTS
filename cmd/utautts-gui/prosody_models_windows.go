@@ -30,7 +30,11 @@ func discoverProsodyModels() []prosodyModelOption {
 		directories = append(directories, filepath.Join(current, "models"), filepath.Join(current, "out", "prosody"))
 	}
 	seen := map[string]bool{}
-	var result []prosodyModelOption
+	result := configuredModelOptions()
+	var resultPaths = map[string]bool{}
+	for _, option := range result {
+		resultPaths[strings.ToLower(option.Path)] = true
+	}
 	for _, directory := range directories {
 		entries, err := os.ReadDir(directory)
 		if err != nil {
@@ -41,7 +45,7 @@ func discoverProsodyModels() []prosodyModelOption {
 				continue
 			}
 			path, err := filepath.Abs(filepath.Join(directory, entry.Name()))
-			if err != nil || seen[strings.ToLower(path)] {
+			if err != nil || seen[strings.ToLower(path)] || resultPaths[strings.ToLower(path)] {
 				continue
 			}
 			model, err := prosody.LoadModel(path)

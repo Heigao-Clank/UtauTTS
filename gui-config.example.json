@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "renderers": [
+    {
+      "id": "my-classic-renderer",
+      "label": "My Classic Renderer",
+      "backend": "openutau-classic-worldline-faithful",
+      "description": "表示名と実行ファイルを外部設定から指定する例",
+      "executable": "tools/worldline-bridge/bin/Release/net8.0/WorldlineBridge.dll",
+      "executable_kind": "bridge",
+      "enabled": true
+    }
+  ],
+  "models": [
+    {
+      "id": "my-prosody-model",
+      "label": "My prosody model",
+      "path": "models/my-prosody-model.json",
+      "enabled": true
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"utautts/internal/prosody"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -97,6 +98,7 @@ func showSynthesisSettings(parent uintptr) {
 		setForegroundWindow.Call(settingsWindow)
 		return
 	}
+	loadSelectedDetailedSettings()
 	instance, _, _ := getModuleHandle.Call(0)
 	title := windowsString("UtauTTS 詳細設定")
 	settingsWindow, _, _ = createWindowEx.Call(0, uintptr(unsafe.Pointer(&settingsClassName[0])), uintptr(unsafe.Pointer(&title[0])),
@@ -262,11 +264,17 @@ func saveSettingsFromWindow(hwnd uintptr) error {
 		return err
 	}
 	advancedSettings = next
+	storeSelectedDetailedSettings(next)
 	return nil
 }
 
 func configuredTTSConfig(base tts.Config, selectedModel *prosodyModelOption) (tts.Config, error) {
 	s := advancedSettings
+	if editor != nil {
+		if selected := editor.selected(); selected != nil && selected.Synthesis.MoraMS > 0 {
+			s = selected.Synthesis
+		}
+	}
 	base.Reading = s.Reading
 	base.Tone = s.Tone
 	base.MoraDurationMS = s.MoraMS
@@ -282,6 +290,12 @@ func configuredTTSConfig(base tts.Config, selectedModel *prosodyModelOption) (tt
 	base.UTAUResamplerPath = s.UTAUResamplerPath
 	base.BoundaryBridgeMS = s.BoundaryBridgeMS
 	base.BoundaryBridgeThreshold = s.BoundaryBridgeThreshold
+	if activeManualPitch != nil && (base.Reading == "" || activeManualPitch.Reading == base.Reading) {
+		base.ManualPitch = activeManualPitch
+		if base.Reading == "" {
+			base.Reading = activeManualPitch.Reading
+		}
+	}
 	if selectedModel == nil {
 		return base, nil
 	}
@@ -290,6 +304,34 @@ func configuredTTSConfig(base tts.Config, selectedModel *prosodyModelOption) (tt
 	}
 	base.ProsodyModelPath = selectedModel.Path
 	base.ProsodyPitchOnly = s.ProsodyPitchOnly
+	return base, nil
+}
+
+func configuredTTSConfigForState(base tts.Config, selectedModel *prosodyModelOption, settings synthesisSettings, manual *prosody.ManualPitchFile) (tts.Config, error) {
+	base.Reading = settings.Reading
+	base.Tone = settings.Tone
+	base.MoraDurationMS = settings.MoraMS
+	base.PauseDurationMS = settings.PauseMS
+	base.ReleaseMS = settings.ReleaseMS
+	base.IntonationStrength = settings.IntonationStrength
+	base.ApplyPitch = settings.ApplyPitch
+	base.SelectionMode = settings.Selection
+	base.JoinModelPath = settings.JoinModelPath
+	base.JoinScoreScale = settings.JoinScale
+	base.WorldlinePath = settings.WorldlinePath
+	base.WorldlineBridgePath = settings.WorldlineBridgePath
+	base.UTAUResamplerPath = settings.UTAUResamplerPath
+	base.BoundaryBridgeMS = settings.BoundaryBridgeMS
+	base.BoundaryBridgeThreshold = settings.BoundaryBridgeThreshold
+	base.ManualPitch = manual
+	if selectedModel == nil {
+		return base, nil
+	}
+	if selectedModel.FrameContour && base.Renderer != "openutau-classic-worldline-faithful" {
+		return base, fmt.Errorf("選択した抑揚モデルは音声モードOpenUTAU Classic faithfulで使用してください")
+	}
+	base.ProsodyModelPath = selectedModel.Path
+	base.ProsodyPitchOnly = settings.ProsodyPitchOnly
 	return base, nil
 }
 

@@ -16,7 +16,6 @@ import (
 
 	"utautts/internal/audio"
 	"utautts/internal/prosody"
-	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
 
@@ -28,6 +27,13 @@ const (
 	wmSynthesisDone        = 0x8001
 	wmInitializeVoicebanks = 0x8002
 	wmVoicebanksDone       = 0x8003
+	wmExportDone           = 0x8004
+	wmDrawItem             = 0x002B
+	wmLButtonDown          = 0x0201
+	wmLButtonUp            = 0x0202
+	wmMouseMove            = 0x0200
+	wmSize                 = 0x0005
+	enChange               = 0x0300
 
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
@@ -43,29 +49,58 @@ const (
 	esReadOnly      = 0x0800
 	cbsDropdownList = 0x0003
 
-	cbAddString     = 0x0143
-	cbGetCurSel     = 0x0147
-	cbResetContent  = 0x014B
-	cbSetCurSel     = 0x014E
-	cbSetItemHeight = 0x0153
-	cbnSelChange    = 1
-	defaultFont     = 17
-	colorBtnFace    = 15
+	cbAddString       = 0x0143
+	cbGetCurSel       = 0x0147
+	cbResetContent    = 0x014B
+	cbSetCurSel       = 0x014E
+	cbSetItemHeight   = 0x0153
+	cbnSelChange      = 1
+	lbAddString       = 0x0180
+	lbDeleteString    = 0x0182
+	lbResetContent    = 0x0184
+	lbGetCurSel       = 0x0188
+	lbSetCurSel       = 0x0186
+	lbnSelChange      = 1
+	lbSetItemHeight   = 0x01A0
+	lbsNotify         = 0x0001
+	lbsOwnerDrawFixed = 0x0010
+	lbsHasStrings     = 0x0040
+	defaultFont       = 17
+	colorBtnFace      = 15
 
-	idVoicebank    = 1001
-	idReload       = 1002
-	idText         = 1003
-	idRenderer     = 1004
-	idIntonate     = 1005
-	idOutput       = 1006
-	idGenerate     = 1007
-	idPlay         = 1008
-	idSave         = 1009
-	idStop         = 1010
-	idRendererInfo = 1011
-	idVoiceSummary = 1012
-	idAdvanced     = 1013
-	idProsodyModel = 1014
+	idVoicebank       = 1001
+	idReload          = 1002
+	idText            = 1003
+	idRenderer        = 1004
+	idIntonate        = 1005
+	idOutput          = 1006
+	idGenerate        = 1007
+	idPlay            = 1008
+	idSave            = 1009
+	idStop            = 1010
+	idRendererInfo    = 1011
+	idVoiceSummary    = 1012
+	idAdvanced        = 1013
+	idProsodyModel    = 1014
+	idManualPitch     = 1015
+	idUtteranceList   = 1016
+	idUtteranceAdd    = 1017
+	idUtteranceDelete = 1018
+	idProjectSave     = 1019
+	idProjectOpen     = 1020
+	idMenuProjectOpen = 4101
+	idMenuProjectSave = 4102
+	idMenuAudioSave   = 4103
+	idMenuSelectedWav = 4105
+	idMenuAllWav      = 4106
+	idMenuExit        = 4104
+	idMenuLicense     = 4201
+	idMenuGitHub      = 4202
+	idMenuAbout       = 4203
+
+	menuString    = 0x0000
+	menuPopup     = 0x0010
+	menuSeparator = 0x0800
 
 	mbIconError = 0x10
 )
@@ -89,11 +124,20 @@ var (
 	postMessage     = user32.NewProc("PostMessageW")
 	setWindowText   = user32.NewProc("SetWindowTextW")
 	getDlgItem      = user32.NewProc("GetDlgItem")
+	getClientRect   = user32.NewProc("GetClientRect")
 	enableWindow    = user32.NewProc("EnableWindow")
 	messageBox      = user32.NewProc("MessageBoxW")
 	loadCursor      = user32.NewProc("LoadCursorW")
+	setFocus        = user32.NewProc("SetFocus")
+	createMenu      = user32.NewProc("CreateMenu")
+	createPopupMenu = user32.NewProc("CreatePopupMenu")
+	appendMenu      = user32.NewProc("AppendMenuW")
+	setMenu         = user32.NewProc("SetMenu")
+	drawMenuBar     = user32.NewProc("DrawMenuBar")
+	shellExecute    = syscall.NewLazyDLL("shell32.dll").NewProc("ShellExecuteW")
 
 	getModuleHandle = kernel32.NewProc("GetModuleHandleW")
+	rtlMoveMemory   = kernel32.NewProc("RtlMoveMemory")
 	getStockObject  = gdi32.NewProc("GetStockObject")
 	coInitializeEx  = ole32.NewProc("CoInitializeEx")
 	coUninitialize  = ole32.NewProc("CoUninitialize")
@@ -105,12 +149,25 @@ var (
 	saveButton             uintptr
 	reloadButton           uintptr
 	advancedButton         uintptr
+	manualPitchButton      uintptr
+	pitchGraphPanel        uintptr
+	projectSaveButton      uintptr
+	projectOpenButton      uintptr
+	utteranceListControl   uintptr
+	mainSplitterX          = 270
+	mainSplitterDragging   bool
+	pitchSplitterX         = 650
+	pitchSplitterDragging  bool
+	mainClientWidth        = 900
+	mainClientHeight       = 700
 	statusLabel            uintptr
 	rendererInfoLabel      uintptr
 	voiceSummaryLabel      uintptr
 	controls               []uintptr
 	completionMutex        sync.Mutex
 	completionError        error
+	exportError            error
+	exportMessage          string
 	synthesisRunning       bool
 	lastOutput             string
 	lastAudio              *audio.PCM
@@ -119,6 +176,7 @@ var (
 	voiceDirectory         string
 	availableBanks         []voicebank.Summary
 	availableProsodyModels []prosodyModelOption
+	editor                 *editorState
 	initialText            string
 	initialOutput          string
 )
@@ -129,13 +187,17 @@ type point struct {
 }
 
 type rendererOption struct {
-	label       string
-	backend     string
-	description string
+	ID             string
+	label          string
+	backend        string
+	description    string
+	executable     string
+	executableKind string
+	configurable   bool
 }
 
 var rendererOptions = []rendererOption{
-	{label: "OpenUTAU Classic faithful", backend: "openutau-classic-worldline-faithful", description: "接続品質が最良だったRendererです。frame pitchモデルの曲線を適用できます。"},
+	{ID: "openutau-classic-faithful", label: "OpenUTAU Classic faithful", backend: "openutau-classic-worldline-faithful", description: "接続品質が最良だったRendererです。frame pitchモデルの曲線を適用できます。"},
 	{label: "標準Waveform", backend: "waveform", description: "原音の明瞭さを最優先する安定版です。イントネーション加工は行いません。"},
 	{label: "Waveform long（非推奨）", backend: "waveform-long", description: "連続する同一原音を長く使う診断方式です。通常利用では標準waveformを選んでください。"},
 	{label: "WORLD hybrid（非推奨）", backend: "worldline-hybrid", description: "純粋な研究・回帰確認用です。通常の音声生成には使用しません。"},
@@ -197,6 +259,8 @@ func main() {
 	flag.StringVar(&initialText, "text", "あらゆる現実をすべて自分のほうへねじ曲げたのだ。", "initial text")
 	flag.StringVar(&initialOutput, "out", "output.wav", "initial output WAV")
 	flag.Parse()
+	loadGUIConfiguration()
+	editor = newEditorState(initialText)
 	closeLog := initializeLog()
 	defer closeLog()
 
@@ -226,6 +290,14 @@ func main() {
 		fatalMessage(err)
 		return
 	}
+	if err := registerManualPitchClass(instance, cursor); err != nil {
+		fatalMessage(err)
+		return
+	}
+	if err := registerPitchGraphClass(instance, cursor); err != nil {
+		fatalMessage(err)
+		return
+	}
 
 	title := windowsString("UtauTTS")
 	mainWindow, _, _ = createWindowEx.Call(
@@ -238,6 +310,7 @@ func main() {
 		fatalMessage(fmt.Errorf("ウィンドウを作成できません"))
 		return
 	}
+	installMainMenu(mainWindow)
 	if err := createControls(mainWindow, instance); err != nil {
 		fatalMessage(err)
 		return
@@ -273,8 +346,19 @@ func createControls(parent, instance uintptr) error {
 	reloadButton = control(0, "BUTTON", "再読込", wsChild|wsVisible|wsTabStop, 780, 42, 90, singleControlHeight, parent, idReload, instance)
 	voiceSummaryLabel = control(0, "STATIC", "音源を読み込んでいます...", wsChild|wsVisible, 145, 82, 725, 76, parent, idVoiceSummary, instance)
 
-	label(parent, instance, "文章", 20, 184, 360, labelHeight)
-	control(wsExClientEdge, "EDIT", initialText, wsChild|wsVisible|wsTabStop|wsVScroll|esMultiline|esAutoVScroll|esWantReturn, 20, 208, 850, 190, parent, idText, instance)
+	label(parent, instance, "発話", 20, 184, 240, labelHeight)
+	utteranceList := control(wsExClientEdge, "LISTBOX", "", wsChild|wsVisible|wsTabStop|wsVScroll|lbsNotify|lbsOwnerDrawFixed|lbsHasStrings, 20, 208, 240, 170, parent, idUtteranceList, instance)
+	utteranceListControl = utteranceList
+	subclassUtteranceList(utteranceList)
+	sendMessage.Call(utteranceList, lbSetItemHeight, 0, 54)
+	control(0, "BUTTON", "＋ 発話追加", wsChild|wsVisible|wsTabStop, 20, 384, 110, 30, parent, idUtteranceAdd, instance)
+	control(0, "BUTTON", "削除", wsChild|wsVisible|wsTabStop, 140, 384, 120, 30, parent, idUtteranceDelete, instance)
+	label(parent, instance, "文章", 280, 184, 360, labelHeight)
+	control(wsExClientEdge, "EDIT", initialText, wsChild|wsVisible|wsTabStop|wsVScroll|esMultiline|esAutoVScroll|esWantReturn, 280, 208, 590, 206, parent, idText, instance)
+	refreshUtteranceList(parent, utteranceList)
+	layoutMainTextArea(parent, 900, 700)
+	pitchGraphPanel = createPitchGraphPanel(parent, instance)
+	prepareManualPitchForCurrent(parent)
 
 	label(parent, instance, "音声モード", 20, 416, 95, labelHeight)
 	rendererCombo := control(0, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|cbsDropdownList, 115, 412, 390, comboDropHeight, parent, idRenderer, instance)
@@ -292,7 +376,8 @@ func createControls(parent, instance uintptr) error {
 		comboAdd(prosodyCombo, option.Label)
 	}
 	sendMessage.Call(prosodyCombo, cbSetCurSel, uintptr(defaultProsodyModelIndex()), 0)
-	rendererInfoLabel = control(0, "STATIC", "", wsChild|wsVisible, 20, 450, 850, 42, parent, idRendererInfo, instance)
+	rendererInfoLabel = control(0, "STATIC", "", wsChild|wsVisible, 20, 450, 665, 42, parent, idRendererInfo, instance)
+	manualPitchButton = control(0, "BUTTON", "イントネーション編集", wsChild|wsVisible|wsTabStop, 700, 450, 170, singleControlHeight, parent, idManualPitch, instance)
 	updateRendererInfo(parent)
 
 	label(parent, instance, "保存先WAV", 20, 504, 90, labelHeight)
@@ -301,8 +386,7 @@ func createControls(parent, instance uintptr) error {
 	generateButton = control(0, "BUTTON", "生成", wsChild|wsVisible|wsTabStop, 20, 548, 110, singleControlHeight, parent, idGenerate, instance)
 	playButton = control(0, "BUTTON", "再生", wsChild|wsVisible|wsTabStop, 140, 548, 110, singleControlHeight, parent, idPlay, instance)
 	stopButton = control(0, "BUTTON", "停止", wsChild|wsVisible|wsTabStop, 260, 548, 110, singleControlHeight, parent, idStop, instance)
-	saveButton = control(0, "BUTTON", "名前を付けて保存", wsChild|wsVisible|wsTabStop, 380, 548, 170, singleControlHeight, parent, idSave, instance)
-	advancedButton = control(0, "BUTTON", "詳細設定", wsChild|wsVisible|wsTabStop, 560, 548, 145, singleControlHeight, parent, idAdvanced, instance)
+	advancedButton = control(0, "BUTTON", "詳細設定", wsChild|wsVisible|wsTabStop, 380, 548, 145, singleControlHeight, parent, idAdvanced, instance)
 	statusLabel = label(parent, instance, "準備完了", 20, 596, 850, 40)
 	for _, handle := range controls {
 		sendMessage.Call(handle, wmSetFont, font, 1)
@@ -315,9 +399,9 @@ func createControls(parent, instance uintptr) error {
 	matchControlHeight(generateButton, rendererCombo, 110)
 	matchControlHeight(playButton, rendererCombo, 110)
 	matchControlHeight(stopButton, rendererCombo, 110)
-	matchControlHeight(saveButton, rendererCombo, 170)
 	matchControlHeight(advancedButton, rendererCombo, 145)
-	for _, id := range []int{idVoicebank, idVoicePortrait, idVoiceSummary, idReload, idText, idRenderer, idRendererInfo, idProsodyModel, idOutput, idGenerate, idPlay, idStop, idSave, idAdvanced} {
+	matchControlHeight(manualPitchButton, rendererCombo, 170)
+	for _, id := range []int{idVoicebank, idVoicePortrait, idVoiceSummary, idReload, idText, idUtteranceList, idUtteranceAdd, idUtteranceDelete, idRenderer, idRendererInfo, idProsodyModel, idManualPitch, idOutput, idGenerate, idPlay, idStop, idAdvanced} {
 		if child(parent, id) == 0 {
 			return fmt.Errorf("GUIコントロールを作成できませんでした: id=%d", id)
 		}
@@ -343,20 +427,65 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintpt
 		}
 	}()
 	switch msg {
+	case wmSize:
+		layoutMainTextArea(hwnd, int(lParam&0xffff), int((lParam>>16)&0xffff))
+		return 0
+	case wmLButtonDown:
+		if pitchSplitterHit(lParam) {
+			pitchSplitterDragging = true
+			manualSetCapture.Call(hwnd)
+			return 0
+		}
+		if mainSplitterHit(lParam) {
+			mainSplitterDragging = true
+			manualSetCapture.Call(hwnd)
+			return 0
+		}
+	case wmMouseMove:
+		if pitchSplitterDragging {
+			pitchSplitterX = clampInt(int(int16(lParam&0xffff)), 500, maxInt(520, mainClientWidth-170))
+			layoutMainTextArea(hwnd, 0, 0)
+			return 0
+		}
+		if mainSplitterDragging {
+			mainSplitterX = clampInt(int(int16(lParam&0xffff)), 180, 500)
+			layoutMainTextArea(hwnd, 0, 0)
+			return 0
+		}
+	case wmLButtonUp:
+		if pitchSplitterDragging {
+			pitchSplitterDragging = false
+			manualReleaseCapture.Call()
+			return 0
+		}
+		if mainSplitterDragging {
+			mainSplitterDragging = false
+			manualReleaseCapture.Call()
+			return 0
+		}
 	case wmCommand:
 		commandID := int(wParam & 0xffff)
 		notification := int((wParam >> 16) & 0xffff)
 		if commandID == idVoicebank && notification == cbnSelChange {
+			if !syncingUtteranceControls {
+				syncSelectedUtteranceControls(hwnd)
+			}
 			selected, _, _ := sendMessage.Call(child(hwnd, idVoicebank), cbGetCurSel, 0, 0)
 			updateVoicebankPortrait(int(selected))
 			updateVoicebankSummary(int(selected))
 			return 0
 		}
 		if commandID == idRenderer && notification == cbnSelChange {
+			if !syncingUtteranceControls {
+				syncSelectedUtteranceControls(hwnd)
+			}
 			updateRendererInfo(hwnd)
 			return 0
 		}
 		if commandID == idProsodyModel && notification == cbnSelChange {
+			if !syncingUtteranceControls {
+				syncSelectedUtteranceControls(hwnd)
+			}
 			selected, _, _ := sendMessage.Call(child(hwnd, idProsodyModel), cbGetCurSel, 0, 0)
 			if model := prosodyModelAt(int(selected)); model != nil && model.FrameContour {
 				sendMessage.Call(child(hwnd, idRenderer), cbSetCurSel, 1, 0)
@@ -364,13 +493,78 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintpt
 			updateRendererInfo(hwnd)
 			return 0
 		}
+		if notification == 0 {
+			switch commandID {
+			case idMenuProjectOpen:
+				openProject(hwnd)
+				return 0
+			case idMenuProjectSave:
+				saveProject(hwnd)
+				return 0
+			case idMenuAudioSave:
+				saveOutput(hwnd)
+				return 0
+			case idMenuSelectedWav:
+				exportSelectedUtterance(hwnd)
+				return 0
+			case idMenuAllWav:
+				exportAllUtterances(hwnd)
+				return 0
+			case idMenuExit:
+				destroyWindow.Call(hwnd)
+				return 0
+			case idMenuLicense:
+				showLicense(hwnd)
+				return 0
+			case idMenuGitHub:
+				openGitHub(hwnd)
+				return 0
+			case idMenuAbout:
+				showAbout(hwnd)
+				return 0
+			}
+		}
+		if commandID == idText && notification == enChange {
+			syncSelectedUtteranceText(hwnd)
+			refreshSelectedUtteranceListItem(hwnd)
+			prepareManualPitchForCurrent(hwnd)
+			invalidatePitchGraph()
+			return 0
+		}
+		if commandID == idUtteranceList && notification == lbnSelChange {
+			syncSelectedUtteranceText(hwnd)
+			syncSelectedUtteranceControls(hwnd)
+			storeSelectedDetailedSettings(advancedSettings)
+			selected, _, _ := sendMessage.Call(child(hwnd, idUtteranceList), lbGetCurSel, 0, 0)
+			if editor != nil && editor.selectIndex(int(selected)) {
+				if selectedUtterance := editor.selected(); selectedUtterance != nil {
+					activeManualPitch = selectedUtterance.ManualPitch
+				}
+				loadSelectedUtteranceText(hwnd)
+				loadSelectedUtteranceControls(hwnd)
+				loadSelectedDetailedSettings()
+				prepareManualPitchForCurrent(hwnd)
+				invalidatePitchGraph()
+			}
+			return 0
+		}
 		switch commandID {
+		case idUtteranceAdd:
+			addUtterance(hwnd)
+		case idUtteranceDelete:
+			deleteSelectedUtterance(hwnd)
+		case idProjectSave:
+			saveProject(hwnd)
+		case idProjectOpen:
+			openProject(hwnd)
 		case idVoicePortrait:
 			showSelectedVoicebankInfo(hwnd)
 		case idReload:
 			refreshVoicebanks(hwnd)
 		case idAdvanced:
 			showSynthesisSettings(hwnd)
+		case idManualPitch:
+			showManualPitchEditor(hwnd)
 		case idGenerate:
 			startSynthesis(hwnd)
 		case idPlay:
@@ -384,6 +578,13 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintpt
 	case wmSynthesisDone:
 		finishSynthesis(hwnd)
 		return 0
+	case wmExportDone:
+		finishExport(hwnd)
+		return 0
+	case wmDrawItem:
+		if drawUtteranceListItem(lParam) {
+			return 1
+		}
 	case wmInitializeVoicebanks:
 		refreshVoicebanks(hwnd)
 		return 0
@@ -393,11 +594,15 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintpt
 	case wmDestroy:
 		stopPlayback()
 		disposeVoicebankPortrait()
+		disposeUtteranceBitmaps()
 		if voiceInfoWindow != 0 {
 			destroyWindow.Call(voiceInfoWindow)
 		}
 		if settingsWindow != 0 {
 			destroyWindow.Call(settingsWindow)
+		}
+		if manualPitchWindow != 0 {
+			destroyWindow.Call(manualPitchWindow)
 		}
 		completionMutex.Lock()
 		preview := previewPath
@@ -411,33 +616,67 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintpt
 	return result
 }
 
+func layoutMainTextArea(hwnd uintptr, width, height int) {
+	if width > 0 {
+		mainClientWidth = width
+	}
+	if height > 0 {
+		mainClientHeight = height
+	}
+	list := child(hwnd, idUtteranceList)
+	text := child(hwnd, idText)
+	if list == 0 || text == 0 {
+		return
+	}
+	listWidth := clampInt(mainSplitterX-20, 140, 460)
+	textX := mainSplitterX + 10
+	textWidth := clampInt(mainClientWidth-textX-30, 180, 1600)
+	textWidth = clampInt(pitchSplitterX-textX-10, 180, 1600)
+	moveWindow.Call(list, 20, 208, uintptr(listWidth), 170, 1)
+	moveWindow.Call(child(hwnd, idUtteranceAdd), 20, 384, 110, 30, 1)
+	moveWindow.Call(child(hwnd, idUtteranceDelete), 140, 384, uintptr(maxInt(80, listWidth-120)), 30, 1)
+	moveWindow.Call(text, uintptr(textX), 208, uintptr(textWidth), 206, 1)
+	if pitchGraphPanel != 0 {
+		graphX := pitchSplitterX + 10
+		graphWidth := maxInt(150, mainClientWidth-graphX-30)
+		moveWindow.Call(pitchGraphPanel, uintptr(graphX), 208, uintptr(graphWidth), 206, 1)
+	}
+}
+
+func mainSplitterHit(lParam uintptr) bool {
+	x := int(int16(lParam & 0xffff))
+	y := int(int16((lParam >> 16) & 0xffff))
+	return y >= 200 && y <= 420 && absInt(x-mainSplitterX) <= 6
+}
+
+func pitchSplitterHit(lParam uintptr) bool {
+	x := int(int16(lParam & 0xffff))
+	y := int(int16((lParam >> 16) & 0xffff))
+	return y >= 200 && y <= 420 && absInt(x-pitchSplitterX) <= 6
+}
+
+func clampInt(value, low, high int) int {
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
+}
+
 func startSynthesis(hwnd uintptr) {
 	if synthesisRunning {
 		return
 	}
-	voicebankPath := ""
-	selected, _, _ := sendMessage.Call(child(hwnd, idVoicebank), cbGetCurSel, 0, 0)
-	if int(selected) >= 0 && int(selected) < len(availableBanks) {
-		voicebankPath = availableBanks[int(selected)].Path
-	}
-	text := strings.TrimSpace(windowText(child(hwnd, idText)))
-	var missing []string
-	if voicebankPath == "" {
-		missing = append(missing, "ボイスバンク")
-	}
-	if text == "" {
-		missing = append(missing, "文章")
-	}
-	if len(missing) > 0 {
-		showError(hwnd, fmt.Errorf("未入力: %s", strings.Join(missing, "、")))
-		return
-	}
-	selectedRenderer, _, _ := sendMessage.Call(child(hwnd, idRenderer), cbGetCurSel, 0, 0)
-	renderer := rendererBackend(int(selectedRenderer))
-	selectedModel, _, _ := sendMessage.Call(child(hwnd, idProsodyModel), cbGetCurSel, 0, 0)
-	config, err := configuredTTSConfig(tts.Config{
-		VoicebankPath: voicebankPath, Text: text, Renderer: renderer,
-	}, prosodyModelAt(int(selectedModel)))
+	states, err := snapshotUtterances(hwnd)
 	if err != nil {
 		showError(hwnd, err)
 		return
@@ -449,24 +688,24 @@ func startSynthesis(hwnd uintptr) {
 	enableWindow.Call(stopButton, 0)
 	enableWindow.Call(saveButton, 0)
 	synthesisRunning = true
-	setText(statusLabel, "生成中: "+rendererOptionAt(int(selectedRenderer)).label)
+	setText(statusLabel, fmt.Sprintf("全%d発話を生成中...", len(states)))
 	go func() {
 		var generated *audio.PCM
 		var preview string
 		started := time.Now()
 		synthErr := runSafely("音声合成", func() error {
-			result, err := tts.Synthesize(config)
+			result, err := synthesizeUtterances(states)
 			if err != nil {
 				return err
 			}
-			preview, err = writePreviewFile(result.Audio)
+			preview, err = writePreviewFile(result)
 			if err != nil {
 				return err
 			}
-			generated = result.Audio
+			generated = result
 			return nil
 		})
-		log.Printf("synthesis finished: renderer=%q elapsed=%s error=%v", renderer, time.Since(started).Round(time.Millisecond), synthErr)
+		log.Printf("synthesis finished: utterances=%d elapsed=%s error=%v", len(states), time.Since(started).Round(time.Millisecond), synthErr)
 		if synthErr == nil {
 			completionMutex.Lock()
 			oldPreview := previewPath

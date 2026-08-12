@@ -83,6 +83,7 @@ func finishVoicebankRefresh(hwnd uintptr) {
 	completedVoicebankScan = voicebankScanResult{}
 	voicebankScanMutex.Unlock()
 	voicebankScanInProgress = false
+	disposeUtteranceBitmaps()
 	availableBanks = result.banks
 	combo := child(hwnd, idVoicebank)
 	sendMessage.Call(combo, cbResetContent, 0, 0)
@@ -99,8 +100,12 @@ func finishVoicebankRefresh(hwnd uintptr) {
 	enableWindow.Call(combo, 1)
 	if len(result.banks) > 0 {
 		sendMessage.Call(combo, cbSetCurSel, uintptr(selected), 0)
+		if editor != nil && editor.selected() != nil {
+			editor.selected().VoicebankPath = result.banks[selected].Path
+		}
 		updateVoicebankPortrait(selected)
 		updateVoicebankSummary(selected)
+		refreshUtteranceList(hwnd, child(hwnd, idUtteranceList))
 		setText(statusLabel, fmt.Sprintf("%d音源を読込: %s", len(result.banks), result.root))
 	} else if result.err != nil {
 		updateVoicebankPortrait(-1)

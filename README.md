@@ -66,9 +66,16 @@ CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応して�
 - [接続学習データセット](docs/connection-dataset.md): join cost用の境界ペア生成
 - [モーラ長・韻律の学習](docs/training.md): duration、F0、energyモデル
 - [系列イントネーションモデル](docs/intonation-model.md): TCNとアクセント特徴の研究経緯
+- [手動イントネーション](docs/manual-pitch.md): モーラごとの音高補正を編集するJSONとCLI/GUIの使い方
 - [接続品質の評価](docs/evaluation.md): クリック、RMS、スペクトル、F0差
 - [AB・ABX聴感評価](docs/listening-test.md): ブラインド比較と集計
 - [今後の改善ロードマップ](docs/future-roadmap.md): 採用構成、任意文章対応、GUI統合の順序
+
+## GUIの拡張設定
+
+Windows GUIは、実行ファイルと同じディレクトリ、または起動時の作業ディレクトリにある`gui-config.json`を読み込みます。`gui-config.example.json`をコピーして、`renderers`にプルダウンへ表示するRenderer、`models`に抑揚モデルを追加できます。`label`が表示名、`backend`が内部Renderer名、`path`がモデルJSONのパスです。相対パスは設定ファイルの場所を基準に解決されます。
+
+`executable_kind`は既存の外部実行ファイルを指定するための項目で、`worldline`、`bridge`、`resampler`に対応します。新しい任意形式の実行ファイルを追加する場合は、同じbackend識別子をRenderer側にも実装する必要があります。
 
 ## 実験結果
 

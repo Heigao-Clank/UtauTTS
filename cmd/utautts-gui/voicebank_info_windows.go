@@ -19,9 +19,7 @@ const (
 	idInfoTitle     = 1102
 	idInfoText      = 1103
 
-	wmClose = 0x0010
-	wmSize  = 0x0005
-
+	wmClose            = 0x0010
 	bmSetImage         = 0x00F7
 	imageBitmap        = 0
 	lrLoadFromFile     = 0x0010
