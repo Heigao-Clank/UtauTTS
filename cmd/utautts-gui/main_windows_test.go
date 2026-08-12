@@ -19,14 +19,14 @@ func TestRendererBackend(t *testing.T) {
 		index int
 		want  string
 	}{
-		{index: 0, want: "waveform"},
-		{index: 1, want: "openutau-classic-worldline-faithful"},
+		{index: 0, want: "openutau-classic-worldline-faithful"},
+		{index: 1, want: "waveform"},
 		{index: 2, want: "waveform-long"},
-		{index: 3, want: "worldline-hybrid-cv-gentle"},
-		{index: 4, want: "worldline-hybrid-cv-balanced"},
-		{index: 5, want: "worldline-hybrid"},
-		{index: -1, want: "waveform"},
-		{index: 99, want: "waveform"},
+		{index: 3, want: "worldline-hybrid"},
+		{index: 4, want: "worldline-hybrid-cv-gentle"},
+		{index: 5, want: "worldline-hybrid-cv-balanced"},
+		{index: -1, want: "openutau-classic-worldline-faithful"},
+		{index: 99, want: "openutau-classic-worldline-faithful"},
 	}
 	for _, test := range tests {
 		if got := rendererBackend(test.index); got != test.want {
@@ -36,8 +36,8 @@ func TestRendererBackend(t *testing.T) {
 }
 
 func TestGUIDefaultsUseFaithfulRendererAndV8(t *testing.T) {
-	if got := defaultRendererIndex(); got != 1 {
-		t.Fatalf("default renderer index = %d, want faithful index 1", got)
+	if got := defaultRendererIndex(); got != 0 {
+		t.Fatalf("default renderer index = %d, want faithful index 0", got)
 	}
 	previous := availableProsodyModels
 	t.Cleanup(func() { availableProsodyModels = previous })
