@@ -1,10 +1,13 @@
 package tts
 
 import (
+	"math"
 	"testing"
 
 	"utautts/internal/frontend"
 	"utautts/internal/plan"
+	"utautts/internal/prosody"
+	"utautts/internal/render"
 )
 
 func TestMoraTimingsIncludePausesMissingFromPlanUnits(t *testing.T) {
@@ -16,6 +19,27 @@ func TestMoraTimingsIncludePausesMissingFromPlanUnits(t *testing.T) {
 	got := moraTimings(morae, p)
 	if len(got) != 3 || got[0].DurationMS != 100 || got[1].StartMS != 100 || got[1].DurationMS != 180 || got[2].StartMS != 280 {
 		t.Fatalf("timings=%+v", got)
+	}
+}
+
+func TestMergeManualPitchCurveAddsToLearnedCurve(t *testing.T) {
+	base := &render.PitchCurve{FrameMS: 20, Cents: []float64{10, 30, 50}}
+	manual := &prosody.PitchContour{FrameMS: 10, Cents: []float64{0, 10, 20, 30, 40}}
+	got := mergeManualPitchCurve(base, manual, "offset")
+	want := []float64{10, 30, 50, 70, 90}
+	for index, value := range want {
+		if math.Abs(got.Cents[index]-value) > 1e-9 {
+			t.Fatalf("merged[%d] = %.2f, want %.2f", index, got.Cents[index], value)
+		}
+	}
+}
+
+func TestMergeManualPitchCurveCanReplaceLearnedCurve(t *testing.T) {
+	base := &render.PitchCurve{FrameMS: 10, Cents: []float64{100, 100}}
+	manual := &prosody.PitchContour{FrameMS: 10, Cents: []float64{0, -20}}
+	got := mergeManualPitchCurve(base, manual, "replace")
+	if got.Cents[0] != 0 || got.Cents[1] != -20 {
+		t.Fatalf("replacement curve = %#v", got.Cents)
 	}
 }
 

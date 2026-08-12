@@ -80,6 +80,14 @@ func smoothAndLimitPitchCurve(curve *PitchCurve, sigmaMS, maxCentsPer10MS float6
 	return result
 }
 
+// ConstrainPitchCurve applies the same conservative smoothing and slew limit
+// used by the experimental pitch renderer to externally edited contours.
+// Keeping this in render makes manual GUI/CLI edits obey the same artifact
+// guardrails as learned contours.
+func ConstrainPitchCurve(curve *PitchCurve, sigmaMS, maxCentsPer10MS float64) *PitchCurve {
+	return smoothAndLimitPitchCurve(curve, sigmaMS, maxCentsPer10MS)
+}
+
 // restoreRawHighBand computes raw + lowpass(processed-raw). Frequencies above
 // the cutoff therefore come only from raw, while the pitch-bearing low band
 // comes from the continuously processed phrase. The centered FIR is zero phase

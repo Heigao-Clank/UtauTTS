@@ -26,6 +26,7 @@ func main() {
 		pauseMS                 float64
 		releaseMS               float64
 		prosodyPath             string
+		manualPitchPath         string
 		prosodyFeaturesPath     string
 		prosodyFeaturesCase     string
 		prosodyPitchOnly        bool
@@ -56,6 +57,7 @@ func main() {
 	flag.Float64Var(&pauseMS, "pause-ms", 180, "punctuation pause in milliseconds")
 	flag.Float64Var(&releaseMS, "release-ms", 20, "unit release envelope in milliseconds")
 	flag.StringVar(&prosodyPath, "prosody", "", "optional learned prosody model JSON")
+	flag.StringVar(&manualPitchPath, "manual-pitch", "", "optional mora pitch edit JSON")
 	flag.StringVar(&prosodyFeaturesPath, "prosody-features", "", "optional per-case mora-level accent feature JSON")
 	flag.StringVar(&prosodyFeaturesCase, "prosody-feature-case", "", "case ID in --prosody-features")
 	flag.BoolVar(&prosodyPitchOnly, "prosody-pitch-only", false, "apply only learned pitch and keep fixed duration/energy")
@@ -101,6 +103,7 @@ func main() {
 		PauseDurationMS:         pauseMS,
 		ReleaseMS:               releaseMS,
 		ProsodyModelPath:        prosodyPath,
+		ManualPitchPath:         manualPitchPath,
 		ProsodyFeatures:         prosodyFeatures,
 		ProsodyPitchOnly:        prosodyPitchOnly,
 		OpenJTalkPath:           openJTalkPath,

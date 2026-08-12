@@ -26,6 +26,8 @@ type Config struct {
 	ReleaseMS               float64
 	ProsodyModelPath        string
 	ProsodyModel            *prosody.Model
+	ManualPitchPath         string
+	ManualPitch             *prosody.ManualPitchFile
 	ProsodyFeatures         []prosody.FeatureFrame
 	ProsodyPitchOnly        bool
 	OpenJTalkPath           string
@@ -185,6 +187,25 @@ func Synthesize(cfg Config) (*Result, error) {
 			pitchCurve = &render.PitchCurve{FrameMS: contour.FrameMS, Cents: contour.Cents}
 		}
 	}
+	manualPitch := cfg.ManualPitch
+	if manualPitch == nil && cfg.ManualPitchPath != "" {
+		manualPitch, err = prosody.LoadManualPitch(cfg.ManualPitchPath)
+		if err != nil {
+			return nil, fmt.Errorf("load manual pitch: %w", err)
+		}
+	}
+	if manualPitch != nil {
+		if manualPitch.Reading != "" && manualPitch.Reading != reading {
+			return nil, fmt.Errorf("manual pitch reading does not match synthesis reading")
+		}
+		timings := moraTimings(morae, synthesisPlan)
+		manualContour, curveErr := manualPitch.Curve(morae, timings, synthesisPlan.DurationMS+cfg.ReleaseMS)
+		if curveErr != nil {
+			return nil, fmt.Errorf("build manual pitch curve: %w", curveErr)
+		}
+		pitchCurve = mergeManualPitchCurve(pitchCurve, manualContour, manualPitch.Mode)
+		pitchCurve = render.ConstrainPitchCurve(pitchCurve, 20, 8)
+	}
 	applyPitch := applyPitchEnabled(cfg)
 	pcm, err := render.Render(synthesisPlan, render.Config{
 		ReleaseMS:               cfg.ReleaseMS,
@@ -202,6 +223,39 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 	return &Result{Voicebank: bank, Plan: synthesisPlan, Audio: pcm}, nil
+}
+
+func mergeManualPitchCurve(base *render.PitchCurve, manual *prosody.PitchContour, mode string) *render.PitchCurve {
+	if manual == nil || manual.FrameMS <= 0 || len(manual.Cents) == 0 {
+		return base
+	}
+	result := &render.PitchCurve{FrameMS: manual.FrameMS, Cents: make([]float64, len(manual.Cents))}
+	for index := range result.Cents {
+		manualCents := manual.Cents[index]
+		if mode == "replace" {
+			result.Cents[index] = manualCents
+			continue
+		}
+		baseCents := 0.0
+		if base != nil && len(base.Cents) > 0 {
+			baseCents = pitchCurveCentsAt(base, float64(index)*manual.FrameMS)
+		}
+		result.Cents[index] = baseCents + manualCents
+	}
+	return result
+}
+
+func pitchCurveCentsAt(curve *render.PitchCurve, timeMS float64) float64 {
+	if curve == nil || curve.FrameMS <= 0 || len(curve.Cents) == 0 {
+		return 0
+	}
+	position := math.Max(0, timeMS) / curve.FrameMS
+	left := int(math.Floor(position))
+	if left >= len(curve.Cents)-1 {
+		return curve.Cents[len(curve.Cents)-1]
+	}
+	progress := position - float64(left)
+	return curve.Cents[left]*(1-progress) + curve.Cents[left+1]*progress
 }
 
 func validateRuntimeMoraAlignment(morae []frontend.Mora, analyzed []string) error {
