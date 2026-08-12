@@ -68,6 +68,13 @@ func prosodyModelLabel(model *prosody.Model, filename string) string {
 	if model.Version == prosody.FramePitchModelVersion && model.Mode == "intonation_frame_tcn_accent_bounded" {
 		return "v8 学習イントネーション"
 	}
+	if model.Version == prosody.StandardAccentModelVersion &&
+		(model.Mode == "intonation_phrase_anchor_v9" || model.Mode == "intonation_phrase_anchor_v9_1") {
+		if model.Mode == "intonation_phrase_anchor_v9_1" {
+			return "v9.1 phrase-anchor intonation"
+		}
+		return "v9 phrase-anchor intonation"
+	}
 	if model.Version == prosody.StandardAccentModelVersion && model.Mode == "standard_japanese_accent" {
 		return "v9 標準語アクセント"
 	}

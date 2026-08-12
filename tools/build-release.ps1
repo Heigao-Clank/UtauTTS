@@ -124,6 +124,18 @@ try {
     } else {
         Write-Warning 'The v8 prosody model was not found under out/prosody; GUI package will require a model under models/.'
     }
+    $v9Model = Join-Path $root 'out/prosody/intonation-phrase-anchor-v9.json'
+    if (Test-Path -LiteralPath $v9Model) {
+        Copy-Item -LiteralPath $v9Model -Destination (Join-Path $guiModelsPath 'phrase-anchor-intonation-v9.json')
+    }
+    $v91Model = Join-Path $root 'out/prosody/intonation-phrase-anchor-v9-1.json'
+    if (Test-Path -LiteralPath $v91Model) {
+        Copy-Item -LiteralPath $v91Model -Destination (Join-Path $guiModelsPath 'phrase-anchor-intonation-v9-1.json')
+    }
+    $standardAccentModel = Join-Path $root 'out/prosody/standard-japanese-accent-v1.json'
+    if (Test-Path -LiteralPath $standardAccentModel) {
+        Copy-Item -LiteralPath $standardAccentModel -Destination (Join-Path $guiModelsPath 'standard-accent-v9.json')
+    }
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
     Copy-Item -Path 'docs/*' -Destination $guiDocs -Recurse

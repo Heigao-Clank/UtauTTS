@@ -55,4 +55,26 @@ go run ./cmd/listening-test `
   --out out/listening/prosody
 ```
 
+## v9 / v9.1句アンカー補正モデル
+
+v9はOpen JTalkのアクセント基準曲線に対する、句頭・アクセント核・句末・疑問上昇の補正アンカーを学習します。既存のfaithful rendererへ滑らかなフレーム曲線として渡すため、rendererを追加する必要はありません。v9.1では、Open JTalkのモーラ整列を厳格に検証し、WORLDのオクターブ誤推定を補正してから平滑化log-F0残差を教師にします。
+
+```powershell
+python tools/train-intonation-v9.py `
+  --dataset out/prosody/jsut-5000-hts.jsonl `
+  --out out/prosody/intonation-phrase-anchor-v9.json `
+  --worldline .tmp-openutau-reference/worldline.dll
+```
+
+v9.1を学習する場合は、次の出力名を使います。Open JTalkが必須で、整列率が全体の既定値60%未満の場合は失敗します。整列できなかったレコードはfallback化せず、学習対象から除外します。
+
+```powershell
+python tools/train-intonation-v9.py `
+  --dataset out/prosody/jsut-5000-hts.jsonl `
+  --out out/prosody/intonation-phrase-anchor-v9-1.json `
+  --worldline .tmp-openutau-reference/worldline.dll
+```
+
+v9.1の採用判断はアンカーMAEだけでなく、アクセント核の高低差、句末上昇、曲率、波形基準からの歯抜け・音質劣化を同じ評価コーパスで確認します。`--no-openjtalk-accent`はfallback検証専用です。
+
 この例では主にdurationとenergyの差を比較します。F0だけを比較するときは`--system-b-prosody-pitch-only`を加え、必要に応じてWORLD系レンダラと`--intonation-strength`を明示してください。

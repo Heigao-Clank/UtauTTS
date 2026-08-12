@@ -151,6 +151,8 @@ v8を任意文章へ適用する例です。`--prosody-features`を省略する�
   --out "v8.wav"
 ```
 
+v9/v9.1句アンカー補正モデルも同じ`openutau-classic-worldline-faithful` rendererで使用できます。モデルJSONを`models/`へ置くとGUIの「抑揚モデル」に自動表示されます。v9.1はOpen JTalk整列と平滑化log-F0教師を強化した学習版です。
+
 ## HTTP API
 
 ```powershell
