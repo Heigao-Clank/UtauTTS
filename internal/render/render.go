@@ -411,6 +411,8 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 			voiced = append(voiced, pitches[i])
 		}
 	}
+	pitches = stabilizeWorldlinePitches(pitches)
+	voiced = nonzeroFloats(pitches)
 	reference := medianFloat(voiced)
 	if reference <= 0 {
 		return factors

@@ -930,6 +930,30 @@ func TestBestAlignedVowelSegmentFindsPhaseShift(t *testing.T) {
 	}
 }
 
+func TestStabilizeWorldlinePitchesCorrectsHarmonicJump(t *testing.T) {
+	got := stabilizeWorldlinePitches([]float64{296, 446, 298})
+	if math.Abs(got[1]-297.333333) > 2 {
+		t.Fatalf("stabilized harmonic pitch = %.2f, want near 297", got[1])
+	}
+}
+
+func TestStabilizeWorldlinePitchesKeepsLowerShortPhraseAnchor(t *testing.T) {
+	got := stabilizeWorldlinePitches([]float64{296, 446})
+	if math.Abs(got[0]-296) > 0.01 || math.Abs(got[1]-297.333333) > 2 {
+		t.Fatalf("short phrase pitches = %#v, want near [296, 297]", got)
+	}
+}
+
+func TestStabilizeWorldlinePitchesKeepsOrdinaryMovement(t *testing.T) {
+	input := []float64{280, 296, 315}
+	got := stabilizeWorldlinePitches(input)
+	for index := range input {
+		if got[index] != input[index] {
+			t.Fatalf("ordinary pitch[%d] changed from %.2f to %.2f", index, input[index], got[index])
+		}
+	}
+}
+
 func TestChooseBoundaryRepairKeepsNormalOrImprovesPeak(t *testing.T) {
 	const sampleRate = 1000
 	mix := make([]float64, 220)

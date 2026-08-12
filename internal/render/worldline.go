@@ -562,7 +562,57 @@ func measureWorldlinePitches(synthesisPlan *plan.Plan, cache *sourceCache) ([]fl
 			values[i] = pitch.EstimateMedian(wave[start:end], mono.SampleRate)
 		}
 	}
-	return values, sampleRate, nil
+	return stabilizeWorldlinePitches(values), sampleRate, nil
+}
+
+// stabilizeWorldlinePitches removes the most common short-recording pitch
+// tracker failures before a source pitch is handed to Worldline. A voiced
+// unit can occasionally be reported at a harmonic-related period (for
+// example, about 3/2 or 2 times its neighbours) when the vowel has a strong
+// formant or an irregular waveform. Treating that value as the target pitch
+// makes the resampler shift the otherwise natural recording by several
+// semitones. The lower-frequency member is kept as the local anchor and only
+// the higher-frequency member is folded down. This one-way rule is important
+// for very short phrases: a two-unit phrase must not make both units swap
+// their pitches while correcting each other.
+func stabilizeWorldlinePitches(values []float64) []float64 {
+	result := append([]float64(nil), values...)
+	for index, value := range values {
+		if value <= 0 {
+			continue
+		}
+		neighbor := nearestWorldlinePitch(values, index)
+		if neighbor <= 0 {
+			continue
+		}
+		ratio := value / neighbor
+		if ratio < 1.35 {
+			continue
+		}
+		factor := 2.0 / 3.0
+		if ratio >= 1.8 {
+			factor = 0.5
+		}
+		correctedRatio := ratio * factor
+		if correctedRatio >= 0.87 && correctedRatio <= 1.15 {
+			result[index] = value * factor
+		}
+	}
+	return result
+}
+
+func nearestWorldlinePitch(values []float64, index int) float64 {
+	for distance := 1; distance < len(values); distance++ {
+		left := index - distance
+		if left >= 0 && values[left] > 0 {
+			return values[left]
+		}
+		right := index + distance
+		if right < len(values) && values[right] > 0 {
+			return values[right]
+		}
+	}
+	return 0
 }
 
 func worldlineF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, reference float64, length int) []float64 {
