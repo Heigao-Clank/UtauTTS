@@ -11,9 +11,11 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"utautts/internal/audio"
+	"utautts/internal/prosody"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -141,6 +143,26 @@ var rendererOptions = []rendererOption{
 	{label: "WORLD hybrid（過去比較用）", backend: "worldline-hybrid", description: "純粋な研究・回帰確認用です。通常の音声生成には使用しません。"},
 }
 
+const defaultRendererBackend = "openutau-classic-worldline-faithful"
+
+func defaultRendererIndex() int {
+	for index, option := range rendererOptions {
+		if option.backend == defaultRendererBackend {
+			return index
+		}
+	}
+	return 0
+}
+
+func defaultProsodyModelIndex() int {
+	for index, option := range availableProsodyModels {
+		if option.Version == prosody.FramePitchModelVersion && option.Mode == "intonation_frame_tcn_accent_bounded" {
+			return index + 1
+		}
+	}
+	return 0
+}
+
 type message struct {
 	HWnd    uintptr
 	Message uint32
@@ -260,7 +282,7 @@ func createControls(parent, instance uintptr) error {
 	for _, option := range rendererOptions {
 		comboAdd(rendererCombo, option.label)
 	}
-	sendMessage.Call(rendererCombo, cbSetCurSel, 0, 0)
+	sendMessage.Call(rendererCombo, cbSetCurSel, uintptr(defaultRendererIndex()), 0)
 
 	label(parent, instance, "抑揚モデル", 530, 416, 90, labelHeight)
 	prosodyCombo := control(0, "COMBOBOX", "", wsChild|wsVisible|wsTabStop|cbsDropdownList, 620, 412, 250, comboDropHeight, parent, idProsodyModel, instance)
@@ -269,7 +291,7 @@ func createControls(parent, instance uintptr) error {
 	for _, option := range availableProsodyModels {
 		comboAdd(prosodyCombo, option.Label)
 	}
-	sendMessage.Call(prosodyCombo, cbSetCurSel, 0, 0)
+	sendMessage.Call(prosodyCombo, cbSetCurSel, uintptr(defaultProsodyModelIndex()), 0)
 	rendererInfoLabel = control(0, "STATIC", "", wsChild|wsVisible, 20, 450, 850, 42, parent, idRendererInfo, instance)
 	updateRendererInfo(parent)
 
@@ -431,6 +453,7 @@ func startSynthesis(hwnd uintptr) {
 	go func() {
 		var generated *audio.PCM
 		var preview string
+		started := time.Now()
 		synthErr := runSafely("音声合成", func() error {
 			result, err := tts.Synthesize(config)
 			if err != nil {
@@ -443,6 +466,7 @@ func startSynthesis(hwnd uintptr) {
 			generated = result.Audio
 			return nil
 		})
+		log.Printf("synthesis finished: renderer=%q elapsed=%s error=%v", renderer, time.Since(started).Round(time.Millisecond), synthErr)
 		if synthErr == nil {
 			completionMutex.Lock()
 			oldPreview := previewPath

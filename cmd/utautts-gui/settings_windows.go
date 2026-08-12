@@ -75,7 +75,7 @@ var (
 
 func defaultSynthesisSettings() synthesisSettings {
 	return synthesisSettings{
-		Tone: "C4", MoraMS: 140, PauseMS: 180, ReleaseMS: 20,
+		Tone: "C4", MoraMS: 120, PauseMS: 180, ReleaseMS: 20,
 		Selection: voicebank.SelectionViterbi, ProsodyPitchOnly: true, ApplyPitch: true,
 	}
 }

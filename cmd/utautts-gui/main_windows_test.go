@@ -35,6 +35,21 @@ func TestRendererBackend(t *testing.T) {
 	}
 }
 
+func TestGUIDefaultsUseFaithfulRendererAndV8(t *testing.T) {
+	if got := defaultRendererIndex(); got != 1 {
+		t.Fatalf("default renderer index = %d, want faithful index 1", got)
+	}
+	previous := availableProsodyModels
+	t.Cleanup(func() { availableProsodyModels = previous })
+	availableProsodyModels = []prosodyModelOption{
+		{Version: 9, Mode: "intonation_phrase_anchor_v9_1"},
+		{Version: prosody.FramePitchModelVersion, Mode: "intonation_frame_tcn_accent_bounded"},
+	}
+	if got := defaultProsodyModelIndex(); got != 2 {
+		t.Fatalf("default prosody combo index = %d, want v8 index 2", got)
+	}
+}
+
 func TestPresentationTextCombinesCharacterAndReadme(t *testing.T) {
 	got := presentationText(voicebank.Presentation{
 		Summary:       voicebank.Summary{Name: "音源", Path: `C:\voice\bank`, ReadmePath: `C:\voice\bank\readme.txt`},
@@ -156,5 +171,13 @@ func TestProsodyModelLabelKeepsVersionVisible(t *testing.T) {
 	future := &prosody.Model{Version: 10, Mode: "future_mode"}
 	if got := prosodyModelLabel(future, "future.json"); !strings.Contains(got, "v10") || !strings.Contains(got, "future") {
 		t.Fatalf("future label = %q", got)
+	}
+	v9 := &prosody.Model{Version: prosody.StandardAccentModelVersion, Mode: "intonation_phrase_anchor_v9"}
+	if got := prosodyModelLabel(v9, "phrase-anchor-v9.json"); !strings.Contains(got, "v9") {
+		t.Fatalf("v9 label = %q", got)
+	}
+	v91 := &prosody.Model{Version: prosody.StandardAccentModelVersion, Mode: "intonation_phrase_anchor_v9_1"}
+	if got := prosodyModelLabel(v91, "phrase-anchor-v9-1.json"); !strings.Contains(got, "v9.1") {
+		t.Fatalf("v9.1 label = %q", got)
 	}
 }
