@@ -290,6 +290,53 @@ func TestStandardAccentContourFollowsHighLowPattern(t *testing.T) {
 	}
 }
 
+func TestPhraseAnchorV9ProducesSmoothContourAndLoads(t *testing.T) {
+	model := &Model{
+		Version: StandardAccentModelVersion, FeatureVersion: 1, Mode: "intonation_phrase_anchor_v9",
+		PhrasePitch: &PhrasePitchModel{
+			FeatureNames: []string{"bias"},
+			Weights:      [][]float64{{0}, {0}, {0}, {0}}, Bias: []float64{0, 20, -10, 30},
+			FrameMS: 10, LowCents: -120, HighCents: 120,
+			AccentRangeCents: 60, DeclinationCents: 10, SmoothingMS: 20,
+			P99Cents: 90, MaxCents: 100,
+		},
+	}
+	morae := []frontend.Mora{{Text: "a", Vowel: "a"}, {Text: "i", Vowel: "i"}, {Text: "u", Vowel: "u"}}
+	frames := []FeatureFrame{
+		{"accent_phrase_start": 1, "accent_phrase_position": 1, "accent_position": 0.33, "accent_nucleus_position": 0.66, "accent_high": 0},
+		{"accent_position": 0.66, "accent_nucleus_position": 0.66, "accent_high": 1},
+		{"accent_phrase_end": 1, "accent_position": 1, "accent_nucleus_position": 0.66, "accent_high": 0},
+	}
+	timings := []MoraTiming{{StartMS: 0, DurationMS: 100}, {StartMS: 100, DurationMS: 100}, {StartMS: 200, DurationMS: 100}}
+	curve := model.PredictFrameContour(morae, frames, timings, 300, false)
+	if curve == nil || len(curve.Cents) < 3 {
+		t.Fatal("v9 phrase model returned no contour")
+	}
+	for _, value := range curve.Cents {
+		if value < -120 || value > 120 {
+			t.Fatalf("v9 contour exceeded bounds: %f", value)
+		}
+	}
+	if curve.Cents[0] == curve.Cents[len(curve.Cents)-1] {
+		t.Fatalf("v9 anchors did not affect contour: %v", curve.Cents)
+	}
+	path := filepath.Join(t.TempDir(), "v9.json")
+	if err := model.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := LoadModel(path); err != nil || loaded.PhrasePitch == nil {
+		t.Fatalf("v9 model did not round-trip: model=%#v err=%v", loaded, err)
+	}
+	model.Mode = "intonation_phrase_anchor_v9_1"
+	v91Path := filepath.Join(t.TempDir(), "v9-1.json")
+	if err := model.Save(v91Path); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := LoadModel(v91Path); err != nil || loaded.PhrasePitch == nil {
+		t.Fatalf("v9.1 model did not round-trip: model=%#v err=%v", loaded, err)
+	}
+}
+
 func TestExtractRecord(t *testing.T) {
 	const sampleRate = 16000
 	data := make([]int16, sampleRate)
