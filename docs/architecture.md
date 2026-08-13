@@ -11,7 +11,7 @@ UtauTTSはボイスバンク自体を学習せず、既存原音の選択・時�
 
 `connection-train`は音源・groupを跨がない分割を行い、話者非依存の境界差分から小規模なロジスティック回帰を学習します。診断用として1隠れ層MLPも同じ特徴と推論経路で比較できます。`--join-model`を指定すると、予測確率のlogitを−2から＋2へ制限して−8から＋8の音響join scoreへ変換し、同一録音の順方向継続ボーナスと合わせてViterbi探索へ使用します。モデルを省略した場合は手設計join scoreへ戻ります。
 
-Windows GUIはGoからWin32 APIを直接呼び、標準の`EDIT`・`BUTTON`・`COMBOBOX`だけを使用します。合成は別ゴルーチンで実行し、既存の`tts`パッケージを直接呼びます。
+デスクトップGUIはQt Quick/QMLで構築します。`cmd/utautts-native`がGoバックエンドをC共有ライブラリとして公開し、薄いC++の`QObject`アダプターがQMLへ状態・メソッド・signalを提供します。音源列挙、読み解析、合成は同一プロセス内で直接実行し、GUI用のHTTPサーバーや子プロセスは使用しません。standalone HTTP APIは`cmd/utautts-server`と`internal/api`に独立して残します。旧Win32 GUIは比較用の`tools/utautts-legacy.exe`にだけ残します。
 
 OpenJTalk frontendは`runtime/utautts-openjtalk-features.exe`として分離し、標準入力で文章JSON、標準出力で読み・モーラ列・疎な言語特徴JSONを交換します。`tts`はモデルmetadataを見て必要な場合だけhelperを起動し、返されたモーラ列をGo frontendの結果と一要素ずつ照合します。評価時に`ProsodyFeatures`を明示した場合は、helperを呼ばず固定特徴を使用します。
 
@@ -33,11 +33,31 @@ aliasのtarget優先度は配列位置ではなく意味的tierで付けます�
 
 ## レンダラ
 
+RendererのID、表示名、説明、機能、既定優先度、必要資産は個別の`plugins/renderers/*/plugin.json`が所有します。Go側に残すのはbackend実装のdispatchだけです。抑揚モデルもJSON自身に`id`、`display_name`、`description`、`recommended_renderers`を持ちます。Qt、旧GUI、CLI、HTTP APIは共通catalogから列挙し、release scriptは特定バージョン名を推測しません。形式と追加方法は[モデル／Rendererプラグイン](plugins.md)を参照してください。
+
 ### waveform
 
 原音をWSOLAで時間伸縮し、絶対時刻へ配置します。隣接ユニットは相補的にクロスフェードし、三重以上の重なりだけを正規化します。長すぎるVCVの発声先行は、母音末尾を残す範囲で圧縮します。
 
 外部依存がなく、同じ入力から同じWAVを生成する標準レンダラです。
+
+### waveform-gpu（実験的・Windows CUDA）
+
+`waveform`と同じトリミング、タイミング、envelope、境界処理を使い、ホットスポットであるWSOLAの相関探索とoverlap-addだけをCUDAへ移します。発話内の原音ユニットを独立CUDA streamへ投入し、複数のGPU SMで並列処理します。CPU版とはRenderer IDを分け、CUDA DLLや対応GPUがない場合は明示的なエラーにします。
+
+開発ビルドではCUDA ToolkitとVisual StudioのC++ workloadをインストールし、次を実行します。
+
+```powershell
+.\tools\build-waveform-gpu.ps1
+```
+
+生成した`build/gpu/utautts-waveform-gpu.dll`は開発実行時に自動検出されます。配布時は`runtime/utautts-waveform-gpu.dll`へ配置します。CUDA RuntimeはDLLへ静的リンクしますが、NVIDIA GPUと対応ドライバは必要です。
+
+### OpenUTAU Classic faithful CUDA（実験的・Windows CUDA）
+
+Renderer IDは`openutau-classic-worldline-faithful-gpu`です。通常のfaithful版と同じphone timing、F0曲線、Worldline Resample、位相補正、5点envelopeを使用します。`worldline.dll`のClassic Resampleは同一モジュール内で並列安全ではないため、CPUワーカーごとにDLLを独立ロードして原音を並列処理します。その後の5点envelope適用と重畳ミックスはCUDAで行います。GPU版とCPU版は分離され、CUDAが利用できない場合は明示的なエラーになります。
+
+これはfaithful経路の実用的なハイブリッド高速化です。CheapTrick、D4C、WORLD synthesis自体は引き続きCPUであり、それらをCUDAへ完全移植する場合は別のworldline実装として音響一致を再検証します。
 
 PitchFactorを与えない、または`ApplyPitch`を有効にしない`waveform`を発音明瞭度の固定基準とします。標準CLIでは`--apply-pitch`を省略するため、`--prosody`を指定してもF0のリサンプルは行いません。`--apply-pitch`、pitch-only、pitch contourは実験用です。韻律レンダラの評価では、この基準より文章の聞き取りやすさを落とさないことを最初の採用条件にします。Overlapが0、またはPreutteranceと同値でも瞬時切替にならないよう、最低6msの相補クロスフェードを使います。
 
@@ -56,6 +76,14 @@ OpenUtau 0.1.565由来のnative libraryを旧`PhraseSynth` C API経由で呼び�
 同梱中のOpenUtau 0.1.565 `worldline.dll`には必要な解析APIがないため、このbackendには現行OpenUtauソースからビルドしたnative libraryを`--worldline`で明示します。標準配布backendにはまだ含めません。
 
 足立レイ12文の聴感比較では、標準`waveform` 11、`worldline-v2` 0、同程度1となり、現行OpenUtau相当の特徴経路でも子音の歯抜けを解消できませんでした。棒読みv2対学習F0 v2も12件すべて同程度で、韻律差より子音欠落が支配しました。このbackendは実装差の調査用に限定し、標準候補にはしません。
+
+### OpenUTAU WORLDLINE-R2（実験的・CPU / DirectML）
+
+Renderer IDは`openutau-worldline-r2-cpu`と`openutau-worldline-r2-directml`です。現行OpenUtauと同じく、WORLDによるF0・スペクトル包絡・非周期成分の解析はCPUで行い、固定`mel.onnx`でmel spectrogramへ変換した後、PC-NSF-HiFiGAN ONNX vocoderを実行します。DirectML版でGPUへ移るのはvocoderであり、ClassicのCheapTrick・D4C・WORLD synthesisをCUDA化したものではありません。
+
+R2はClassic faithfulとは音色・子音表現が異なるため、既存Rendererの置換や自動fallbackは行いません。`mel.onnx`は配布時にOpenUtauの固定commitからhash検証して取得します。vocoder weightはCC BY-NC-SA 4.0のため同梱せず、利用者が公式OpenVPI packageから展開したONNXを`--worldline-r2-vocoder`で指定します。R2解析APIを含む現行`worldline.dll`も必要です。2026-08-13時点の公式安定版0.1.565 DLLにはこのAPIがないため、現行OpenUtau sourceからビルドしたDLLを`--worldline`で指定します。
+
+検証機では6.47秒の発話がCPU 8.76秒、DirectML 9.51秒で、短文ではGPU初期化コストが勝ちました。一方、19.36秒の発話はCPU 24.54秒、DirectML 22.05秒となり、約10%高速化しました。PCM差はそれぞれPSNR 159.37 dB、161.61 dBで実質同一です。短文性能を改善する次の課題はbridge常駐化とvocoder session再利用です。
 
 ### utau-classic（UTAU resampler追試用）
 

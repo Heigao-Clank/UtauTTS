@@ -57,6 +57,7 @@ CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応して�
 ## 現行仕様
 
 - [構成](docs/architecture.md): 合成パイプライン、原音選択、レンダラの位置付け
+- [モデル／Rendererプラグイン](docs/plugins.md): 自己記述manifest、追加方法、配布方法
 - [音源](docs/voicebank.md): 対応ボイスバンクと同梱音源のライセンス
 - [HTTPサーバー](docs/server.md): 起動方法とAPI
 - [境界補修実験](docs/boundary-repair.md): 母音末尾を使った接続補助の比較方法
@@ -71,11 +72,9 @@ CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応して�
 - [AB・ABX聴感評価](docs/listening-test.md): ブラインド比較と集計
 - [今後の改善ロードマップ](docs/future-roadmap.md): 採用構成、任意文章対応、GUI統合の順序
 
-## GUIの拡張設定
+## GUIの構成
 
-Windows GUIは、実行ファイルと同じディレクトリ、または起動時の作業ディレクトリにある`gui-config.json`を読み込みます。`gui-config.example.json`をコピーして、`renderers`にプルダウンへ表示するRenderer、`models`に抑揚モデルを追加できます。`label`が表示名、`backend`が内部Renderer名、`path`がモデルJSONのパスです。相対パスは設定ファイルの場所を基準に解決されます。
-
-`executable_kind`は既存の外部実行ファイルを指定するための項目で、`worldline`、`bridge`、`resampler`に対応します。新しい任意形式の実行ファイルを追加する場合は、同じbackend識別子をRenderer側にも実装する必要があります。
+標準GUIはQt 6 + Qt Quick/QML版です。Goバックエンドを共有ライブラリとして同一プロセスへ読み込み、C ABIを介して音源列挙・読み解析・合成を直接呼びます。GUI起動時のHTTPサーバーやWebViewは使用しません。配布物ではQt本体とネイティブバックエンドを`app/`へまとめ、ルートの`utautts.exe`から起動します。従来のWin32版は移行確認用の`tools/utautts-legacy.exe`として残しています。
 
 ## 実験結果
 
@@ -84,7 +83,7 @@ Windows GUIは、実行ファイルと同じディレクトリ、または起動
 
 ## リリースビルド
 
-Windows x64、Go、.NET 8 SDK、Python 3.12 x64、インターネット接続が必要。PythonとPyInstallerはOpenJTalk helperのビルド時だけ使用し、完成した配布物の実行には不要です。
+Windows x64、Go、Qt 6.5以降（Qt Quick、Qt Multimedia、Qt Concurrent）、CMake、Ninja、MSYS2 Clang、.NET 8 SDK、Python 3.12 x64、インターネット接続が必要です。Qt SDKを`.qt/<version>/mingw_64`へ配置した場合は自動検出します。それ以外の場所ではcompiler kitディレクトリを`QT_ROOT`へ設定してください。
 
 ```powershell
 .\build.bat
@@ -109,19 +108,20 @@ GUI版にはデフォルト音源として足立レイ UTAU音源 ver3.5.0を同
 
 「再読込」を押すかUtauTTSを再起動することで、追加した音源を反映できます。
 
-`--voice-dir`で音源格納ディレクトリ、`--voicebank`で初期選択、`--text`、`--out`で入力欄の初期値を指定できます。
+「生成・再生」はGoバックエンドをワーカースレッドで直接呼び、生成したWAVをQt Multimediaで再生します。「WAV保存」からプレビュー音声を保存できます。ピッチ加工は既定で無効です。
 
-GUIの「生成」は音声をプレビュー用に保持し、「再生」でウィンドウ内から再生できます。「名前を付けて保存」から保存先を選び、WAVを書き出します。生成前に保存先を入力する必要はありません。
+Qt GUIだけを開発ビルドする場合は次を使用します。
 
-メイン画面の「抑揚モデル」プルダウンには、配布物の`models/`にある有効なモデルJSONを自動列挙します。「なし」は原音のピッチを維持します。frame pitchモデルを選ぶと、対応する`OpenUTAU Classic faithful`へ音声モードを自動で切り替えます。今後モデルを追加するときも、対応形式のJSONを`models/`へ配置することで選択肢に追加できます。
+```powershell
+$env:QT_ROOT = 'C:\Qt\6.8.3\mingw_64'
+.\tools\build-qt.ps1
+```
 
-「詳細設定」では、読み、音高、モーラ長、休止、音素選択、結合モデル、Worldline関連実行ファイル、境界補修を変更できます。OpenJTalk特徴は自動生成されるため、特徴JSONや特徴ケースをGUIで選ぶ必要はありません。
-
-ローカルの`out/prosody`にv8モデルとアクセント特徴がある場合、Windows配布物の`models/`へ自動同梱します。成果物がない環境では、詳細設定からJSONを選択してください。
+配布するモデルは`id`と`display_name`をモデルJSON自身に持たせ、`tools/install-prosody-model.ps1`で`models/`へ追加します。release buildは研究用の`out/prosody`から特定ファイル名を推測して同梱しません。
 
 ## CLI
 
-GUI版に同梱された足立レイを使う実行例です。`--renderer`を省略しても`waveform`になります。
+GUI版に同梱された足立レイを使う実行例です。`--renderer`を省略すると、Renderer manifestで最も高い既定優先度を持つプラグインを使います。
 
 ```powershell
 .\UtauTTS\tools\utautts-cli.exe `
@@ -153,12 +153,12 @@ v8を任意文章へ適用する例です。`--prosody-features`を省略する�
   --voicebank ".\UtauTTS\voice\足立レイver3.5.0" `
   --text "駅前の新しい図書館で本を三冊借りました。" `
   --renderer openutau-classic-worldline-faithful `
-  --prosody ".\UtauTTS\models\frame-intonation-v8.json" `
+  --prosody "<model-id>" `
   --prosody-pitch-only `
   --out "v8.wav"
 ```
 
-v9/v9.1句アンカー補正モデルも同じ`openutau-classic-worldline-faithful` rendererで使用できます。モデルJSONを`models/`へ置くとGUIの「抑揚モデル」に自動表示されます。v9.1はOpen JTalk整列と平滑化log-F0教師を強化した学習版です。
+自己記述モデルJSONを`models/`へinstallするとGUIの「抑揚モデル」に自動表示されます。モデル側の`recommended_renderers`で互換性のあるRenderer plugin IDを宣言できます。
 
 ## HTTP API
 

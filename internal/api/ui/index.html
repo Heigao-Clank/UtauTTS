@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UtauTTS</title>
+<link rel="stylesheet" href="/ui/app.css">
+<link rel="stylesheet" href="/ui/connection.css">
+</head>
+<body>
+<header class="app-bar"><strong>UtauTTS</strong><span id="connectionStatus" class="connection-status" data-state="connecting">● バックエンド接続中</span><span id="status" class="status"></span><div class="app-actions"><button onclick="reloadVoicebanks()">音源再読込</button><button onclick="saveSelected()">WAV保存</button><button onclick="synthesizeAll()">一括保存</button><button onclick="synthesizeSelected()" class="primary">▶ 生成・再生</button></div></header>
+<main class="workspace">
+  <section class="upper-pane">
+    <section class="composition-pane">
+      <aside class="utterance-pane">
+        <div class="pane-heading"><strong>発話</strong><span class="count-label">UTTERANCES</span></div>
+        <div id="utterances" class="utterance-list"></div>
+        <div class="sidebar-actions"><button onclick="addUtterance()" class="add-button">＋ 発話を追加</button><button onclick="removeUtterance()" title="削除">−</button><button onclick="moveUtterance(-1)" title="上へ">↑</button><button onclick="moveUtterance(1)" title="下へ">↓</button></div>
+      </aside>
+      <section class="text-pane">
+        <div class="pane-heading"><strong>文章</strong><span id="reading" class="reading"></span></div>
+        <textarea id="text" placeholder="ここに読み上げる文章を入力してください"></textarea>
+        <audio id="player" controls></audio>
+      </section>
+    </section>
+    <div id="verticalSplitter" class="splitter splitter-vertical" role="separator" aria-orientation="vertical" tabindex="0"></div>
+    <aside class="settings-pane">
+      <div class="pane-heading"><strong>設定</strong><span class="count-label">VOICE</span></div>
+      <div class="setting-group"><label>音源<select id="voicebank" onchange="changeVoicebank()"></select></label><label>抑揚モデル<select id="model"></select></label><label>Renderer<select id="renderer"></select></label></div>
+      <div class="setting-group compact"><label>音高<input id="tone" value="C4"></label><label>モーラ長 (ms)<input id="mora" type="number" value="120"></label><label>休止長 (ms)<input id="pause" type="number" value="180"></label></div>
+      <div class="setting-group"><label class="range-label"><span>抑揚 <output id="intonationValue">0</output></span><input id="intonation" type="range" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('intonationValue').textContent=this.value"></label><label class="switch-row"><input id="applyPitch" type="checkbox"><span>ピッチ加工を有効にする</span></label></div>
+    </aside>
+  </section>
+  <div id="horizontalSplitter" class="splitter splitter-horizontal" role="separator" aria-orientation="horizontal" tabindex="0"></div>
+  <section class="pitch-pane">
+    <div class="pane-heading"><strong>ピッチベント</strong><span class="help">点を上下にドラッグしてcentを調整</span></div>
+    <div class="pitch-stage"><div class="pitch-axis"><span>+300</span><span>0</span><span>−300</span></div><canvas id="pitch" width="900" height="240"></canvas></div>
+  </section>
+</main>
+<script src="/ui/api-client.js"></script>
+<script src="/ui/pitch-editor.js"></script>
+<script src="/ui/splitters.js"></script>
+<script src="/ui/app.js"></script>
+</body>
+</html>

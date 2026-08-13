@@ -1,0 +1,112 @@
+package native
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"utautts/internal/audio"
+)
+
+const openJTalkHelperEnvironment = "UTAUTTS_TEST_OPENJTALK_HELPER"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(openJTalkHelperEnvironment) == "1" {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		_, _ = fmt.Fprint(os.Stdout, `{"version":1,"reading":"ハロー","morae":["は","ろ","ー"],"features":[{},{},{}]}`)
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
+	root := t.TempDir()
+	bankDir := filepath.Join(root, "bank")
+	if err := os.Mkdir(bankDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	samples := make([]int16, 400)
+	for index := range samples {
+		samples[index] = 4000
+	}
+	if err := audio.WriteWav(filepath.Join(bankDir, "a.wav"), &audio.PCM{SampleRate: 1000, Channels: 1, Data: samples}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	engine := New(Config{VoiceDir: root})
+	for _, method := range []string{"health", "voicebanks", "renderers", "models"} {
+		if _, err := engine.Call(method, nil); err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+	}
+	analysis, err := engine.Call("analyze", []byte(`{"text":"あ"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(analysis) {
+		t.Fatalf("analysis=%s", analysis)
+	}
+	output := filepath.Join(root, "preview.wav")
+	request, _ := json.Marshal(map[string]any{"kana": "あ", "voicebank_id": "bank", "mora_duration_ms": 100, "output_path": output})
+	if _, err := engine.Call("synthesize", request); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(output); err != nil || info.Size() < 44 {
+		t.Fatalf("output info=%v err=%v", info, err)
+	}
+}
+
+func TestEngineFallsBackToOpenJTalkForEnglish(t *testing.T) {
+	root := t.TempDir()
+	bankDir := filepath.Join(root, "bank")
+	if err := os.Mkdir(bankDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	samples := make([]int16, 400)
+	for index := range samples {
+		samples[index] = 4000
+	}
+	if err := audio.WriteWav(filepath.Join(bankDir, "a.wav"), &audio.PCM{SampleRate: 1000, Channels: 1, Data: samples}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=は,0,0,0,0,0\na.wav=ろ,0,0,0,0,0\na.wav=ー,0,0,0,0,0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(openJTalkHelperEnvironment, "1")
+	engine := New(Config{VoiceDir: root, OpenJTalkPath: helper, OpenJTalkDictionary: root})
+
+	analysisJSON, err := engine.Call("analyze", []byte(`{"text":"hello"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var analysis struct {
+		Reading string `json:"reading"`
+		Morae   []any  `json:"morae"`
+	}
+	if err := json.Unmarshal(analysisJSON, &analysis); err != nil {
+		t.Fatal(err)
+	}
+	if analysis.Reading != "ハロー" || len(analysis.Morae) != 3 {
+		t.Fatalf("analysis=%s", analysisJSON)
+	}
+
+	output := filepath.Join(root, "english.wav")
+	request, _ := json.Marshal(map[string]any{
+		"text": "hello", "voicebank_id": "bank", "mora_duration_ms": 100, "output_path": output,
+	})
+	if _, err := engine.Call("synthesize", request); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(output); err != nil || info.Size() < 44 {
+		t.Fatalf("output info=%v err=%v", info, err)
+	}
+}

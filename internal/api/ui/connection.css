@@ -1,0 +1,9 @@
+.connection-status {
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.connection-status[data-state="connecting"] { background: #fff7d8; color: #7b6a2b; }
+.connection-status[data-state="connected"] { background: #e3f5e8; color: #276b3e; }
+.connection-status[data-state="error"] { background: #fde7e7; color: #9b3434; }

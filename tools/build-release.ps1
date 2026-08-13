@@ -6,6 +6,7 @@ $serverPath = Join-Path $releaseRoot 'UtauTTS-Server'
 $guiToolsPath = Join-Path $guiPath 'tools'
 $guiRuntimePath = Join-Path $guiPath 'runtime'
 $guiModelsPath = Join-Path $guiPath 'models'
+$guiPluginsPath = Join-Path $guiPath 'plugins'
 $serverRuntimePath = Join-Path $serverPath 'runtime'
 $guiZip = Join-Path $releaseRoot 'UtauTTS-win-x64.zip'
 $serverZip = Join-Path $releaseRoot 'UtauTTS-Server-win-x64.zip'
@@ -44,7 +45,7 @@ function Expand-BundledVoicebank([string]$Destination) {
 
 Reset-Directory $guiPath
 Reset-Directory $serverPath
-New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $guiModelsPath, $serverRuntimePath | Out-Null
+New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $guiModelsPath, $guiPluginsPath, $serverRuntimePath | Out-Null
 foreach ($zip in @($guiZip, $serverZip)) {
     if (Test-Path -LiteralPath $zip) {
         Remove-Item -Force -LiteralPath $zip
@@ -58,7 +59,9 @@ try {
     Invoke-Checked 'go' @('test', './...')
 
     Write-Host '=== Build GUI package ==='
-    Invoke-Checked 'go' @('build', '-trimpath', '-ldflags', '-H windowsgui', '-o', (Join-Path $guiPath 'utautts.exe'), './cmd/utautts-gui')
+    Invoke-Checked 'go' @('build', '-trimpath', '-ldflags', '-H windowsgui', '-o', (Join-Path $guiToolsPath 'utautts-legacy.exe'), './cmd/utautts-gui')
+    & (Join-Path $PSScriptRoot 'build-qt.ps1') -OutputDirectory $guiPath
+    if ($LASTEXITCODE -ne 0) { throw "Qt GUI build failed with exit code $LASTEXITCODE" }
     $guiCommands = @(
         @('utautts-cli.exe', './cmd/utautts-cli'),
         @('oto-inspect.exe', './cmd/oto-inspect'),
@@ -79,6 +82,7 @@ try {
 
     Write-Host '=== Build server package ==='
     Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $serverPath 'utautts-server.exe'), './cmd/utautts-server')
+    Copy-Item -LiteralPath (Join-Path $serverPath 'utautts-server.exe') -Destination (Join-Path $guiToolsPath 'utautts-server.exe')
 
     Write-Host '=== Build Open JTalk frontend helper ==='
     & (Join-Path $PSScriptRoot 'build-openjtalk-feature-bridge.ps1')
@@ -94,9 +98,20 @@ try {
         '-c', 'Release', '-r', 'win-x64', '--self-contained', 'false', '-o', $guiRuntimePath
     )
     & (Join-Path $PSScriptRoot 'fetch-worldline.ps1') -OutputPath (Join-Path $guiRuntimePath 'worldline.dll')
+    & (Join-Path $PSScriptRoot 'fetch-worldline-r2-mel.ps1') -OutputPath (Join-Path $guiRuntimePath 'worldline-r2-mel.onnx')
+
+    if (Get-Command nvcc -ErrorAction SilentlyContinue) {
+        Write-Host '=== Build optional CUDA waveform renderer ==='
+        & (Join-Path $PSScriptRoot 'build-waveform-gpu.ps1') -OutputDirectory $guiRuntimePath
+        if ($LASTEXITCODE -ne 0) { throw "CUDA waveform renderer build failed with exit code $LASTEXITCODE" }
+        Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'utautts-waveform-gpu.dll') -Destination $serverRuntimePath -Force
+    } else {
+        Write-Warning 'CUDA Toolkit was not found; waveform-gpu will not be included'
+    }
 
     Get-ChildItem -LiteralPath $guiRuntimePath -Filter 'utautts-worldline-bridge*' | Copy-Item -Destination $serverRuntimePath
     Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline.dll') -Destination $serverRuntimePath
+    Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline-r2-mel.onnx') -Destination $serverRuntimePath
 
     $openJTalkHelper = Join-Path $root 'tools/openjtalk-feature-bridge/bin/utautts-openjtalk-features.exe'
     $openJTalkDictionary = Join-Path $root '.tmp-openjtalk/pyopenjtalk/open_jtalk_dic_utf_8-1.11'
@@ -116,26 +131,10 @@ try {
 
     $sourceModels = Join-Path $root 'models'
     if (Test-Path -LiteralPath $sourceModels) {
-        Get-ChildItem -LiteralPath $sourceModels -Filter '*.json' -File | Copy-Item -Destination $guiModelsPath
+		Get-ChildItem -LiteralPath $sourceModels -Filter '*.json' -File | Copy-Item -Destination $guiModelsPath
     }
-    $v8Model = Join-Path $root 'out/prosody/jsut-1000-frame-tcn-v8.json'
-    if (Test-Path -LiteralPath $v8Model) {
-        Copy-Item -LiteralPath $v8Model -Destination (Join-Path $guiModelsPath 'frame-intonation-v8.json')
-    } else {
-        Write-Warning 'The v8 prosody model was not found under out/prosody; GUI package will require a model under models/.'
-    }
-    $v9Model = Join-Path $root 'out/prosody/intonation-phrase-anchor-v9.json'
-    if (Test-Path -LiteralPath $v9Model) {
-        Copy-Item -LiteralPath $v9Model -Destination (Join-Path $guiModelsPath 'phrase-anchor-intonation-v9.json')
-    }
-    $v91Model = Join-Path $root 'out/prosody/intonation-phrase-anchor-v9-1.json'
-    if (Test-Path -LiteralPath $v91Model) {
-        Copy-Item -LiteralPath $v91Model -Destination (Join-Path $guiModelsPath 'phrase-anchor-intonation-v9-1.json')
-    }
-    $standardAccentModel = Join-Path $root 'out/prosody/standard-japanese-accent-v1.json'
-    if (Test-Path -LiteralPath $standardAccentModel) {
-        Copy-Item -LiteralPath $standardAccentModel -Destination (Join-Path $guiModelsPath 'standard-accent-v9.json')
-    }
+    Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $guiPluginsPath -Recurse
+    Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination (Join-Path $serverPath 'plugins') -Recurse
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
     Copy-Item -Path 'docs/*' -Destination $guiDocs -Recurse
