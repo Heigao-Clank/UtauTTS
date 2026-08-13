@@ -21,6 +21,10 @@ const worldlineFrameMS = 10.0
 type worldlineManifest struct {
 	Engine        string                  `json:"engine,omitempty"`
 	WorldlinePath string                  `json:"worldline_path"`
+	GPUPath       string                  `json:"gpu_path,omitempty"`
+	MelModelPath  string                  `json:"mel_model_path,omitempty"`
+	VocoderPath   string                  `json:"vocoder_model_path,omitempty"`
+	OnnxDeviceID  int                     `json:"onnx_device_id,omitempty"`
 	OutputPath    string                  `json:"output_path"`
 	SampleRate    int                     `json:"sample_rate"`
 	F0Curve       []float64               `json:"f0_curve"`
@@ -29,6 +33,20 @@ type worldlineManifest struct {
 
 func renderWorldlineV2(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWorldlineEngine(synthesisPlan, cfg, "v2", false)
+}
+
+func renderWorldlineR2(synthesisPlan *plan.Plan, cfg Config, directML bool) (*audio.PCM, error) {
+	if cfg.OnnxDeviceID < 0 {
+		return nil, fmt.Errorf("DirectML GPU device ID must be non-negative, got %d", cfg.OnnxDeviceID)
+	}
+	engine := "r2-cpu"
+	if directML {
+		if runtime.GOOS != "windows" {
+			return nil, errors.New("WORLDLINE-R2 DirectML is available on Windows only")
+		}
+		engine = "r2-directml"
+	}
+	return renderWorldlineEngine(synthesisPlan, cfg, engine, false)
 }
 
 func renderOpenUtauClassicWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
@@ -41,6 +59,10 @@ func renderOpenUtauClassicWorldlineLocalPitch(synthesisPlan *plan.Plan, cfg Conf
 
 func renderOpenUtauClassicWorldlineFaithful(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful", true)
+}
+
+func renderOpenUtauClassicWorldlineFaithfulGPU(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful-gpu", true)
 }
 
 func renderOpenUtauClassicWorldlineFaithfulPhase(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
@@ -216,6 +238,27 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	if err != nil {
 		return nil, err
 	}
+	melModelPath, vocoderPath := "", ""
+	if strings.HasPrefix(engine, "r2-") {
+		melModelPath, err = resolveRuntimeFile(cfg.WorldlineR2MelPath, "worldline-r2-mel.onnx", "WORLDLINE-R2 mel model")
+		if err != nil {
+			return nil, err
+		}
+		vocoderPath, err = resolveRuntimeFile(cfg.WorldlineR2VocoderPath, "worldline-r2-vocoder.onnx", "WORLDLINE-R2 vocoder model")
+		if err != nil {
+			return nil, err
+		}
+	}
+	gpuPath := ""
+	if strings.HasSuffix(engine, "-gpu") {
+		if err := gpuWaveformAvailable(); err != nil {
+			return nil, err
+		}
+		gpuPath, err = gpuWaveformLibraryPath()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	cache := newSourceCache()
 	timings := make([]effectiveTiming, len(synthesisPlan.Units))
@@ -257,18 +300,26 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 			pitchFactors[i] *= unit.PitchFactor
 		}
 	}
-	f0Curve := worldlineF0Curve(synthesisPlan, pitches, pitchFactors, reference, max(2, int(math.Ceil((synthesisPlan.DurationMS+cfg.ReleaseMS)/worldlineFrameMS))+2))
+	frameMS := worldlineFrameMS
+	if strings.HasPrefix(engine, "r2-") {
+		frameMS = 512.0 * 1000.0 / 44100.0
+	}
+	f0Curve := worldlineF0CurveAt(synthesisPlan, pitches, pitchFactors, reference, max(2, int(math.Ceil((synthesisPlan.DurationMS+cfg.ReleaseMS)/frameMS))+2), frameMS)
 	if localSourcePitch {
 		f0Curve = worldlineLocalF0Curve(synthesisPlan, pitches, pitchFactors, reference, len(f0Curve))
 	}
 	manifest := worldlineManifest{
 		Engine:        engine,
 		WorldlinePath: library,
+		GPUPath:       gpuPath,
+		MelModelPath:  melModelPath,
+		VocoderPath:   vocoderPath,
+		OnnxDeviceID:  cfg.OnnxDeviceID,
 		SampleRate:    sampleRate,
 		F0Curve:       f0Curve,
 	}
 	for frame := range manifest.F0Curve {
-		manifest.F0Curve[frame] *= pitchCurveFactorAt(cfg.PitchCurve, float64(frame)*worldlineFrameMS)
+		manifest.F0Curve[frame] *= pitchCurveFactorAt(cfg.PitchCurve, float64(frame)*frameMS)
 	}
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
@@ -519,6 +570,26 @@ func resolveWorldlineLibrary(configured string) (string, error) {
 	return "", fmt.Errorf("worldline library not found; pass --worldline")
 }
 
+func resolveRuntimeFile(configured, name, description string) (string, error) {
+	if configured != "" {
+		if info, err := os.Stat(configured); err != nil || info.IsDir() {
+			if err == nil {
+				err = errors.New("path is a directory")
+			}
+			return "", fmt.Errorf("%s %q: %w", description, configured, err)
+		}
+		return configured, nil
+	}
+	if current, err := os.Executable(); err == nil {
+		for _, candidate := range packagedRuntimeCandidates(current, name) {
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("%s not found; configure its path explicitly", description)
+}
+
 // packagedRuntimeCandidates supports both the historical flat package and the
 // organized release layout. Auxiliary commands live in tools/, one level below
 // the shared runtime directory.
@@ -616,6 +687,10 @@ func nearestWorldlinePitch(values []float64, index int) float64 {
 }
 
 func worldlineF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, reference float64, length int) []float64 {
+	return worldlineF0CurveAt(synthesisPlan, pitches, factors, reference, length, worldlineFrameMS)
+}
+
+func worldlineF0CurveAt(synthesisPlan *plan.Plan, pitches, factors []float64, reference float64, length int, frameMS float64) []float64 {
 	targets := make([]float64, len(pitches))
 	for i, value := range pitches {
 		if value <= 0 {
@@ -626,7 +701,7 @@ func worldlineF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, refe
 	curve := make([]float64, length)
 	unitIndex := 0
 	for frame := range curve {
-		timeMS := float64(frame) * worldlineFrameMS
+		timeMS := float64(frame) * frameMS
 		for unitIndex+1 < len(synthesisPlan.Units) && synthesisPlan.Units[unitIndex+1].NoteStartMS <= timeMS {
 			unitIndex++
 		}

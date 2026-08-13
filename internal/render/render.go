@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 
 	"utautts/internal/audio"
 	"utautts/internal/pitch"
@@ -18,14 +19,42 @@ type Config struct {
 	Backend                 string
 	WorldlinePath           string
 	WorldlineBridgePath     string
+	WorldlineR2MelPath      string
+	WorldlineR2VocoderPath  string
+	OnnxDeviceID            int
 	UTAUResamplerPath       string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
 	PitchCurve              *PitchCurve
 }
 
+// rendererImplementations is only an executable dispatch table. Display
+// identity and declared capabilities belong to each renderer's plugin.json.
+var rendererImplementations = map[string]struct{}{
+	"waveform": {}, "waveform-gpu": {}, "waveform-long": {},
+	"worldline": {}, "worldline-v2": {},
+	"openutau-worldline-r2-cpu": {}, "openutau-worldline-r2-directml": {},
+	"openutau-classic-worldline": {}, "openutau-classic-worldline-local": {},
+	"openutau-classic-worldline-faithful": {}, "openutau-classic-worldline-faithful-gpu": {},
+	"openutau-classic-worldline-faithful-phase": {},
+	"waveform-openutau-pitch":                   {}, "waveform-openutau-pitch-local": {},
+	"waveform-openutau-pitch-local-dual": {}, "waveform-openutau-pitch-local-dual-smooth": {},
+	"waveform-openutau-pitch-post": {}, "waveform-openutau-pitch-post-controlled": {},
+	"waveform-openutau-pitch-post-spectral": {}, "waveform-openutau-pitch-post-spectral2": {},
+	"utau-classic": {}, "worldline-hybrid": {}, "worldline-hybrid-cv": {},
+	"worldline-hybrid-cv-balanced": {}, "worldline-hybrid-cv-gentle": {},
+}
+
+func IsKnownRenderer(id string) bool {
+	if id == "" {
+		return true
+	}
+	_, ok := rendererImplementations[id]
+	return ok
+}
+
 var boundaryBridgeRenderers = map[string]struct{}{
-	"": {}, "waveform": {}, "waveform-long": {},
+	"": {}, "waveform": {}, "waveform-gpu": {}, "waveform-long": {},
 	"waveform-openutau-pitch": {}, "waveform-openutau-pitch-local": {},
 	"waveform-openutau-pitch-local-dual": {}, "waveform-openutau-pitch-local-dual-smooth": {},
 }
@@ -74,7 +103,7 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 				return nil, fmt.Errorf("pitch curve value %d is outside the supported +/-4800 cent range", index)
 			}
 		}
-		if cfg.Backend == "" || cfg.Backend == "waveform" || cfg.Backend == "waveform-long" {
+		if cfg.Backend == "" || cfg.Backend == "waveform" || cfg.Backend == "waveform-gpu" || cfg.Backend == "waveform-long" {
 			return nil, fmt.Errorf("frame pitch curve is not supported by waveform renderer %q", cfg.Backend)
 		}
 	}
@@ -84,18 +113,29 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	switch cfg.Backend {
 	case "", "waveform":
 		return renderWaveform(synthesisPlan, cfg)
+	case "waveform-gpu":
+		if err := gpuWaveformAvailable(); err != nil {
+			return nil, err
+		}
+		return renderWaveformGPU(synthesisPlan, cfg)
 	case "waveform-long":
 		return renderWaveformLong(synthesisPlan, cfg)
 	case "worldline":
 		return renderWorldline(synthesisPlan, cfg)
 	case "worldline-v2":
 		return renderWorldlineV2(synthesisPlan, cfg)
+	case "openutau-worldline-r2-cpu":
+		return renderWorldlineR2(synthesisPlan, cfg, false)
+	case "openutau-worldline-r2-directml":
+		return renderWorldlineR2(synthesisPlan, cfg, true)
 	case "openutau-classic-worldline":
 		return renderOpenUtauClassicWorldline(synthesisPlan, cfg)
 	case "openutau-classic-worldline-local":
 		return renderOpenUtauClassicWorldlineLocalPitch(synthesisPlan, cfg)
 	case "openutau-classic-worldline-faithful":
 		return renderOpenUtauClassicWorldlineFaithful(synthesisPlan, cfg)
+	case "openutau-classic-worldline-faithful-gpu":
+		return renderOpenUtauClassicWorldlineFaithfulGPU(synthesisPlan, cfg)
 	case "openutau-classic-worldline-faithful-phase":
 		return renderOpenUtauClassicWorldlineFaithfulPhase(synthesisPlan, cfg)
 	case "waveform-openutau-pitch":
@@ -239,6 +279,32 @@ func canContinueLongUnit(previous, current plan.Unit) bool {
 }
 
 func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWaveformWithStretch(synthesisPlan, cfg, false, func(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) ([]float64, error) {
+		return retimeWithCompressedPrefix(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate), nil
+	})
+}
+
+func renderWaveformGPU(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWaveformWithStretch(synthesisPlan, cfg, true, func(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) ([]float64, error) {
+		return retimeWithCompressedPrefixUsing(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate, gpuWSOLA)
+	})
+}
+
+type preparedWaveformUnit struct {
+	unitIndex                int
+	timing                   effectiveTiming
+	wave                     []float64
+	targetFrames             int
+	sourceConsonantFrames    int
+	effectiveConsonantFrames int
+}
+
+// Each unit owns a CUDA stream and several device buffers. A fixed worker
+// count keeps long passages from creating hundreds of streams at once while
+// still exposing enough independent work to occupy consumer GPUs.
+const maxParallelGPUUnits = 32
+
+func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRetime bool, retime func([]float64, int, int, int, int) ([]float64, error)) (*audio.PCM, error) {
 	if synthesisPlan == nil || len(synthesisPlan.Units) == 0 {
 		return nil, errors.New("empty synthesis plan")
 	}
@@ -273,6 +339,7 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	if cfg.ApplyPitch {
 		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
 	}
+	prepared := make([]preparedWaveformUnit, 0, len(synthesisPlan.Units))
 	for unitIndex := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[unitIndex]
 		timing := timings[unitIndex]
@@ -310,12 +377,60 @@ func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		if appliedPitch > 0 {
 			sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / appliedPitch))
 		}
-		wave = retimeWithCompressedPrefix(wave, targetFrames, sourceConsonantFrames, effectiveConsonantFrames, sampleRate)
-		if unit.EnergyFactor > 0 {
-			for i := range wave {
-				wave[i] *= unit.EnergyFactor
+		prepared = append(prepared, preparedWaveformUnit{unitIndex: unitIndex, timing: timing, wave: wave,
+			targetFrames: targetFrames, sourceConsonantFrames: sourceConsonantFrames,
+			effectiveConsonantFrames: effectiveConsonantFrames})
+	}
+	retimeUnit := func(index int) error {
+		item := &prepared[index]
+		wave, err := retime(item.wave, item.targetFrames, item.sourceConsonantFrames, item.effectiveConsonantFrames, sampleRate)
+		if err != nil {
+			return err
+		}
+		energy := synthesisPlan.Units[item.unitIndex].EnergyFactor
+		if energy > 0 {
+			for frame := range wave {
+				wave[frame] *= energy
 			}
 		}
+		item.wave = wave
+		return nil
+	}
+	retimeErrors := make([]error, len(prepared))
+	if parallelRetime {
+		workerCount := min(len(prepared), maxParallelGPUUnits)
+		jobs := make(chan int)
+		var workers sync.WaitGroup
+		workers.Add(workerCount)
+		for range workerCount {
+			go func() {
+				defer workers.Done()
+				for index := range jobs {
+					retimeErrors[index] = retimeUnit(index)
+				}
+			}()
+		}
+		for index := range prepared {
+			jobs <- index
+		}
+		close(jobs)
+		workers.Wait()
+	} else {
+		for index := range prepared {
+			retimeErrors[index] = retimeUnit(index)
+		}
+	}
+	for index, err := range retimeErrors {
+		if err != nil {
+			return nil, fmt.Errorf("retime unit %q: %w", synthesisPlan.Units[prepared[index].unitIndex].Alias, err)
+		}
+	}
+
+	for _, item := range prepared {
+		unitIndex := item.unitIndex
+		unit := &synthesisPlan.Units[unitIndex]
+		timing := item.timing
+		wave := item.wave
 
 		startFrame := msToFramesSigned(unit.NoteStartMS-timing.preutteranceMS, sampleRate)
 		sourceStart := 0

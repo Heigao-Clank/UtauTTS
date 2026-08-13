@@ -169,6 +169,53 @@ Upstream source:
 https://github.com/openutau/OpenUtau/tree/master/cpp/worldline
 
 
+OpenUtau WORLDLINE-R2 mel conversion model
+===========================================
+
+The Windows release includes mel.onnx from OpenUtau commit
+29e0e16d1623cda79ba7c3724614d6129ba3b9d5 under the OpenUtau MIT license
+printed above. SHA-256:
+1493FFC868C6FB8B66104E2C6A2902CBF1A8C02BB09215DB014F02E9D0E82F94
+
+The PC-NSF-HiFiGAN vocoder weights are not bundled. The official weights are
+licensed CC BY-NC-SA 4.0 and must be obtained and configured separately by the
+user.
+
+Official vocoder package:
+https://github.com/openvpi/vocoders/releases/tag/pc-nsf-hifigan-44.1k-hop512-128bin-2025.02
+
+
+ONNX Runtime DirectML
+=====================
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License. The complete license and third-party notices
+are available in the Microsoft.ML.OnnxRuntime.DirectML NuGet package used to
+publish the WORLDLINE-R2 bridge.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Upstream source:
+https://github.com/microsoft/onnxruntime
+
+
 WORLD
 =====
 
@@ -225,3 +272,20 @@ https://mechanicalgirl.jp/guidelines/
 
 Bundled archive SHA-256:
 B96D1B21145F22E573AFD9EC8AEAAD0EC9CBAEE581C2623C64ADDEB31DE46B3D
+
+
+Qt 6
+====
+
+The desktop GUI uses dynamically linked Qt 6 modules, including Qt Core,
+Qt GUI, Qt QML, Qt Quick, Qt Quick Controls, Qt Multimedia, and Qt Concurrent.
+The open-source Qt modules used by this application are distributed under the
+GNU Lesser General Public License version 3. Users may replace the dynamically
+linked Qt libraries with compatible modified versions. Any modifications made
+to LGPL-covered Qt components must be provided under the applicable license.
+
+Copyright (C) The Qt Company Ltd. and other contributors.
+
+License and source information:
+https://www.qt.io/licensing/
+https://code.qt.io/cgit/qt/

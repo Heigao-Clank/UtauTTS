@@ -25,6 +25,28 @@ func TestPackagedRuntimeCandidates(t *testing.T) {
 	}
 }
 
+func TestFaithfulGPURendererIsRegistered(t *testing.T) {
+	const backend = "openutau-classic-worldline-faithful-gpu"
+	if !IsKnownRenderer(backend) {
+		t.Fatalf("GPU faithful renderer %q is not registered", backend)
+	}
+}
+
+func TestWorldlineR2RenderersAreRegisteredSeparately(t *testing.T) {
+	for _, backend := range []string{"openutau-worldline-r2-cpu", "openutau-worldline-r2-directml"} {
+		if !IsKnownRenderer(backend) {
+			t.Fatalf("WORLDLINE-R2 renderer %q is not registered", backend)
+		}
+	}
+}
+
+func TestWorldlineR2RejectsNegativeDirectMLDevice(t *testing.T) {
+	_, err := renderWorldlineR2(&plan.Plan{Units: []plan.Unit{{}}}, Config{OnnxDeviceID: -1}, true)
+	if err == nil || !strings.Contains(err.Error(), "non-negative") {
+		t.Fatalf("error = %v, want invalid DirectML device error", err)
+	}
+}
+
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

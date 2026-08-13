@@ -31,6 +31,20 @@ go run ./cmd/prosody-train `
 
 レポートには学習モデルと固定値ベースラインのduration MAE、pitch MAE、energy MAEを併記します。学習値が固定値を上回る場合はモデルを採用しません。
 
+### TCN学習のGPU利用
+
+PyTorch版のモーラTCNとフレームTCNは、既定の`--device auto`でCUDA、Intel XPU、Apple MPSの順に利用可能なアクセラレータを選び、利用できない環境ではCPUへ戻ります。GPU対応版PyTorchが必要です。明示する場合は`--device cuda`、複数GPUでは`--device cuda:1`、CPUで再現確認する場合は`--device cpu`を指定します。
+
+```powershell
+python tools/train-frame-intonation-tcn.py `
+  --dataset out/prosody/jsut-5000-hts.jsonl `
+  --out out/prosody/frame-intonation.json `
+  --device cuda `
+  --batch-size 32
+```
+
+音声の読み込み・F0抽出・Open JTalk整列はCPU、TCNのforward/backwardと検証推論はGPUで実行します。選択されたデバイスは標準出力とモデルJSONの`training.device`へ記録されます。短いデータセットでは転送コストが勝つため、`--device cpu`のほうが速い場合があります。
+
 ## 使用
 
 ```powershell

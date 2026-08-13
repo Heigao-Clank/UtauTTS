@@ -14,3 +14,5 @@ tools/worldline-bridge/obj/
 /notes/
 /listening-results*.json
 .codex/
+.qt/
+aqtinstall.log

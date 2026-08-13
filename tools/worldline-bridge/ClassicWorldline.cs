@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 
 namespace UtauTTS.WorldlineBridge;
@@ -9,8 +10,19 @@ namespace UtauTTS.WorldlineBridge;
 // narrow-band phase convergence employed by OpenUtau's SharpWavtool; the older
 // engines retain bounded normalized correlation for controlled comparisons.
 internal static class ClassicWorldline {
+    private const int MaxResampleWorkers = 16;
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int Resample(IntPtr request, out IntPtr output);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int FaithfulMix(
+        IntPtr samples, int sampleCount, IntPtr sampleOffsets, IntPtr sampleLengths,
+        IntPtr starts, IntPtr skips, IntPtr visibleLengths, IntPtr envelopeX,
+        IntPtr envelopeY, int unitCount, int sampleRate, IntPtr result,
+        int resultLength, IntPtr errorOutput, int errorCapacity);
+
+    private sealed record ResampleWorker(IntPtr Library, Resample Resample);
 
     private sealed class Segment {
         public required Unit Unit;
@@ -32,7 +44,7 @@ internal static class ClassicWorldline {
         public double SampleAt(int global, int fs, int candidateCorrection = int.MinValue) {
             var correction = candidateCorrection == int.MinValue ? Correction : candidateCorrection;
             var local = global - Position - correction + Skip;
-            if (local < Skip || local >= Samples.Length) return 0;
+            if (local < 0 || local < Skip || local >= Samples.Length) return 0;
             return Samples[local] * Envelope(local - Skip, fs);
         }
 
@@ -69,13 +81,15 @@ internal static class ClassicWorldline {
         if (manifest.SampleRate != 44100) {
             throw new InvalidDataException($"OpenUtau classic worldline currently requires 44100 Hz; got {manifest.SampleRate} Hz");
         }
-        var resample = Load<Resample>(library, "Resample");
-        var segments = manifest.Units.Select(unit => new Segment {
-            Unit = unit,
-            Samples = ResampleUnit(resample, unit, manifest),
-            Position = (int)Math.Round(unit.PositionMs * manifest.SampleRate / 1000.0),
-            Skip = (int)Math.Round(unit.SkipMs * manifest.SampleRate / 1000.0),
-        }).ToArray();
+        var gpu = string.Equals(manifest.Engine,
+            "classic-worldline-faithful-gpu", StringComparison.OrdinalIgnoreCase);
+        Segment[] segments;
+        if (gpu) {
+            segments = ResampleUnitsIsolated(manifest);
+        } else {
+            var resample = Load<Resample>(library, "Resample");
+            segments = manifest.Units.Select(unit => RenderSegment(resample, unit, manifest)).ToArray();
+        }
 
         var faithfulPhase = string.Equals(manifest.Engine,
             "classic-worldline-faithful-phase", StringComparison.OrdinalIgnoreCase);
@@ -89,6 +103,11 @@ internal static class ClassicWorldline {
         }
 
         var length = segments.Max(segment => segment.End(manifest.SampleRate));
+        if (gpu) {
+            var gpuMixed = MixGPU(segments, manifest, Math.Max(1, length));
+            Program.WritePCM16(manifest.OutputPath, manifest.SampleRate, gpuMixed);
+            return;
+        }
         var mixed = new float[Math.Max(1, length)];
         foreach (var segment in segments) {
             var start = segment.Position + segment.Correction;
@@ -100,6 +119,109 @@ internal static class ClassicWorldline {
             }
         }
         Program.WritePCM16(manifest.OutputPath, manifest.SampleRate, mixed);
+    }
+
+    private static Segment RenderSegment(Resample resample, Unit unit, Manifest manifest) => new() {
+        Unit = unit,
+        Samples = ResampleUnit(resample, unit, manifest),
+        Position = (int)Math.Round(unit.PositionMs * manifest.SampleRate / 1000.0),
+        Skip = (int)Math.Round(unit.SkipMs * manifest.SampleRate / 1000.0),
+    };
+
+    // worldline's classic Resample entry point has process-global FFT state and
+    // is not safe to call concurrently from one loaded module. Loading private
+    // copies gives every worker an isolated copy of that state.
+    private static Segment[] ResampleUnitsIsolated(Manifest manifest) {
+        var workerCount = Math.Min(manifest.Units.Length,
+            Math.Min(Environment.ProcessorCount, MaxResampleWorkers));
+        var directory = Path.Combine(Path.GetTempPath(), "utautts-worldline-workers-" + Guid.NewGuid());
+        Directory.CreateDirectory(directory);
+        var workers = new ConcurrentBag<ResampleWorker>();
+        try {
+            for (var index = 0; index < workerCount; index++) {
+                var copy = Path.Combine(directory, $"worldline-{index}.dll");
+                File.Copy(Path.GetFullPath(manifest.WorldlinePath), copy);
+                var library = NativeLibrary.Load(copy);
+                workers.Add(new ResampleWorker(library, Load<Resample>(library, "Resample")));
+            }
+            return manifest.Units.AsParallel().AsOrdered()
+                .WithDegreeOfParallelism(workerCount)
+                .Select(unit => {
+                    ResampleWorker? worker;
+                    while (!workers.TryTake(out worker)) Thread.Yield();
+                    try {
+                        return RenderSegment(worker.Resample, unit, manifest);
+                    } finally {
+                        workers.Add(worker);
+                    }
+                }).ToArray();
+        } finally {
+            foreach (var worker in workers) NativeLibrary.Free(worker.Library);
+            Directory.Delete(directory, true);
+        }
+    }
+
+    private static float[] MixGPU(Segment[] segments, Manifest manifest, int resultLength) {
+        if (string.IsNullOrWhiteSpace(manifest.GpuPath)) {
+            throw new InvalidDataException("faithful GPU renderer requires gpu_path");
+        }
+        if (segments.Any(segment => segment.Unit.Envelope.Length != 5)) {
+            throw new InvalidDataException("faithful GPU mixer requires five-point envelopes");
+        }
+        var sampleCount = segments.Sum(segment => segment.Samples.Length);
+        var samples = new float[sampleCount];
+        var offsets = new int[segments.Length];
+        var lengths = new int[segments.Length];
+        var starts = new int[segments.Length];
+        var skips = new int[segments.Length];
+        var visibleLengths = new int[segments.Length];
+        var envelopeX = new double[segments.Length * 5];
+        var envelopeY = new double[segments.Length * 5];
+        var offset = 0;
+        for (var unit = 0; unit < segments.Length; unit++) {
+            var segment = segments[unit];
+            offsets[unit] = offset;
+            lengths[unit] = segment.Samples.Length;
+            starts[unit] = segment.Position + segment.Correction;
+            skips[unit] = segment.Skip;
+            visibleLengths[unit] = segment.VisibleLength(manifest.SampleRate);
+            segment.Samples.CopyTo(samples, offset);
+            offset += segment.Samples.Length;
+            for (var point = 0; point < 5; point++) {
+                envelopeX[unit * 5 + point] = segment.Unit.Envelope[point].XMs;
+                envelopeY[unit * 5 + point] = segment.Unit.Envelope[point].Y;
+            }
+        }
+
+        var result = new float[resultLength];
+        var error = new byte[512];
+        var arrays = new Array[] { samples, offsets, lengths, starts, skips,
+            visibleLengths, envelopeX, envelopeY, result, error };
+        var pins = arrays.Select(array => GCHandle.Alloc(array, GCHandleType.Pinned)).ToArray();
+        var gpuLibrary = IntPtr.Zero;
+        try {
+            gpuLibrary = NativeLibrary.Load(Path.GetFullPath(manifest.GpuPath));
+            var mix = Marshal.GetDelegateForFunctionPointer<FaithfulMix>(
+                NativeLibrary.GetExport(gpuLibrary, "UtauTTSGPUFaithfulMix"));
+            var ok = mix(
+                pins[0].AddrOfPinnedObject(), samples.Length,
+                pins[1].AddrOfPinnedObject(), pins[2].AddrOfPinnedObject(),
+                pins[3].AddrOfPinnedObject(), pins[4].AddrOfPinnedObject(),
+                pins[5].AddrOfPinnedObject(), pins[6].AddrOfPinnedObject(),
+                pins[7].AddrOfPinnedObject(), segments.Length, manifest.SampleRate,
+                pins[8].AddrOfPinnedObject(), result.Length,
+                pins[9].AddrOfPinnedObject(), error.Length);
+            if (ok == 0) {
+                var end = Array.IndexOf(error, (byte)0);
+                if (end < 0) end = error.Length;
+                throw new InvalidOperationException("CUDA faithful mix failed: " +
+                    System.Text.Encoding.UTF8.GetString(error, 0, end));
+            }
+            return result;
+        } finally {
+            if (gpuLibrary != IntPtr.Zero) NativeLibrary.Free(gpuLibrary);
+            foreach (var pin in pins) pin.Free();
+        }
     }
 
     private static float[] ResampleUnit(Resample resample, Unit unit, Manifest manifest) {

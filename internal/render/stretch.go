@@ -3,61 +3,57 @@ package render
 import "math"
 
 func stretchPreservingPrefix(source []float64, targetFrames, prefixFrames, sampleRate int) []float64 {
-	if targetFrames <= 0 || len(source) == 0 {
-		return nil
-	}
-	if targetFrames == len(source) {
-		return append([]float64(nil), source...)
-	}
-	prefixFrames = min(prefixFrames, len(source), targetFrames)
-	if prefixFrames < 0 {
-		prefixFrames = 0
-	}
-	result := make([]float64, targetFrames)
-	copy(result, source[:prefixFrames])
-	remainingTarget := targetFrames - prefixFrames
-	if remainingTarget == 0 {
-		return result
-	}
-	remainingSource := source[prefixFrames:]
-	if len(remainingSource) < 2 {
-		remainingSource = source
-	}
-	stretched := wsola(remainingSource, remainingTarget, sampleRate)
-	copy(result[prefixFrames:], stretched)
-
-	crossfade := min(msToFrames(3, sampleRate), prefixFrames, remainingTarget)
-	for i := 0; i < crossfade; i++ {
-		position := prefixFrames + i
-		before := source[min(prefixFrames+i, len(source)-1)]
-		alpha := float64(i+1) / float64(crossfade+1)
-		result[position] = before*(1-alpha) + result[position]*alpha
-	}
+	result, _ := stretchPreservingPrefixUsing(source, targetFrames, prefixFrames, sampleRate,
+		func(source []float64, targetFrames, sampleRate int) ([]float64, error) {
+			return wsola(source, targetFrames, sampleRate), nil
+		})
 	return result
 }
 
 func retimeWithCompressedPrefix(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) []float64 {
+	result, _ := retimeWithCompressedPrefixUsing(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate,
+		func(source []float64, targetFrames, sampleRate int) ([]float64, error) {
+			return wsola(source, targetFrames, sampleRate), nil
+		})
+	return result
+}
+
+func retimeWithCompressedPrefixUsing(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int, stretch func([]float64, int, int) ([]float64, error)) ([]float64, error) {
 	if targetFrames <= 0 || len(source) == 0 {
-		return nil
+		return nil, nil
 	}
 	sourcePrefixFrames = max(0, min(sourcePrefixFrames, len(source)))
 	targetPrefixFrames = max(0, min(targetPrefixFrames, targetFrames))
 	if sourcePrefixFrames == targetPrefixFrames {
-		return stretchPreservingPrefix(source, targetFrames, sourcePrefixFrames, sampleRate)
+		return stretchPreservingPrefixUsing(source, targetFrames, sourcePrefixFrames, sampleRate, stretch)
 	}
 
 	tailFrames := targetFrames - targetPrefixFrames
 	crossfade := min(msToFrames(4, sampleRate), targetPrefixFrames, tailFrames, sourcePrefixFrames, len(source)-sourcePrefixFrames)
 	if crossfade < 2 {
 		result := make([]float64, targetFrames)
-		copy(result[:targetPrefixFrames], retimeRegion(source[:sourcePrefixFrames], targetPrefixFrames, sampleRate))
-		copy(result[targetPrefixFrames:], retimeRegion(source[sourcePrefixFrames:], tailFrames, sampleRate))
-		return result
+		prefix, err := stretch(source[:sourcePrefixFrames], targetPrefixFrames, sampleRate)
+		if err != nil {
+			return nil, err
+		}
+		tail, err := stretch(source[sourcePrefixFrames:], tailFrames, sampleRate)
+		if err != nil {
+			return nil, err
+		}
+		copy(result[:targetPrefixFrames], prefix)
+		copy(result[targetPrefixFrames:], tail)
+		return result, nil
 	}
 
 	// 境界の両側を含む共通区間を混合し、接続点の位相不連続を防ぐ。
-	prefix := retimeRegion(source[:sourcePrefixFrames+crossfade], targetPrefixFrames+crossfade, sampleRate)
-	tail := retimeRegion(source[sourcePrefixFrames-crossfade:], tailFrames+crossfade, sampleRate)
+	prefix, err := stretch(source[:sourcePrefixFrames+crossfade], targetPrefixFrames+crossfade, sampleRate)
+	if err != nil {
+		return nil, err
+	}
+	tail, err := stretch(source[sourcePrefixFrames-crossfade:], tailFrames+crossfade, sampleRate)
+	if err != nil {
+		return nil, err
+	}
 	overlap := crossfade * 2
 	prefixOnly := targetPrefixFrames - crossfade
 	result := make([]float64, targetFrames)
@@ -68,20 +64,43 @@ func retimeWithCompressedPrefix(source []float64, targetFrames, sourcePrefixFram
 	}
 	copy(result[targetPrefixFrames+crossfade:], tail[overlap:])
 	declickJoin(result, targetPrefixFrames, msToFrames(2, sampleRate))
-	return result
+	return result, nil
 }
 
-func retimeRegion(source []float64, targetFrames, sampleRate int) []float64 {
-	if targetFrames <= 0 {
-		return nil
+func stretchPreservingPrefixUsing(source []float64, targetFrames, prefixFrames, sampleRate int, stretch func([]float64, int, int) ([]float64, error)) ([]float64, error) {
+	if targetFrames <= 0 || len(source) == 0 {
+		return nil, nil
 	}
-	if len(source) == 0 {
-		return make([]float64, targetFrames)
+	if targetFrames == len(source) {
+		return append([]float64(nil), source...), nil
 	}
-	if len(source) == targetFrames {
-		return append([]float64(nil), source...)
+	prefixFrames = min(prefixFrames, len(source), targetFrames)
+	if prefixFrames < 0 {
+		prefixFrames = 0
 	}
-	return wsola(source, targetFrames, sampleRate)
+	result := make([]float64, targetFrames)
+	copy(result, source[:prefixFrames])
+	remainingTarget := targetFrames - prefixFrames
+	if remainingTarget == 0 {
+		return result, nil
+	}
+	remainingSource := source[prefixFrames:]
+	if len(remainingSource) < 2 {
+		remainingSource = source
+	}
+	stretched, err := stretch(remainingSource, remainingTarget, sampleRate)
+	if err != nil {
+		return nil, err
+	}
+	copy(result[prefixFrames:], stretched)
+	crossfade := min(msToFrames(3, sampleRate), prefixFrames, remainingTarget)
+	for i := 0; i < crossfade; i++ {
+		position := prefixFrames + i
+		before := source[min(prefixFrames+i, len(source)-1)]
+		alpha := float64(i+1) / float64(crossfade+1)
+		result[position] = before*(1-alpha) + result[position]*alpha
+	}
+	return result, nil
 }
 
 func declickJoin(wave []float64, position, radius int) {

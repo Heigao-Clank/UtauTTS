@@ -40,16 +40,56 @@ internal static class WorldlineV2 {
         public int P4;
     }
 
+    internal sealed class Features {
+        public required int SampleRate;
+        public required int HopSize;
+        public required int FftSize;
+        public required int TotalFrames;
+        public required double[] F0;
+        public required double[] Spectrum;
+        public required double[] Aperiodicity;
+    }
+
     public static void Render(IntPtr library, Manifest manifest) {
         if (manifest.SampleRate != 44100) {
             throw new InvalidDataException($"worldline-v2 supports 44100 Hz only; got {manifest.SampleRate} Hz");
         }
+        var synthesize = Load<Synthesize>(library, "WorldSynthesis");
+        var features = BuildFeatures(library, manifest, 441);
+        var totalFrames = features.TotalFrames;
+        var config = new AnalysisConfig {
+            Fs = features.SampleRate,
+            HopSize = features.HopSize,
+            FftSize = features.FftSize,
+            FrameMS = features.HopSize * 1000.0 / features.SampleRate,
+        };
+        var spectrumSize = config.FftSize / 2 + 1;
+        var gender = Enumerable.Repeat(0.5, totalFrames).ToArray();
+        var tension = Enumerable.Repeat(0.5, totalFrames).ToArray();
+        var breathiness = Enumerable.Repeat(0.5, totalFrames).ToArray();
+        var voicing = Enumerable.Repeat(1.0, totalFrames).ToArray();
+        var length = synthesize(features.F0, features.F0.Length, features.Spectrum, false, spectrumSize,
+            features.Aperiodicity, false, config.FftSize, config.FrameMS, config.Fs, out var output,
+            gender, tension, breathiness, voicing);
+        if (length <= 0 || output == IntPtr.Zero) throw new InvalidOperationException("WorldSynthesis returned no audio");
+        try {
+            var values = new double[length];
+            Marshal.Copy(output, values, 0, length);
+            Program.WritePCM16(manifest.OutputPath, config.Fs, values.Select(value => (float)value).ToArray());
+        } finally {
+            Marshal.FreeCoTaskMem(output);
+        }
+    }
+
+    internal static Features BuildFeatures(IntPtr library, Manifest manifest, int hopSize) {
+        if (manifest.SampleRate != 44100) {
+            throw new InvalidDataException($"WORLDLINE feature synthesis supports 44100 Hz only; got {manifest.SampleRate} Hz");
+        }
         var init = Load<InitAnalysisConfig>(library, "InitAnalysisConfig");
         var estimate = Load<EstimateF0>(library, "F0");
         var analyze = Load<AnalyzeF0In>(library, "WorldAnalysisF0In");
-        var synthesize = Load<Synthesize>(library, "WorldSynthesis");
         var config = new AnalysisConfig();
-        init(ref config, 44100, 441, 2048);
+        init(ref config, 44100, hopSize, 2048);
 
         var segments = manifest.Units.Select(unit => BuildSegment(unit, config, estimate, analyze)).ToArray();
         var totalFrames = segments.Max(segment => segment.P4) + 1;
@@ -88,21 +128,15 @@ internal static class WorldlineV2 {
                 f0[frame] = manifest.F0Curve[Math.Min(frame, manifest.F0Curve.Length - 1)];
             }
         }
-        var gender = Enumerable.Repeat(0.5, totalFrames).ToArray();
-        var tension = Enumerable.Repeat(0.5, totalFrames).ToArray();
-        var breathiness = Enumerable.Repeat(0.5, totalFrames).ToArray();
-        var voicing = Enumerable.Repeat(1.0, totalFrames).ToArray();
-        var length = synthesize(f0, f0.Length, spectrum, false, spectrumSize,
-            aperiodicity, false, config.FftSize, config.FrameMS, config.Fs, out var output,
-            gender, tension, breathiness, voicing);
-        if (length <= 0 || output == IntPtr.Zero) throw new InvalidOperationException("WorldSynthesis returned no audio");
-        try {
-            var values = new double[length];
-            Marshal.Copy(output, values, 0, length);
-            Program.WritePCM16(manifest.OutputPath, config.Fs, values.Select(value => (float)value).ToArray());
-        } finally {
-            Marshal.FreeCoTaskMem(output);
-        }
+        return new Features {
+            SampleRate = config.Fs,
+            HopSize = config.HopSize,
+            FftSize = config.FftSize,
+            TotalFrames = totalFrames,
+            F0 = f0,
+            Spectrum = spectrum,
+            Aperiodicity = aperiodicity,
+        };
     }
 
     private static Segment BuildSegment(Unit unit, AnalysisConfig config, EstimateF0 estimate, AnalyzeF0In analyze) {

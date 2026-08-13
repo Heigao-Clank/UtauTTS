@@ -231,6 +231,10 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--out", default="out/prosody/intonation-phrase-anchor-v9-1.json")
+    parser.add_argument("--model-id", default="", help="stable plugin ID stored in the model")
+    parser.add_argument("--display-name", default="", help="user-facing model name")
+    parser.add_argument("--description", default="", help="user-facing model description")
+    parser.add_argument("--recommended-renderer", action="append", default=[], help="compatible renderer ID; repeatable")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--frame-ms", type=float, default=10.0)
     parser.add_argument("--teacher-smoothing-ms", type=float, default=40.0)
@@ -299,6 +303,10 @@ def main(argv=None) -> int:
         raise ValueError("no phrase examples were created")
     weights, bias = fit_ridge(train, feature_names, args.regularization)
     output = {
+        "id": str(args.model_id or Path(args.out).stem),
+        "display_name": str(args.display_name or Path(args.out).stem),
+        "description": str(args.description or "Phrase-anchor intonation model"),
+        "recommended_renderers": list(args.recommended_renderer or ["openutau-classic-worldline-faithful"]),
         "version": 9,
         "feature_version": 1,
         "mode": "intonation_phrase_anchor_v9_1",

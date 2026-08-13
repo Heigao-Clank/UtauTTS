@@ -7,6 +7,10 @@ namespace UtauTTS.WorldlineBridge;
 internal sealed class Manifest {
 	[JsonPropertyName("engine")] public string Engine { get; set; } = "legacy";
     [JsonPropertyName("worldline_path")] public string WorldlinePath { get; set; } = "";
+    [JsonPropertyName("gpu_path")] public string GpuPath { get; set; } = "";
+    [JsonPropertyName("mel_model_path")] public string MelModelPath { get; set; } = "";
+    [JsonPropertyName("vocoder_model_path")] public string VocoderModelPath { get; set; } = "";
+    [JsonPropertyName("onnx_device_id")] public int OnnxDeviceId { get; set; }
     [JsonPropertyName("output_path")] public string OutputPath { get; set; } = "";
     [JsonPropertyName("sample_rate")] public int SampleRate { get; set; }
     [JsonPropertyName("f0_curve")] public double[] F0Curve { get; set; } = [];
@@ -99,12 +103,19 @@ internal static class Program {
 		try {
 			if (string.Equals(manifest.Engine, "classic-worldline-convergence", StringComparison.OrdinalIgnoreCase) ||
 				string.Equals(manifest.Engine, "classic-worldline-faithful", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(manifest.Engine, "classic-worldline-faithful-gpu", StringComparison.OrdinalIgnoreCase) ||
 				string.Equals(manifest.Engine, "classic-worldline-faithful-phase", StringComparison.OrdinalIgnoreCase)) {
 				ClassicWorldline.Render(library, manifest);
 				return;
 			}
 			if (string.Equals(manifest.Engine, "v2", StringComparison.OrdinalIgnoreCase)) {
 				WorldlineV2.Render(library, manifest);
+				return;
+			}
+			if (string.Equals(manifest.Engine, "r2-cpu", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(manifest.Engine, "r2-directml", StringComparison.OrdinalIgnoreCase)) {
+				WorldlineR2.Render(library, manifest,
+					string.Equals(manifest.Engine, "r2-directml", StringComparison.OrdinalIgnoreCase));
 				return;
 			}
             var create = Load<PhraseNew>(library, "PhraseSynthNew");

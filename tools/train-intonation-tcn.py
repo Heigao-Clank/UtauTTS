@@ -11,6 +11,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from torch_device import device_description, move_batch, resolve_device
+
 
 def fnv1a(text: str) -> int:
     value = 2166136261
@@ -196,10 +198,11 @@ def sequence_loss(predicted, targets, mask, bounded_target=None):
 
 
 @torch.no_grad()
-def evaluate(model, records, feature_count, batch_size, low, high):
+def evaluate(model, records, feature_count, batch_size, low, high, device=torch.device("cpu")):
     errors = []
     model.eval()
     for values, targets, mask in batches(records, feature_count, batch_size, random.Random(0)):
+        values, targets, mask = move_batch(device, values, targets, mask)
         predicted = model(values)
         for row in range(values.shape[0]):
             valid = mask[row]
@@ -208,7 +211,7 @@ def evaluate(model, records, feature_count, batch_size, low, high):
             speech = predicted[row][valid]
             speech = speech - speech.median()
             speech = speech.clamp(math.log(low), math.log(high))
-            errors.extend((speech - targets[row][valid]).abs().mul(1200 / math.log(2)).tolist())
+            errors.extend((speech - targets[row][valid]).abs().mul(1200 / math.log(2)).detach().cpu().tolist())
     return sum(errors) / len(errors)
 
 
@@ -224,6 +227,10 @@ def export_model(model, feature_index, args, records, tokens, validation_mae):
             "bias": layer.bias.detach().cpu().double().tolist(),
         })
     return {
+        "id": str(args.model_id or Path(args.out).stem),
+        "display_name": str(args.display_name or Path(args.out).stem),
+        "description": str(args.description or "Learned intonation model"),
+        "recommended_renderers": list(args.recommended_renderer),
         "version": 6 if args.bounded_target else (5 if args.openjtalk_accent else 4),
         "feature_version": 1,
         "mode": "intonation_tcn_accent_bounded" if args.bounded_target else ("intonation_tcn_accent" if args.openjtalk_accent else "intonation_tcn"),
@@ -239,7 +246,7 @@ def export_model(model, feature_index, args, records, tokens, validation_mae):
             "high": args.high,
         },
         "metrics": {"records": args.validation_records, "tokens": args.validation_tokens, "pitch_mae_cents": validation_mae},
-        "training": {"records": records, "tokens": tokens, "epochs": args.epochs, "learning_rate": args.learning_rate, "seed": args.seed},
+        "training": {"records": records, "tokens": tokens, "epochs": args.epochs, "learning_rate": args.learning_rate, "seed": args.seed, "device": str(args.resolved_device)},
     }
 
 
@@ -266,6 +273,7 @@ def predict_corpus(model, corpus_path, feature_index, low, high, bounded_target=
     corpus = json.loads(Path(corpus_path).read_text(encoding="utf-8"))
     cases = []
     model.eval()
+    device = next(model.parameters()).device
     for item in corpus["cases"]:
         reading, tokens = analyze(item["text"])
         previous_vowel = ""
@@ -281,11 +289,13 @@ def predict_corpus(model, corpus_path, feature_index, low, high, bounded_target=
             for name, value in token_features(tokens, position).items():
                 if name in feature_index:
                     values[0, position, feature_index[name]] = value
+        values = values.to(device=device, non_blocking=True)
         predicted = model(values)[0]
-        speech = torch.tensor([not token["pause"] for token in tokens], dtype=torch.bool)
-        center = predicted[speech].median() if speech.any() else torch.tensor(0.0)
+        speech = torch.tensor([not token["pause"] for token in tokens], dtype=torch.bool, device=device)
+        center = predicted[speech].median() if speech.any() else predicted.new_zeros(())
         predicted = (predicted - center).clamp(math.log(low), math.log(high)).exp()
-        factors = [1.0 if token["pause"] else float(predicted[position]) for position, token in enumerate(tokens)]
+        predicted_values = predicted.detach().cpu().tolist()
+        factors = [1.0 if token["pause"] else float(predicted_values[position]) for position, token in enumerate(tokens)]
         cases.append({"id": item["id"], "text": item["text"], "reading": reading, "pitch_factors": factors})
     name = "openjtalk-accent-tcn-v6-bounded" if bounded_target else "openjtalk-accent-tcn-v5"
     return {"version": 1, "name": name, "cases": cases}
@@ -295,10 +305,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--out", default="out/prosody/intonation-tcn.json")
+    parser.add_argument("--model-id", default="", help="stable plugin ID stored in the model")
+    parser.add_argument("--display-name", default="", help="user-facing model name")
+    parser.add_argument("--description", default="", help="user-facing model description")
+    parser.add_argument("--recommended-renderer", action="append", default=[], help="compatible renderer ID; repeatable")
     parser.add_argument("--epochs", type=int, default=24)
     parser.add_argument("--learning-rate", type=float, default=0.002)
     parser.add_argument("--hidden", type=int, default=24)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--device", default="auto", help="PyTorch device: auto, cpu, cuda, cuda:N, xpu, or mps")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--low", type=float, default=0.97)
     parser.add_argument("--high", type=float, default=1.03)
@@ -310,6 +325,12 @@ def main():
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.set_num_threads(max(1, min(8, torch.get_num_threads())))
+    try:
+        device = resolve_device(args.device)
+    except ValueError as error:
+        parser.error(str(error))
+    args.resolved_device = str(device)
+    print(f"training device: {device_description(device)}")
 
     train_raw, validation_raw = load_records(args.dataset)
     if args.openjtalk_accent:
@@ -321,14 +342,15 @@ def main():
     validation, _ = prepare(validation_raw, feature_index)
     args.validation_records = len(validation)
     args.validation_tokens = sum(sum(item[2]) for item in validation)
-    model = IntonationTCN(len(feature_index), args.hidden, [1, 2, 4])
+    model = IntonationTCN(len(feature_index), args.hidden, [1, 2, 4]).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=1e-5)
     rng = random.Random(args.seed)
     for epoch in range(args.epochs):
         model.train()
-        total = 0.0
+        total = torch.zeros((), device=device)
         count = 0
         for values, targets, mask in batches(train, len(feature_index), args.batch_size, rng):
+            values, targets, mask = move_batch(device, values, targets, mask)
             if not mask.any():
                 continue
             optimizer.zero_grad()
@@ -337,11 +359,11 @@ def main():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            total += float(loss.detach())
+            total += loss.detach()
             count += 1
-        print(f"epoch {epoch + 1:02d}/{args.epochs}: loss={total / max(1, count):.6f}")
+        print(f"epoch {epoch + 1:02d}/{args.epochs}: loss={float(total.cpu()) / max(1, count):.6f}")
 
-    validation_mae = evaluate(model, validation, len(feature_index), args.batch_size, args.low, args.high)
+    validation_mae = evaluate(model, validation, len(feature_index), args.batch_size, args.low, args.high, device)
     train_tokens = sum(sum(item[2]) for item in train)
     exported = export_model(model, feature_index, args, len(train), train_tokens, validation_mae)
     output = Path(args.out)
