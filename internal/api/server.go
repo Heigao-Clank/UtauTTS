@@ -4,8 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/subtle"
-	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -25,11 +23,8 @@ import (
 	"utautts/internal/voicebank"
 )
 
-//go:embed ui/*
-var webFiles embed.FS
-
 type Config struct {
-	VoiceDir, ProsodyModelPath, Renderer          string
+	VoiceDir, Renderer                            string
 	WorldlinePath, WorldlineBridgePath            string
 	WorldlineR2MelPath, WorldlineR2VocoderPath    string
 	OnnxDeviceID                                  int
@@ -50,7 +45,6 @@ type Voicebank struct {
 type Server struct {
 	mu                  sync.RWMutex
 	voicebanks          map[string]Voicebank
-	prosodyModelPath    string
 	renderer            string
 	worldlinePath       string
 	worldlineBridgePath string
@@ -81,16 +75,13 @@ func New(config Config) *Server {
 	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
 	config.RendererDirectories = append(config.RendererDirectories, defaultRendererDirs...)
 	config.ModelDirectories = append(config.ModelDirectories, defaultModelDirs...)
-	if config.ProsodyModelPath != "" {
-		config.ModelDirectories = append(config.ModelDirectories, filepath.Dir(config.ProsodyModelPath))
-	}
 	catalog, _ := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
 	if config.Renderer == "" {
 		config.Renderer = catalog.DefaultRenderer()
 	}
 	srv := &Server{
-		voicebanks: map[string]Voicebank{}, prosodyModelPath: config.ProsodyModelPath,
-		renderer: config.Renderer, worldlinePath: config.WorldlinePath, worldlineBridgePath: config.WorldlineBridgePath, voiceDir: voiceDir,
+		voicebanks: map[string]Voicebank{},
+		renderer:   config.Renderer, worldlinePath: config.WorldlinePath, worldlineBridgePath: config.WorldlineBridgePath, voiceDir: voiceDir,
 		worldlineR2MelPath: config.WorldlineR2MelPath, worldlineR2Vocoder: config.WorldlineR2VocoderPath, onnxDeviceID: config.OnnxDeviceID,
 		openJTalkPath: config.OpenJTalkPath, openJTalkDictionary: config.OpenJTalkDictionary,
 		loadedVoicebanks: map[string]*voicebank.Bank{},
@@ -109,24 +100,16 @@ func New(config Config) *Server {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", s.handleIndex)
-	mux.HandleFunc("GET /ui/", s.handleAsset)
-	s.compat(mux, "POST", "/synthesize", s.handleSynthesize)
-	s.compat(mux, "GET", "/voicebanks", s.handleListVoicebanks)
-	s.compat(mux, "POST", "/voicebanks", s.handleRegisterVoicebank)
-	s.compat(mux, "POST", "/voicebanks/reload", s.handleReloadVoicebanks)
-	s.compat(mux, "GET", "/health", s.handleHealth)
+	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("GET /api/voicebanks", s.handleListVoicebanks)
+	mux.HandleFunc("POST /api/voicebanks", s.handleRegisterVoicebank)
+	mux.HandleFunc("POST /api/voicebanks/reload", s.handleReloadVoicebanks)
 	mux.HandleFunc("POST /api/synthesize/audio", s.handleSynthesizeAudio)
 	mux.HandleFunc("POST /api/synthesize/batch", s.handleSynthesizeBatch)
 	mux.HandleFunc("GET /api/models", s.handleModels)
 	mux.HandleFunc("GET /api/renderers", s.handleRenderers)
 	mux.HandleFunc("POST /api/analyze", s.handleAnalyze)
 	return s.authenticate(mux)
-}
-
-func (s *Server) compat(mux *http.ServeMux, method, legacyPath string, handler http.HandlerFunc) {
-	mux.HandleFunc(method+" "+legacyPath, handler)
-	mux.HandleFunc(method+" /api"+legacyPath, handler)
 }
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
@@ -141,15 +124,9 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if r.URL.Path == "/" && r.URL.Query().Get("token") != "" {
-			if tokenEqual(r.URL.Query().Get("token"), s.authToken) {
-				http.SetCookie(w, &http.Cookie{Name: "utautts_session", Value: s.authToken, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
-				http.Redirect(w, r, "/", http.StatusSeeOther)
-				return
-			}
-		}
-		cookie, err := r.Cookie("utautts_session")
-		if err != nil || !tokenEqual(cookie.Value, s.authToken) {
+		const prefix = "Bearer "
+		authorization := r.Header.Get("Authorization")
+		if len(authorization) <= len(prefix) || authorization[:len(prefix)] != prefix || !tokenEqual(authorization[len(prefix):], s.authToken) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -205,10 +182,6 @@ func (s *Server) cachedVoicebank(path string) (*voicebank.Bank, error) {
 	return bank, nil
 }
 
-func (s *Server) cachedProsodyModel() (*prosody.Model, error) {
-	return s.cachedProsodyModelAt(s.prosodyModelPath)
-}
-
 func (s *Server) cachedProsodyModelAt(path string) (*prosody.Model, error) {
 	if path == "" {
 		return nil, nil
@@ -262,10 +235,7 @@ func (s *Server) resolveProsodyModelPath(id string) (string, error) {
 		return "", nil
 	}
 	if id == "" {
-		return s.prosodyModelPath, nil
-	}
-	if s.prosodyModelPath != "" && (id == s.prosodyModelPath || id == filepath.Base(s.prosodyModelPath)) {
-		return s.prosodyModelPath, nil
+		return "", nil
 	}
 	model, found := s.pluginCatalog().Model(id)
 	if !found {
@@ -394,21 +364,6 @@ type SynthesisRequest struct {
 	ManualPitch        *prosody.ManualPitchFile `json:"manual_pitch"`
 	ModelID            string                   `json:"model_id"`
 	Renderer           string                   `json:"renderer"`
-}
-
-func (s *Server) handleSynthesize(w http.ResponseWriter, r *http.Request) {
-	var request SynthesisRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
-		return
-	}
-	result, engine, status, err := s.synthesize(request)
-	if err != nil {
-		writeJSON(w, status, map[string]string{"error": err.Error()})
-		return
-	}
-	wav := audio.PCMToWavBytes(result.Audio)
-	writeJSON(w, http.StatusOK, map[string]any{"wav_base64": base64.StdEncoding.EncodeToString(wav), "sample_rate": result.Audio.SampleRate, "duration_ms": float64(len(result.Audio.Data)) * 1000 / float64(result.Audio.SampleRate), "unit_count": len(result.Plan.Units), "engine": engine, "reading": result.Plan.Reading})
 }
 
 func (s *Server) handleSynthesizeAudio(w http.ResponseWriter, r *http.Request) {
@@ -571,35 +526,4 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
-}
-
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	data, err := webFiles.ReadFile("ui/index.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(data)
-}
-
-func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
-	name := r.URL.Path[1:]
-	data, err := webFiles.ReadFile(name)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	switch filepath.Ext(name) {
-	case ".css":
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	case ".js":
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	}
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write(data)
 }

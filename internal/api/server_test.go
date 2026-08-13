@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,27 +12,19 @@ import (
 	"utautts/internal/audio"
 )
 
-func TestProtectedHandlerRequiresTokenAndExchangesCookie(t *testing.T) {
+func TestProtectedHandlerRequiresBearerToken(t *testing.T) {
 	server := New(Config{AuthToken: "secret", VoiceDir: t.TempDir()})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/health", nil))
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d", response.Code)
 	}
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	request.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/?token=secret", nil))
-	if response.Code != http.StatusSeeOther || len(response.Result().Cookies()) == 0 {
-		t.Fatalf("bootstrap = %d, cookies=%v", response.Code, response.Result().Cookies())
-	}
-	cookie := response.Result().Cookies()[0]
-	for _, path := range []string{"/", "/ui/app.js", "/api/health"} {
-		request := httptest.NewRequest(http.MethodGet, path, nil)
-		request.AddCookie(cookie)
-		response = httptest.NewRecorder()
-		server.Handler().ServeHTTP(response, request)
-		if response.Code != http.StatusOK {
-			t.Fatalf("authenticated %s status = %d, body = %s", path, response.Code, response.Body.String())
-		}
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("authenticated status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
@@ -83,7 +74,7 @@ func TestSynthesizeEndpointReportsWaveformRenderer(t *testing.T) {
 		"test": {ID: "test", Name: "test", Path: root},
 	}}
 	body := bytes.NewBufferString(`{"kana":"あ","voicebank_id":"test","mora_duration_ms":100}`)
-	request := httptest.NewRequest(http.MethodPost, "/synthesize", body)
+	request := httptest.NewRequest(http.MethodPost, "/api/synthesize/audio", body)
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
@@ -91,20 +82,8 @@ func TestSynthesizeEndpointReportsWaveformRenderer(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	var payload struct {
-		WAV       string `json:"wav_base64"`
-		Engine    string `json:"engine"`
-		UnitCount int    `json:"unit_count"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
-	wav, err := base64.StdEncoding.DecodeString(payload.WAV)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(wav[:4]) != "RIFF" || payload.Engine != "waveform" || payload.UnitCount != 1 {
-		t.Fatalf("unexpected response: %+v", payload)
+	if wav := response.Body.Bytes(); len(wav) < 4 || string(wav[:4]) != "RIFF" || response.Header().Get("X-UtauTTS-Engine") != "waveform" {
+		t.Fatalf("unexpected audio response: headers=%v bytes=%d", response.Header(), len(wav))
 	}
 }
 
@@ -116,7 +95,7 @@ func TestSynthesizeEndpointRejectsUnknownText(t *testing.T) {
 	server := &Server{voicebanks: map[string]Voicebank{
 		"test": {ID: "test", Path: root},
 	}}
-	request := httptest.NewRequest(http.MethodPost, "/synthesize", bytes.NewBufferString(`{"text":"UtauTTS","voicebank_id":"test"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/synthesize/audio", bytes.NewBufferString(`{"text":"UtauTTS","voicebank_id":"test"}`))
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusUnprocessableEntity {
@@ -126,7 +105,7 @@ func TestSynthesizeEndpointRejectsUnknownText(t *testing.T) {
 
 func TestHealthReportsConfiguredRenderer(t *testing.T) {
 	server := &Server{renderer: "worldline-hybrid"}
-	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 
@@ -142,19 +121,17 @@ func TestHealthReportsConfiguredRenderer(t *testing.T) {
 	}
 }
 
-func TestAPIAliasesExposeMetadata(t *testing.T) {
+func TestAPIMetadata(t *testing.T) {
 	server := &Server{renderer: "waveform", voicebanks: map[string]Voicebank{}}
-	for _, path := range []string{"/health", "/api/health"} {
-		request := httptest.NewRequest(http.MethodGet, path, nil)
-		response := httptest.NewRecorder()
-		server.Handler().ServeHTTP(response, request)
-		if response.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, body = %s", path, response.Code, response.Body.String())
-		}
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("health status = %d, body = %s", response.Code, response.Body.String())
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/api/renderers", nil)
-	response := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/renderers", nil)
+	response = httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("renderers status = %d, body = %s", response.Code, response.Body.String())
@@ -192,22 +169,6 @@ func TestAnalyzeEndpointReturnsMoraes(t *testing.T) {
 	}
 	if payload.Reading == "" || len(payload.Morae) != 5 {
 		t.Fatalf("unexpected analysis: %#v", payload)
-	}
-}
-
-func TestResolveProsodyModelPathOnlyAllowsConfiguredModel(t *testing.T) {
-	server := &Server{prosodyModelPath: filepath.Join("models", "v8.json")}
-	for _, id := range []string{"", server.prosodyModelPath, "v8.json"} {
-		path, err := server.resolveProsodyModelPath(id)
-		if err != nil || path != server.prosodyModelPath {
-			t.Fatalf("id %q resolved to %q, err=%v", id, path, err)
-		}
-	}
-	if _, err := server.resolveProsodyModelPath("other.json"); err == nil {
-		t.Fatal("unconfigured model was accepted")
-	}
-	if path, err := server.resolveProsodyModelPath("none"); err != nil || path != "" {
-		t.Fatalf("none resolved to %q, err=%v", path, err)
 	}
 }
 
@@ -280,7 +241,7 @@ func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/voicebanks", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/voicebanks", nil)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	var first struct {
@@ -294,7 +255,7 @@ func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
 	}
 
 	makeBank("beta", "ベータ")
-	request = httptest.NewRequest(http.MethodPost, "/voicebanks/reload", nil)
+	request = httptest.NewRequest(http.MethodPost, "/api/voicebanks/reload", nil)
 	response = httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusOK {

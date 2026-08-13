@@ -11,11 +11,11 @@ UtauTTSはボイスバンク自体を学習せず、既存原音の選択・時�
 
 `connection-train`は音源・groupを跨がない分割を行い、話者非依存の境界差分から小規模なロジスティック回帰を学習します。診断用として1隠れ層MLPも同じ特徴と推論経路で比較できます。`--join-model`を指定すると、予測確率のlogitを−2から＋2へ制限して−8から＋8の音響join scoreへ変換し、同一録音の順方向継続ボーナスと合わせてViterbi探索へ使用します。モデルを省略した場合は手設計join scoreへ戻ります。
 
-デスクトップGUIはQt Quick/QMLで構築します。`cmd/utautts-native`がGoバックエンドをC共有ライブラリとして公開し、薄いC++の`QObject`アダプターがQMLへ状態・メソッド・signalを提供します。音源列挙、読み解析、合成は同一プロセス内で直接実行し、GUI用のHTTPサーバーや子プロセスは使用しません。standalone HTTP APIは`cmd/utautts-server`と`internal/api`に独立して残します。旧Win32 GUIは比較用の`tools/utautts-legacy.exe`にだけ残します。
+デスクトップGUIはQt Quick/QMLで構築します。`cmd/utautts-native`がGoバックエンドをC共有ライブラリとして公開し、薄いC++の`QObject`アダプターがQMLへ状態・メソッド・signalを提供します。音源列挙、読み解析、合成は同一プロセス内で直接実行し、GUI用のHTTPサーバーや子プロセスは使用しません。standalone HTTP APIは`cmd/utautts-server`と`internal/api`に独立して残します。
 
 OpenJTalk frontendは`runtime/utautts-openjtalk-features.exe`として分離し、標準入力で文章JSON、標準出力で読み・モーラ列・疎な言語特徴JSONを交換します。`tts`はモデルmetadataを見て必要な場合だけhelperを起動し、返されたモーラ列をGo frontendの結果と一要素ずつ照合します。評価時に`ProsodyFeatures`を明示した場合は、helperを呼ばず固定特徴を使用します。
 
-合成計画v9には原音、候補数、選択方式、join cost方式、target score、join score、学習モデルの接続確率、累積path score、実効タイミング、原音F0、目標F0、適用したイントネーション係数を記録します。旧`selection_score`は互換性のため残し、target scoreと選択された直前ユニットからのjoin scoreの和を格納します。実験的な`boundary_bridge_ms`を指定した場合は、通常接続を含む補修候補の判断を`boundary_repair_decisions`、適用した補修だけを`boundary_bridges`へ記録します。
+合成計画v9には原音、候補数、選択方式、join cost方式、target score、join score、学習モデルの接続確率、累積path score、実効タイミング、原音F0、目標F0、適用したイントネーション係数を記録します。実験的な`boundary_bridge_ms`を指定した場合は、通常接続を含む補修候補の判断を`boundary_repair_decisions`、適用した補修だけを`boundary_bridges`へ記録します。
 
 原音選択は次の3方式を同じ候補集合で比較できます。
 

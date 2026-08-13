@@ -75,10 +75,10 @@ try {
     & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $OutputDirectory 'utautts.exe') ./cmd/utautts-launcher
     if ($LASTEXITCODE -ne 0) { throw 'Qt launcher build failed' }
 } finally { Pop-Location }
-$legacyDeployDirectories = @('generic','iconengines','imageformats','multimedia','networkinformation','platforms','qml','qmltooling','tls','translations')
-foreach ($name in $legacyDeployDirectories) {
-    $legacyPath = Join-Path $OutputDirectory $name
-    if (Test-Path -LiteralPath $legacyPath -PathType Container) { Remove-Item -LiteralPath $legacyPath -Recurse -Force }
+$staleDeployDirectories = @('generic','iconengines','imageformats','multimedia','networkinformation','platforms','qml','qmltooling','tls','translations')
+foreach ($name in $staleDeployDirectories) {
+	$stalePath = Join-Path $OutputDirectory $name
+	if (Test-Path -LiteralPath $stalePath -PathType Container) { Remove-Item -LiteralPath $stalePath -Recurse -Force }
 }
 Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.dll' -File | Remove-Item -Force
 Write-Host "Built Qt package at $OutputDirectory"

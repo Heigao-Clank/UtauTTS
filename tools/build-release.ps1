@@ -59,7 +59,6 @@ try {
     Invoke-Checked 'go' @('test', './...')
 
     Write-Host '=== Build GUI package ==='
-    Invoke-Checked 'go' @('build', '-trimpath', '-ldflags', '-H windowsgui', '-o', (Join-Path $guiToolsPath 'utautts-legacy.exe'), './cmd/utautts-gui')
     & (Join-Path $PSScriptRoot 'build-qt.ps1') -OutputDirectory $guiPath
     if ($LASTEXITCODE -ne 0) { throw "Qt GUI build failed with exit code $LASTEXITCODE" }
     $guiCommands = @(

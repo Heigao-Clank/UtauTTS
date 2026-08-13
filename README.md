@@ -74,7 +74,7 @@ CV・VCV、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応して�
 
 ## GUIの構成
 
-標準GUIはQt 6 + Qt Quick/QML版です。Goバックエンドを共有ライブラリとして同一プロセスへ読み込み、C ABIを介して音源列挙・読み解析・合成を直接呼びます。GUI起動時のHTTPサーバーやWebViewは使用しません。配布物ではQt本体とネイティブバックエンドを`app/`へまとめ、ルートの`utautts.exe`から起動します。従来のWin32版は移行確認用の`tools/utautts-legacy.exe`として残しています。
+標準GUIはQt 6 + Qt Quick/QML版です。Goバックエンドを共有ライブラリとして同一プロセスへ読み込み、C ABIを介して音源列挙・読み解析・合成を直接呼びます。GUI起動時のHTTPサーバーやWebViewは使用しません。配布物ではQt本体とネイティブバックエンドを`app/`へまとめ、ルートの`utautts.exe`から起動します。
 
 ## 実験結果
 
