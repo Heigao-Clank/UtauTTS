@@ -1,18 +1,65 @@
 #include "backend.h"
+#include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-#include <QQmlContext>
 #include <QQuickStyle>
+#include <QVariantList>
+
+namespace {
+QString readTextResource(const QString &path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+    return QString::fromUtf8(file.readAll()).trimmed();
+}
+
+QVariantList legalDocuments() {
+    QVariantList documents;
+    documents.append(QVariantMap{{"name", "UtauTTS"},
+                                 {"text", readTextResource(":/legal/LICENSE")}});
+
+    const QString notices = readTextResource(":/legal/THIRD_PARTY_NOTICES.txt");
+    const QStringList lines = notices.split('\n');
+    int sectionStart = 0;
+    for (int index = 1; index < lines.size(); ++index) {
+        const QString underline = lines.at(index).trimmed();
+        if (underline.size() < 3 || underline.count('=') != underline.size()) {
+            continue;
+        }
+        const int headingIndex = index - 1;
+        if (headingIndex > sectionStart) {
+            const QString text = lines.mid(sectionStart, headingIndex - sectionStart).join('\n').trimmed();
+            if (!text.isEmpty()) {
+                documents.append(QVariantMap{{"name", lines.at(sectionStart).trimmed()},
+                                             {"text", text}});
+            }
+        }
+        sectionStart = headingIndex;
+    }
+    const QString finalSection = lines.mid(sectionStart).join('\n').trimmed();
+    if (!finalSection.isEmpty()) {
+        documents.append(QVariantMap{{"name", lines.at(sectionStart).trimmed()},
+                                     {"text", finalSection}});
+    }
+    return documents;
+}
+} // namespace
 
 int main(int argc, char *argv[]) {
-    QQuickStyle::setStyle("Basic");
+    QQuickStyle::setStyle("Fusion");
     QGuiApplication app(argc, argv);
     app.setApplicationName("UtauTTS");
+    app.setApplicationDisplayName("UtauTTS");
+    app.setApplicationVersion(UTAUTTS_VERSION);
     app.setOrganizationName("UtauTTS");
 
     Backend backend;
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty("backend", &backend);
+    engine.setInitialProperties({
+        {"injectedBackend", QVariant::fromValue(static_cast<QObject *>(&backend))},
+        {"injectedLegalDocuments", legalDocuments()},
+    });
     engine.loadFromModule("UtauTTS", "Main");
     if (engine.rootObjects().isEmpty()) {
         return -1;

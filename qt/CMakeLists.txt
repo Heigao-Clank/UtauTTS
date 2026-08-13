@@ -30,6 +30,21 @@ qt_add_qml_module(utautts
         qml/PitchEditor.qml
 )
 
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE"
+    PROPERTIES QT_RESOURCE_ALIAS "LICENSE"
+)
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../THIRD_PARTY_NOTICES.txt"
+    PROPERTIES QT_RESOURCE_ALIAS "THIRD_PARTY_NOTICES.txt"
+)
+qt_add_resources(utautts "legal"
+    PREFIX "/legal"
+    FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../THIRD_PARTY_NOTICES.txt"
+)
+
 if(WIN32)
     target_link_libraries(utautts PRIVATE "${UTAUTTS_NATIVE_DIR}/utautts_native.dll.a")
 else()
@@ -37,6 +52,7 @@ else()
 endif()
 
 target_include_directories(utautts PRIVATE src)
+target_compile_definitions(utautts PRIVATE UTAUTTS_VERSION="${PROJECT_VERSION}")
 target_link_libraries(utautts PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia Qt6::Concurrent)
 
 install(TARGETS utautts RUNTIME DESTINATION . BUNDLE DESTINATION .)
