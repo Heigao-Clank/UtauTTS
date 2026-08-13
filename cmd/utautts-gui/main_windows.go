@@ -15,7 +15,8 @@ import (
 	"unsafe"
 
 	"utautts/internal/audio"
-	"utautts/internal/prosody"
+	"utautts/internal/plugin"
+	"utautts/internal/render"
 	"utautts/internal/voicebank"
 )
 
@@ -194,35 +195,39 @@ type rendererOption struct {
 	executable     string
 	executableKind string
 	configurable   bool
+	framePitch     bool
 }
 
-var rendererOptions = []rendererOption{
-	{ID: "openutau-classic-faithful", label: "OpenUTAU Classic faithful", backend: "openutau-classic-worldline-faithful", description: "接続品質が最良だったRendererです。frame pitchモデルの曲線を適用できます。"},
-	{label: "標準Waveform", backend: "waveform", description: "原音の明瞭さを最優先する安定版です。イントネーション加工は行いません。"},
-	{label: "Waveform long（非推奨）", backend: "waveform-long", description: "連続する同一原音を長く使う診断方式です。通常利用では標準waveformを選んでください。"},
-	{label: "WORLD hybrid（非推奨）", backend: "worldline-hybrid", description: "純粋な研究・回帰確認用です。通常の音声生成には使用しません。"},
-	{label: "WORLD hybrid gentle（非推奨）", backend: "worldline-hybrid-cv-gentle", description: "歯抜けや加工感が出るため推奨しません。"},
-	{label: "WORLD hybrid balanced（非推奨）", backend: "worldline-hybrid-cv-balanced", description: "歯抜けや加工感が出るため推奨しません。"},
-}
-
-const defaultRendererBackend = "openutau-classic-worldline-faithful"
+var (
+	rendererOptions        []rendererOption
+	defaultRendererBackend string
+)
 
 func defaultRendererIndex() int {
-	for index, option := range rendererOptions {
-		if option.backend == defaultRendererBackend {
-			return index
-		}
-	}
 	return 0
 }
 
 func defaultProsodyModelIndex() int {
-	for index, option := range availableProsodyModels {
-		if option.Version == prosody.FramePitchModelVersion && option.Mode == "intonation_frame_tcn_accent_bounded" {
-			return index + 1
-		}
-	}
 	return 0
+}
+
+func loadRendererPlugins() {
+	directories, _ := plugin.DefaultDirectories()
+	items, err := plugin.DiscoverRenderers(directories, render.IsKnownRenderer)
+	if err != nil {
+		log.Printf("renderer plugin discovery: %v", err)
+	}
+	rendererOptions = make([]rendererOption, 0, len(items))
+	for _, item := range items {
+		rendererOptions = append(rendererOptions, rendererOption{ID: item.ID, label: item.DisplayName, backend: item.Backend, description: item.Description, framePitch: item.Capabilities.FramePitch})
+	}
+	if len(rendererOptions) > 0 {
+		defaultRendererBackend = rendererOptions[0].backend
+	}
+}
+
+func init() {
+	loadRendererPlugins()
 }
 
 type message struct {
@@ -487,8 +492,13 @@ func windowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) (result uintpt
 				syncSelectedUtteranceControls(hwnd)
 			}
 			selected, _, _ := sendMessage.Call(child(hwnd, idProsodyModel), cbGetCurSel, 0, 0)
-			if model := prosodyModelAt(int(selected)); model != nil && model.FrameContour {
-				sendMessage.Call(child(hwnd, idRenderer), cbSetCurSel, 1, 0)
+			if model := prosodyModelAt(int(selected)); model != nil && len(model.RecommendedRenderers) > 0 {
+				for index, option := range rendererOptions {
+					if option.ID == model.RecommendedRenderers[0] || option.backend == model.RecommendedRenderers[0] {
+						sendMessage.Call(child(hwnd, idRenderer), cbSetCurSel, uintptr(index), 0)
+						break
+					}
+				}
 			}
 			updateRendererInfo(hwnd)
 			return 0

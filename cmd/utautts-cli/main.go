@@ -8,7 +8,9 @@ import (
 	"os"
 
 	"utautts/internal/audio"
+	"utautts/internal/plugin"
 	"utautts/internal/prosody"
+	"utautts/internal/render"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -39,12 +41,17 @@ func main() {
 		renderer                string
 		worldlinePath           string
 		worldlineBridgePath     string
+		worldlineR2MelPath      string
+		worldlineR2VocoderPath  string
+		onnxDeviceID            int
 		utauResamplerPath       string
 		boundaryBridgeMS        float64
 		boundaryBridgeThreshold float64
 		selectionMode           string
 		joinModelPath           string
 		joinScoreScale          float64
+		rendererDirectories     []string
+		modelDirectories        []string
 	)
 	flag.StringVar(&voicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&otoPath, "oto", "", "deprecated alias for --voicebank")
@@ -67,16 +74,46 @@ func main() {
 	flag.StringVar(&pitchContourCase, "pitch-case", "", "case ID in --pitch-contours")
 	flag.BoolVar(&applyPitch, "apply-pitch", false, "experimental waveform pitch resampling")
 	flag.Float64Var(&intonationStrength, "intonation-strength", 0, "experimental source-pitch stabilization and phrase contour strength (0..1)")
-	flag.StringVar(&renderer, "renderer", "waveform", "renderer backend (default: waveform; other backends are experimental)")
+	flag.StringVar(&renderer, "renderer", "", "renderer plugin ID (default: highest manifest priority)")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
+	flag.StringVar(&worldlineR2MelPath, "worldline-r2-mel", "", "path to OpenUtau WORLDLINE-R2 mel.onnx")
+	flag.StringVar(&worldlineR2VocoderPath, "worldline-r2-vocoder", "", "path to the external PC-NSF-HiFiGAN ONNX model")
+	flag.IntVar(&onnxDeviceID, "onnx-device", 0, "DirectML GPU device ID")
 	flag.StringVar(&utauResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler.exe")
 	flag.Float64Var(&boundaryBridgeMS, "boundary-bridge-ms", 0, "maximum width for phase-aligned waveform boundary repair candidates (0 disables)")
 	flag.Float64Var(&boundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair when handcrafted join score is at or below this value")
 	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
 	flag.StringVar(&joinModelPath, "join-model", "", "optional learned join-cost model JSON")
 	flag.Float64Var(&joinScoreScale, "join-scale", 0, "learned logit score scale (default: model or 4)")
+	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
+	flag.Func("model-dir", "prosody model directory (repeatable)", func(value string) error { modelDirectories = append(modelDirectories, value); return nil })
 	flag.Parse()
+	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
+	rendererDirectories = append(rendererDirectories, defaultRendererDirs...)
+	modelDirectories = append(modelDirectories, defaultModelDirs...)
+	catalog, catalogErr := plugin.Discover(rendererDirectories, modelDirectories, render.IsKnownRenderer)
+	if catalogErr != nil {
+		log.Printf("plugin discovery warning: %v", catalogErr)
+	}
+	if renderer == "" {
+		renderer = catalog.DefaultRenderer()
+	}
+	rendererPlugin, found := catalog.Renderer(renderer)
+	if !found {
+		log.Fatalf("renderer plugin %q is not installed", renderer)
+	}
+	if prosodyPath != "" {
+		if _, err := os.Stat(prosodyPath); err != nil {
+			if model, found := catalog.Model(prosodyPath); found {
+				prosodyPath = model.Path
+			}
+		}
+	}
+	worldlinePath = preferExplicit(worldlinePath, rendererPlugin.Asset("worldline"))
+	worldlineBridgePath = preferExplicit(worldlineBridgePath, rendererPlugin.Asset("worldline_bridge"))
+	worldlineR2MelPath = preferExplicit(worldlineR2MelPath, rendererPlugin.Asset("worldline_r2_mel"))
+	worldlineR2VocoderPath = preferExplicit(worldlineR2VocoderPath, rendererPlugin.Asset("worldline_r2_vocoder"))
 
 	if voicebankPath == "" {
 		voicebankPath = otoPath
@@ -111,9 +148,13 @@ func main() {
 		PitchFactors:            pitchFactors,
 		ApplyPitch:              applyPitch,
 		IntonationStrength:      intonationStrength,
-		Renderer:                renderer,
+		Renderer:                rendererPlugin.Backend,
+		RendererCapabilities:    &rendererPlugin.Capabilities,
 		WorldlinePath:           worldlinePath,
 		WorldlineBridgePath:     worldlineBridgePath,
+		WorldlineR2MelPath:      worldlineR2MelPath,
+		WorldlineR2VocoderPath:  worldlineR2VocoderPath,
+		OnnxDeviceID:            onnxDeviceID,
 		UTAUResamplerPath:       utauResamplerPath,
 		BoundaryBridgeMS:        boundaryBridgeMS,
 		BoundaryBridgeThreshold: boundaryBridgeThreshold,
@@ -140,6 +181,13 @@ func main() {
 
 	duration := float64(len(result.Audio.Data)) / float64(result.Audio.SampleRate)
 	fmt.Printf("wrote %s (%.2fs, %d Hz, %d units)\n", outPath, duration, result.Audio.SampleRate, len(result.Plan.Units))
+}
+
+func preferExplicit(explicit, pluginValue string) string {
+	if explicit != "" {
+		return explicit
+	}
+	return pluginValue
 }
 
 func loadProsodyFeatures(path, caseID, text, reading string) ([]prosody.FeatureFrame, error) {

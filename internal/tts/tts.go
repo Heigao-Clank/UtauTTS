@@ -10,6 +10,7 @@ import (
 	"utautts/internal/frontend"
 	"utautts/internal/openjtalk"
 	"utautts/internal/plan"
+	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
 	"utautts/internal/voicebank"
@@ -36,8 +37,12 @@ type Config struct {
 	ApplyPitch              bool
 	IntonationStrength      float64
 	Renderer                string
+	RendererCapabilities    *plugin.Capabilities
 	WorldlinePath           string
 	WorldlineBridgePath     string
+	WorldlineR2MelPath      string
+	WorldlineR2VocoderPath  string
+	OnnxDeviceID            int
 	UTAUResamplerPath       string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
@@ -51,17 +56,6 @@ type Result struct {
 	Voicebank *voicebank.Bank
 	Plan      *plan.Plan
 	Audio     *audio.PCM
-}
-
-var framePitchRenderers = map[string]struct{}{
-	"worldline": {}, "worldline-v2": {},
-	"openutau-classic-worldline": {}, "openutau-classic-worldline-local": {},
-	"openutau-classic-worldline-faithful": {}, "openutau-classic-worldline-faithful-phase": {},
-	"waveform-openutau-pitch": {}, "waveform-openutau-pitch-local": {},
-	"waveform-openutau-pitch-local-dual": {}, "waveform-openutau-pitch-local-dual-smooth": {},
-	"waveform-openutau-pitch-post": {}, "waveform-openutau-pitch-post-controlled": {},
-	"waveform-openutau-pitch-post-spectral": {}, "waveform-openutau-pitch-post-spectral2": {},
-	"utau-classic": {},
 }
 
 func Synthesize(cfg Config) (*Result, error) {
@@ -180,7 +174,7 @@ func Synthesize(cfg Config) (*Result, error) {
 	}
 	synthesisPlan.Text = cfg.Text
 	pitchCurve := cfg.PitchCurve
-	if pitchCurve == nil && loadedProsody != nil && loadedProsody.HasFrameContour() && rendererSupportsFramePitch(cfg.Renderer) {
+	if pitchCurve == nil && loadedProsody != nil && loadedProsody.HasFrameContour() && rendererSupportsFramePitch(cfg.Renderer, cfg.RendererCapabilities) {
 		timings := moraTimings(morae, synthesisPlan)
 		question := strings.ContainsAny(cfg.Text, "?？")
 		if contour := loadedProsody.PredictFrameContour(morae, prosodyFeatures, timings, synthesisPlan.DurationMS+cfg.ReleaseMS, question); contour != nil {
@@ -214,6 +208,9 @@ func Synthesize(cfg Config) (*Result, error) {
 		Backend:                 cfg.Renderer,
 		WorldlinePath:           cfg.WorldlinePath,
 		WorldlineBridgePath:     cfg.WorldlineBridgePath,
+		WorldlineR2MelPath:      cfg.WorldlineR2MelPath,
+		WorldlineR2VocoderPath:  cfg.WorldlineR2VocoderPath,
+		OnnxDeviceID:            cfg.OnnxDeviceID,
 		UTAUResamplerPath:       cfg.UTAUResamplerPath,
 		BoundaryBridgeMS:        cfg.BoundaryBridgeMS,
 		BoundaryBridgeThreshold: cfg.BoundaryBridgeThreshold,
@@ -314,9 +311,18 @@ func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.Mora
 	return timings
 }
 
-func rendererSupportsFramePitch(renderer string) bool {
-	_, ok := framePitchRenderers[renderer]
-	return ok
+func rendererSupportsFramePitch(renderer string, capabilities *plugin.Capabilities) bool {
+	if capabilities != nil {
+		return capabilities.FramePitch
+	}
+	directories, _ := plugin.DefaultDirectories()
+	items, _ := plugin.DiscoverRenderers(directories, nil)
+	for _, item := range items {
+		if item.ID == renderer || item.Backend == renderer {
+			return item.Capabilities.FramePitch
+		}
+	}
+	return false
 }
 
 func applyPitchEnabled(cfg Config) bool {

@@ -1,0 +1,10 @@
+{
+  "manifest_version": 1, "kind": "renderer", "id": "worldline-v2",
+  "display_name": "WORLDLINE-R", "description": "PhraseSynthV2相当のWORLD特徴合成Rendererです。",
+  "backend": "worldline-v2", "version": "1", "experimental": true,
+  "capabilities": { "frame_pitch": true },
+  "assets": {
+    "worldline": "../../../runtime/worldline.dll",
+    "worldline_bridge": "../../../runtime/utautts-worldline-bridge.exe"
+  }
+}

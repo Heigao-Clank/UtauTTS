@@ -75,27 +75,20 @@ func loadGUIConfiguration() {
 
 func applyRendererDefinitions(definitions []rendererDefinition) {
 	for _, definition := range definitions {
-		if definition.Label == "" || definition.Backend == "" || (definition.Enabled != nil && !*definition.Enabled) {
+		if definition.ID == "" {
 			continue
 		}
-		option := rendererOption{
-			ID: definition.ID, label: definition.Label, backend: definition.Backend,
-			description: definition.Description, executable: resolveGUIPath(definition.Executable),
-			executableKind: definition.ExecutableKind,
-		}
-		if option.description == "" {
-			option.description = "外部設定で追加されたRendererです。"
-		}
-		found := false
 		for index := range rendererOptions {
-			if rendererOptions[index].backend == option.backend || (option.ID != "" && rendererOptions[index].ID == option.ID) {
-				rendererOptions[index] = option
-				found = true
-				break
+			if rendererOptions[index].ID != definition.ID {
+				continue
 			}
-		}
-		if !found {
-			rendererOptions = append(rendererOptions, option)
+			if definition.Enabled != nil && !*definition.Enabled {
+				rendererOptions = append(rendererOptions[:index], rendererOptions[index+1:]...)
+			} else {
+				rendererOptions[index].executable = resolveGUIPath(definition.Executable)
+				rendererOptions[index].executableKind = definition.ExecutableKind
+			}
+			break
 		}
 	}
 }
@@ -120,17 +113,17 @@ func configuredModelOptions() []prosodyModelOption {
 			log.Printf("設定モデルを読み込めません: path=%q error=%v", path, err)
 			continue
 		}
-		label := definition.Label
-		if label == "" {
-			label = prosodyModelLabel(model, filepath.Base(path))
+		if strings.TrimSpace(model.ID) == "" || strings.TrimSpace(model.DisplayName) == "" {
+			log.Printf("設定モデルにid/display_nameがありません: path=%q", path)
+			continue
 		}
-		result = append(result, prosodyModelOption{Path: path, Label: label, Version: model.Version, Mode: model.Mode, RequiresFeatures: model.RequiresExternalFeatures(), FrameContour: model.HasFrameContour()})
+		result = append(result, prosodyModelOption{Path: path, Label: model.DisplayName, Version: model.Version, Mode: model.Mode, RequiresFeatures: model.RequiresExternalFeatures(), FrameContour: model.HasFrameContour(), RecommendedRenderers: append([]string(nil), model.RecommendedRenderers...)})
 	}
 	return result
 }
 
 func guiConfigTemplate() []byte {
-	config := guiConfig{Version: guiConfigVersion, Renderers: []rendererDefinition{{ID: "openutau-classic-faithful", Label: "OpenUTAU Classic faithful", Backend: "openutau-classic-worldline-faithful", Description: "OpenUTAU互換の標準Renderer", ExecutableKind: "bridge", Executable: "tools/worldline-bridge/bin/Release/net8.0/WorldlineBridge.dll"}}, Models: []modelDefinition{{ID: "v8", Label: "v8 学習イントネーション", Path: "models/frame-intonation-v8.json"}}}
+	config := guiConfig{Version: guiConfigVersion}
 	data, _ := json.MarshalIndent(config, "", "  ")
 	return append(data, '\n')
 }
@@ -140,23 +133,15 @@ func validateGUIConfig(config guiConfig) error {
 		return fmt.Errorf("unsupported GUI config version %d", config.Version)
 	}
 	for _, renderer := range config.Renderers {
-		if renderer.Label == "" || renderer.Backend == "" {
-			return fmt.Errorf("renderer requires label and backend")
+		if renderer.ID == "" {
+			return fmt.Errorf("renderer override requires plugin id")
 		}
 	}
 	return nil
 }
 
 func sortRendererOptions() {
-	// Keep the built-in faithful/default renderer first; external entries follow.
-	faithful := defaultRendererIndex()
 	sort.SliceStable(rendererOptions, func(i, j int) bool {
-		if i == faithful {
-			return true
-		}
-		if j == faithful {
-			return false
-		}
 		return rendererOptions[i].label < rendererOptions[j].label
 	})
 }

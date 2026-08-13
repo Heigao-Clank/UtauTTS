@@ -1,0 +1,5 @@
+{
+  "manifest_version": 1, "kind": "renderer", "id": "worldline-hybrid",
+  "display_name": "WORLD hybrid", "description": "WORLD出力へ原波形を部分復元する研究用Rendererです。",
+  "backend": "worldline-hybrid", "version": "1", "experimental": true
+}

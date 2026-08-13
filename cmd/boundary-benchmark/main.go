@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"utautts/internal/evaluation"
+	"utautts/internal/rendererplugin"
 	"utautts/internal/tts"
 )
 
@@ -45,14 +46,25 @@ type report struct {
 
 func main() {
 	var cfg tts.Config
-	var corpusPath, outputPath string
+	var corpusPath, outputPath, rendererID string
+	var rendererDirectories []string
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&corpusPath, "corpus", "", "versioned evaluation corpus JSON")
 	flag.StringVar(&outputPath, "out", "", "output benchmark JSON")
 	flag.Float64Var(&cfg.BoundaryBridgeMS, "boundary-bridge-ms", 20, "maximum repair width")
 	flag.Float64Var(&cfg.BoundaryBridgeThreshold, "boundary-bridge-threshold", 0, "repair join-score threshold")
-	flag.StringVar(&cfg.Renderer, "renderer", "waveform", "renderer backend")
+	flag.StringVar(&rendererID, "renderer", "", "renderer plugin ID (default: highest manifest priority)")
+	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
 	flag.Parse()
+	renderers, err := rendererplugin.Discover(rendererDirectories)
+	if err != nil {
+		log.Printf("renderer plugin discovery warning: %v", err)
+	}
+	renderer, err := rendererplugin.Resolve(renderers, rendererID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rendererplugin.Apply(renderer, &cfg)
 	if cfg.VoicebankPath == "" || corpusPath == "" || outputPath == "" {
 		flag.Usage()
 		log.Fatal("--voicebank, --corpus and --out are required")

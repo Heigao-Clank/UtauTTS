@@ -299,8 +299,8 @@ func configuredTTSConfig(base tts.Config, selectedModel *prosodyModelOption) (tt
 	if selectedModel == nil {
 		return base, nil
 	}
-	if selectedModel.FrameContour && base.Renderer != "openutau-classic-worldline-faithful" {
-		return base, fmt.Errorf("選択した抑揚モデルは音声モードOpenUTAU Classic faithfulで使用してください")
+	if !modelSupportsRenderer(selectedModel, base.Renderer) {
+		return base, fmt.Errorf("選択した抑揚モデルはRenderer %sに対応していません", base.Renderer)
 	}
 	base.ProsodyModelPath = selectedModel.Path
 	base.ProsodyPitchOnly = s.ProsodyPitchOnly
@@ -327,12 +327,32 @@ func configuredTTSConfigForState(base tts.Config, selectedModel *prosodyModelOpt
 	if selectedModel == nil {
 		return base, nil
 	}
-	if selectedModel.FrameContour && base.Renderer != "openutau-classic-worldline-faithful" {
-		return base, fmt.Errorf("選択した抑揚モデルは音声モードOpenUTAU Classic faithfulで使用してください")
+	if !modelSupportsRenderer(selectedModel, base.Renderer) {
+		return base, fmt.Errorf("選択した抑揚モデルはRenderer %sに対応していません", base.Renderer)
 	}
 	base.ProsodyModelPath = selectedModel.Path
 	base.ProsodyPitchOnly = settings.ProsodyPitchOnly
 	return base, nil
+}
+
+func modelSupportsRenderer(model *prosodyModelOption, renderer string) bool {
+	if model == nil || !model.FrameContour {
+		return true
+	}
+	if len(model.RecommendedRenderers) > 0 {
+		for _, id := range model.RecommendedRenderers {
+			if id == renderer {
+				return true
+			}
+		}
+		return false
+	}
+	for _, option := range rendererOptions {
+		if option.backend == renderer || option.ID == renderer {
+			return option.framePitch
+		}
+	}
+	return false
 }
 
 func positiveSetting(hwnd uintptr, id int, name string) (float64, error) {

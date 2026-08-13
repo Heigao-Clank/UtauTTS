@@ -16,6 +16,7 @@ import (
 	"utautts/internal/plan"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
+	"utautts/internal/rendererplugin"
 	"utautts/internal/tts"
 )
 
@@ -127,6 +128,7 @@ func main() {
 	var texts textList
 	var cfg tts.Config
 	var outputDirectory, mode, rendererA, rendererB, commonModel, modelA, modelB, commonProsody, prosodyA, prosodyB, commonFeatures, featuresAPath, featuresBPath, contourAPath, contourBPath, frameContourAPath, frameContourBPath, corpusPath string
+	var rendererDirectories []string
 	var seed int64
 	var pitchOnlyA, pitchOnlyB, applyPitchA, applyPitchB bool
 	var intonationStrengthA, intonationStrengthB float64
@@ -159,8 +161,9 @@ func main() {
 	flag.Float64Var(&boundaryBridgeThresholdA, "system-a-boundary-bridge-threshold", 0, "boundary repair score threshold for system A")
 	flag.Float64Var(&boundaryBridgeThresholdB, "system-b-boundary-bridge-threshold", 0, "boundary repair score threshold for system B")
 	flag.Float64Var(&cfg.JoinScoreScale, "join-scale", 0, "learned logit score scale")
-	flag.StringVar(&rendererA, "system-a-renderer", "waveform", "first renderer")
-	flag.StringVar(&rendererB, "system-b-renderer", "waveform-long", "second renderer")
+	flag.StringVar(&rendererA, "system-a-renderer", "", "first renderer plugin ID (default: highest manifest priority)")
+	flag.StringVar(&rendererB, "system-b-renderer", "", "second renderer plugin ID (default: next catalog entry)")
+	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
 	flag.StringVar(&mode, "mode", "ab", "test mode: ab or abx")
 	flag.StringVar(&outputDirectory, "out", "", "output test directory")
 	flag.Int64Var(&seed, "seed", 1, "deterministic randomization seed")
@@ -173,6 +176,27 @@ func main() {
 	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")
 	flag.StringVar(&cfg.UTAUResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler.exe")
 	flag.Parse()
+	renderers, discoveryErr := rendererplugin.Discover(rendererDirectories)
+	if discoveryErr != nil {
+		log.Printf("renderer plugin discovery warning: %v", discoveryErr)
+	}
+	rendererPluginA, err := rendererplugin.Resolve(renderers, rendererA)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if rendererB == "" {
+		for _, candidate := range renderers {
+			if candidate.ID != rendererPluginA.ID {
+				rendererB = candidate.ID
+				break
+			}
+		}
+	}
+	rendererPluginB, err := rendererplugin.Resolve(renderers, rendererB)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rendererA, rendererB = rendererPluginA.ID, rendererPluginB.ID
 	if cfg.VoicebankPath == "" || outputDirectory == "" || (len(texts) == 0 && corpusPath == "") || (mode != "ab" && mode != "abx") {
 		flag.Usage()
 		log.Fatal("--voicebank, --out, --text or --corpus, and mode ab/abx are required")
@@ -250,23 +274,28 @@ func main() {
 	key := answerKey{Version: 3, Mode: mode, Seed: seed, Corpus: corpusName}
 	for _, item := range cases {
 		text := item.text
-		cfg.Text = text
-		cfg.ProsodyFeatures = featuresA[item.id]
-		cfg.PitchFactors = contoursA[item.id]
-		cfg.PitchCurve = frameContoursA[item.id]
-		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly, cfg.ApplyPitch, cfg.IntonationStrength = rendererA, modelA, prosodyA, pitchOnlyA, applyPitchA, intonationStrengthA
-		cfg.BoundaryBridgeMS, cfg.BoundaryBridgeThreshold = boundaryBridgeMSA, boundaryBridgeThresholdA
-		first, err := tts.Synthesize(cfg)
+		cfgA := cfg
+		cfgA.Text = text
+		cfgA.ProsodyFeatures = featuresA[item.id]
+		cfgA.PitchFactors = contoursA[item.id]
+		cfgA.PitchCurve = frameContoursA[item.id]
+		cfgA.JoinModelPath, cfgA.ProsodyModelPath, cfgA.ProsodyPitchOnly, cfgA.ApplyPitch, cfgA.IntonationStrength = modelA, prosodyA, pitchOnlyA, applyPitchA, intonationStrengthA
+		cfgA.BoundaryBridgeMS, cfgA.BoundaryBridgeThreshold = boundaryBridgeMSA, boundaryBridgeThresholdA
+		rendererplugin.Apply(rendererPluginA, &cfgA)
+		first, err := tts.Synthesize(cfgA)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system A: %v", text, err))
 			continue
 		}
-		cfg.PitchFactors = contoursB[item.id]
-		cfg.PitchCurve = frameContoursB[item.id]
-		cfg.ProsodyFeatures = featuresB[item.id]
-		cfg.Renderer, cfg.JoinModelPath, cfg.ProsodyModelPath, cfg.ProsodyPitchOnly, cfg.ApplyPitch, cfg.IntonationStrength = rendererB, modelB, prosodyB, pitchOnlyB, applyPitchB, intonationStrengthB
-		cfg.BoundaryBridgeMS, cfg.BoundaryBridgeThreshold = boundaryBridgeMSB, boundaryBridgeThresholdB
-		second, err := tts.Synthesize(cfg)
+		cfgB := cfg
+		cfgB.Text = text
+		cfgB.PitchFactors = contoursB[item.id]
+		cfgB.PitchCurve = frameContoursB[item.id]
+		cfgB.ProsodyFeatures = featuresB[item.id]
+		cfgB.JoinModelPath, cfgB.ProsodyModelPath, cfgB.ProsodyPitchOnly, cfgB.ApplyPitch, cfgB.IntonationStrength = modelB, prosodyB, pitchOnlyB, applyPitchB, intonationStrengthB
+		cfgB.BoundaryBridgeMS, cfgB.BoundaryBridgeThreshold = boundaryBridgeMSB, boundaryBridgeThresholdB
+		rendererplugin.Apply(rendererPluginB, &cfgB)
+		second, err := tts.Synthesize(cfgB)
 		if err != nil {
 			key.Failures = append(key.Failures, fmt.Sprintf("%s: system B: %v", text, err))
 			continue

@@ -64,6 +64,12 @@ func TestExternalPitchFactorsDoNotImplicitlyEnableWaveformPitchProcessing(t *tes
 	}
 }
 
+func TestFaithfulGPUSupportsFramePitch(t *testing.T) {
+	if !rendererSupportsFramePitch("openutau-classic-worldline-faithful-gpu", nil) {
+		t.Fatal("GPU faithful renderer rejected a frame pitch contour")
+	}
+}
+
 func TestValidateRuntimeMoraAlignment(t *testing.T) {
 	morae := []frontend.Mora{{Text: "きょ"}, {Text: "う"}, {Pause: true}, {Text: "は"}}
 	if err := validateRuntimeMoraAlignment(morae, []string{"きょ", "う", "", "は"}); err != nil {

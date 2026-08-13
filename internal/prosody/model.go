@@ -24,18 +24,22 @@ const (
 )
 
 type Model struct {
-	Version         int                  `json:"version"`
-	FeatureVersion  int                  `json:"feature_version"`
-	Mode            string               `json:"mode"`
-	DurationWeights map[string]float64   `json:"duration_weights"`
-	PitchWeights    map[string]float64   `json:"pitch_weights,omitempty"`
-	EnergyWeights   map[string]float64   `json:"energy_weights,omitempty"`
-	SequencePitch   *SequencePitchModel  `json:"sequence_pitch,omitempty"`
-	FramePitch      *FramePitchModel     `json:"frame_pitch,omitempty"`
-	PhrasePitch     *PhrasePitchModel    `json:"phrase_pitch,omitempty"`
-	StandardAccent  *StandardAccentModel `json:"standard_accent,omitempty"`
-	Metrics         Metrics              `json:"metrics"`
-	Training        TrainingInfo         `json:"training"`
+	ID                   string               `json:"id,omitempty"`
+	DisplayName          string               `json:"display_name,omitempty"`
+	Description          string               `json:"description,omitempty"`
+	RecommendedRenderers []string             `json:"recommended_renderers,omitempty"`
+	Version              int                  `json:"version"`
+	FeatureVersion       int                  `json:"feature_version"`
+	Mode                 string               `json:"mode"`
+	DurationWeights      map[string]float64   `json:"duration_weights"`
+	PitchWeights         map[string]float64   `json:"pitch_weights,omitempty"`
+	EnergyWeights        map[string]float64   `json:"energy_weights,omitempty"`
+	SequencePitch        *SequencePitchModel  `json:"sequence_pitch,omitempty"`
+	FramePitch           *FramePitchModel     `json:"frame_pitch,omitempty"`
+	PhrasePitch          *PhrasePitchModel    `json:"phrase_pitch,omitempty"`
+	StandardAccent       *StandardAccentModel `json:"standard_accent,omitempty"`
+	Metrics              Metrics              `json:"metrics"`
+	Training             TrainingInfo         `json:"training"`
 }
 
 type FeatureFrame map[string]float64

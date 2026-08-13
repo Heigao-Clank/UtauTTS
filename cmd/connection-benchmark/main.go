@@ -11,6 +11,7 @@ import (
 
 	"utautts/internal/evaluation"
 	"utautts/internal/plan"
+	"utautts/internal/rendererplugin"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -67,7 +68,8 @@ type failureReport struct {
 func main() {
 	var texts textList
 	var cfg tts.Config
-	var outputPath, corpusPath string
+	var outputPath, corpusPath, rendererID string
+	var rendererDirectories []string
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.Var(&texts, "text", "Japanese text to benchmark (repeatable)")
 	flag.StringVar(&corpusPath, "corpus", "", "versioned evaluation corpus JSON")
@@ -75,11 +77,21 @@ func main() {
 	flag.Float64Var(&cfg.JoinScoreScale, "join-scale", 0, "learned logit score scale")
 	flag.StringVar(&outputPath, "out", "", "output benchmark JSON")
 	flag.StringVar(&cfg.Tone, "tone", "C4", "voicebank tone")
-	flag.StringVar(&cfg.Renderer, "renderer", "waveform", "renderer backend")
+	flag.StringVar(&rendererID, "renderer", "", "renderer plugin ID (default: highest manifest priority)")
+	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
 	flag.Float64Var(&cfg.MoraDurationMS, "mora-ms", 140, "base mora duration")
 	flag.Float64Var(&cfg.PauseDurationMS, "pause-ms", 180, "pause duration")
 	flag.Float64Var(&cfg.ReleaseMS, "release-ms", 20, "release envelope")
 	flag.Parse()
+	renderers, err := rendererplugin.Discover(rendererDirectories)
+	if err != nil {
+		log.Printf("renderer plugin discovery warning: %v", err)
+	}
+	renderer, err := rendererplugin.Resolve(renderers, rendererID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rendererplugin.Apply(renderer, &cfg)
 	if cfg.VoicebankPath == "" || cfg.JoinModelPath == "" || outputPath == "" || (len(texts) == 0 && corpusPath == "") {
 		flag.Usage()
 		log.Fatal("--voicebank, --join-model, --out, and --text or --corpus are required")

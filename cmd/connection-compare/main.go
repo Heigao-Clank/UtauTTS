@@ -12,6 +12,7 @@ import (
 	"utautts/internal/audio"
 	"utautts/internal/evaluation"
 	"utautts/internal/plan"
+	"utautts/internal/rendererplugin"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -44,13 +45,15 @@ type comparisonCase struct {
 
 func main() {
 	var cfg tts.Config
-	var outputDirectory, joinModelPath string
+	var outputDirectory, joinModelPath, rendererID string
+	var rendererDirectories []string
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&cfg.Text, "text", "", "Japanese text to synthesize")
 	flag.StringVar(&cfg.Reading, "kana", "", "kana reading to synthesize")
 	flag.StringVar(&cfg.Tone, "tone", "C4", "voicebank tone used with prefix.map")
 	flag.StringVar(&outputDirectory, "out", "", "output directory")
-	flag.StringVar(&cfg.Renderer, "renderer", "waveform", "renderer backend")
+	flag.StringVar(&rendererID, "renderer", "", "renderer plugin ID (default: highest manifest priority)")
+	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
 	flag.Float64Var(&cfg.MoraDurationMS, "mora-ms", 140, "base mora duration in milliseconds")
 	flag.Float64Var(&cfg.PauseDurationMS, "pause-ms", 180, "punctuation pause in milliseconds")
 	flag.Float64Var(&cfg.ReleaseMS, "release-ms", 20, "unit release envelope in milliseconds")
@@ -64,6 +67,16 @@ func main() {
 	flag.Float64Var(&cfg.BoundaryBridgeMS, "boundary-bridge-ms", 0, "also compare phase-aligned boundary repair candidates up to this width (0 disables)")
 	flag.Float64Var(&cfg.BoundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair at or below this handcrafted join score")
 	flag.Parse()
+	renderers, err := rendererplugin.Discover(rendererDirectories)
+	if err != nil {
+		log.Printf("renderer plugin discovery warning: %v", err)
+	}
+	renderer, err := rendererplugin.Resolve(renderers, rendererID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rendererID = renderer.ID
+	rendererplugin.Apply(renderer, &cfg)
 	if cfg.VoicebankPath == "" || (cfg.Text == "" && cfg.Reading == "") || outputDirectory == "" {
 		flag.Usage()
 		log.Fatal("--voicebank, --out, and either --text or --kana are required")
@@ -98,7 +111,7 @@ func main() {
 	}
 	report := comparisonReport{
 		Version: reportVersion, Text: cfg.Text, Reading: cfg.Reading,
-		Voicebank: cfg.VoicebankPath, Renderer: cfg.Renderer,
+		Voicebank: cfg.VoicebankPath, Renderer: rendererID,
 	}
 	requestedBridgeMS := cfg.BoundaryBridgeMS
 	cfg.SelectionMode = voicebank.SelectionTargetOnly

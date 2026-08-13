@@ -15,29 +15,22 @@ import (
 )
 
 func TestRendererBackend(t *testing.T) {
-	tests := []struct {
-		index int
-		want  string
-	}{
-		{index: 0, want: "openutau-classic-worldline-faithful"},
-		{index: 1, want: "waveform"},
-		{index: 2, want: "waveform-long"},
-		{index: 3, want: "worldline-hybrid"},
-		{index: 4, want: "worldline-hybrid-cv-gentle"},
-		{index: 5, want: "worldline-hybrid-cv-balanced"},
-		{index: -1, want: "openutau-classic-worldline-faithful"},
-		{index: 99, want: "openutau-classic-worldline-faithful"},
+	if len(rendererOptions) == 0 {
+		t.Fatal("renderer plugins were not discovered")
 	}
-	for _, test := range tests {
-		if got := rendererBackend(test.index); got != test.want {
-			t.Errorf("rendererBackend(%d) = %q, want %q", test.index, got, test.want)
+	if got := rendererBackend(0); got != "waveform" {
+		t.Fatalf("manifest-selected default backend = %q", got)
+	}
+	for _, index := range []int{-1, len(rendererOptions) + 1} {
+		if got := rendererBackend(index); got != rendererOptions[0].backend {
+			t.Errorf("rendererBackend(%d) = %q, want manifest default %q", index, got, rendererOptions[0].backend)
 		}
 	}
 }
 
-func TestGUIDefaultsUseFaithfulRendererAndV8(t *testing.T) {
+func TestGUIDefaultsComeFromPluginCatalogAndNoModel(t *testing.T) {
 	if got := defaultRendererIndex(); got != 0 {
-		t.Fatalf("default renderer index = %d, want faithful index 0", got)
+		t.Fatalf("default renderer index = %d, want catalog index 0", got)
 	}
 	previous := availableProsodyModels
 	t.Cleanup(func() { availableProsodyModels = previous })
@@ -45,8 +38,8 @@ func TestGUIDefaultsUseFaithfulRendererAndV8(t *testing.T) {
 		{Version: 9, Mode: "intonation_phrase_anchor_v9_1"},
 		{Version: prosody.FramePitchModelVersion, Mode: "intonation_frame_tcn_accent_bounded"},
 	}
-	if got := defaultProsodyModelIndex(); got != 2 {
-		t.Fatalf("default prosody combo index = %d, want v8 index 2", got)
+	if got := defaultProsodyModelIndex(); got != 0 {
+		t.Fatalf("default prosody combo index = %d, want none", got)
 	}
 }
 
@@ -82,10 +75,10 @@ func TestRendererOptionsExplainEveryMode(t *testing.T) {
 }
 
 func TestGUIConfigValidationAndRendererDefinition(t *testing.T) {
-	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion, Renderers: []rendererDefinition{{Label: "Custom", Backend: "waveform"}}}); err != nil {
+	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion, Renderers: []rendererDefinition{{ID: "waveform"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion, Renderers: []rendererDefinition{{Label: "", Backend: "waveform"}}}); err == nil {
+	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion, Renderers: []rendererDefinition{{ID: ""}}}); err == nil {
 		t.Fatal("invalid renderer definition was accepted")
 	}
 	if err := validateGUIConfig(guiConfig{Version: guiConfigVersion + 1}); err == nil {
@@ -185,21 +178,15 @@ func TestProsodyModelAtReservesZeroForNone(t *testing.T) {
 	}
 }
 
-func TestProsodyModelLabelKeepsVersionVisible(t *testing.T) {
-	v8 := &prosody.Model{Version: prosody.FramePitchModelVersion, Mode: "intonation_frame_tcn_accent_bounded"}
-	if got := prosodyModelLabel(v8, "model.json"); !strings.Contains(got, "v8") {
-		t.Fatalf("v8 label = %q", got)
+func TestProsodyModelLabelUsesSelfDescription(t *testing.T) {
+	model := &prosody.Model{ID: "stable-id", DisplayName: "表示名", Version: 99, Mode: "future"}
+	if got := prosodyModelLabel(model, "ignored.json"); got != "表示名" {
+		t.Fatalf("self-described label = %q", got)
 	}
-	future := &prosody.Model{Version: 10, Mode: "future_mode"}
-	if got := prosodyModelLabel(future, "future.json"); !strings.Contains(got, "v10") || !strings.Contains(got, "future") {
-		t.Fatalf("future label = %q", got)
+	if got := prosodyModelLabel(&prosody.Model{ID: "stable-id"}, "ignored.json"); got != "stable-id" {
+		t.Fatalf("ID fallback label = %q", got)
 	}
-	v9 := &prosody.Model{Version: prosody.StandardAccentModelVersion, Mode: "intonation_phrase_anchor_v9"}
-	if got := prosodyModelLabel(v9, "phrase-anchor-v9.json"); !strings.Contains(got, "v9") {
-		t.Fatalf("v9 label = %q", got)
-	}
-	v91 := &prosody.Model{Version: prosody.StandardAccentModelVersion, Mode: "intonation_phrase_anchor_v9_1"}
-	if got := prosodyModelLabel(v91, "phrase-anchor-v9-1.json"); !strings.Contains(got, "v9.1") {
-		t.Fatalf("v9.1 label = %q", got)
+	if got := prosodyModelLabel(&prosody.Model{}, "file-name.json"); got != "" {
+		t.Fatalf("identity-free model got a filename label = %q", got)
 	}
 }

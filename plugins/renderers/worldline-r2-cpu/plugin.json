@@ -1,0 +1,12 @@
+{
+  "manifest_version": 1, "kind": "renderer", "id": "openutau-worldline-r2-cpu",
+  "display_name": "OpenUTAU WORLDLINE-R2 CPU", "description": "WORLD特徴とPC-NSF-HiFiGANをCPUで実行する比較用Rendererです。",
+  "backend": "openutau-worldline-r2-cpu", "version": "1", "experimental": true,
+  "capabilities": { "frame_pitch": true },
+  "assets": {
+    "worldline": "../../../runtime/worldline.dll",
+    "worldline_bridge": "../../../runtime/utautts-worldline-bridge.exe",
+    "worldline_r2_mel": "../../../runtime/worldline-r2-mel.onnx",
+    "worldline_r2_vocoder": "../../../models/worldline-r2-vocoder.onnx"
+  }
+}

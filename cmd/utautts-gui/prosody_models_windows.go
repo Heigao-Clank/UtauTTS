@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,12 +12,13 @@ import (
 )
 
 type prosodyModelOption struct {
-	Path             string
-	Label            string
-	Version          int
-	Mode             string
-	RequiresFeatures bool
-	FrameContour     bool
+	Path                 string
+	Label                string
+	Version              int
+	Mode                 string
+	RequiresFeatures     bool
+	FrameContour         bool
+	RecommendedRenderers []string
 }
 
 func discoverProsodyModels() []prosodyModelOption {
@@ -52,10 +52,14 @@ func discoverProsodyModels() []prosodyModelOption {
 			if err != nil {
 				continue
 			}
+			if strings.TrimSpace(model.ID) == "" || strings.TrimSpace(model.DisplayName) == "" {
+				continue
+			}
 			seen[strings.ToLower(path)] = true
 			result = append(result, prosodyModelOption{
-				Path: path, Label: prosodyModelLabel(model, entry.Name()), Version: model.Version, Mode: model.Mode,
+				Path: path, Label: model.DisplayName, Version: model.Version, Mode: model.Mode,
 				RequiresFeatures: model.RequiresExternalFeatures(), FrameContour: model.HasFrameContour(),
+				RecommendedRenderers: append([]string(nil), model.RecommendedRenderers...),
 			})
 		}
 	}
@@ -68,22 +72,14 @@ func discoverProsodyModels() []prosodyModelOption {
 	return result
 }
 
-func prosodyModelLabel(model *prosody.Model, filename string) string {
-	if model.Version == prosody.FramePitchModelVersion && model.Mode == "intonation_frame_tcn_accent_bounded" {
-		return "v8 学習イントネーション"
+func prosodyModelLabel(model *prosody.Model, _ string) string {
+	if model.DisplayName != "" {
+		return model.DisplayName
 	}
-	if model.Version == prosody.StandardAccentModelVersion &&
-		(model.Mode == "intonation_phrase_anchor_v9" || model.Mode == "intonation_phrase_anchor_v9_1") {
-		if model.Mode == "intonation_phrase_anchor_v9_1" {
-			return "v9.1 phrase-anchor intonation"
-		}
-		return "v9 phrase-anchor intonation"
+	if model.ID != "" {
+		return model.ID
 	}
-	if model.Version == prosody.StandardAccentModelVersion && model.Mode == "standard_japanese_accent" {
-		return "v9 標準語アクセント"
-	}
-	name := strings.TrimSuffix(filename, filepath.Ext(filename))
-	return fmt.Sprintf("v%d %s (%s)", model.Version, name, model.Mode)
+	return ""
 }
 
 func prosodyModelAt(index int) *prosodyModelOption {
