@@ -54,11 +54,14 @@ Qt GUI、native backend、HTTP API、CLIは同じcatalogを使用します。追
 }
 ```
 
-`id`と`display_name`のないJSONはモデルpluginとして扱いません。学習scriptは上記fieldを出力し、配布対象へ追加する際は自己記述fieldを検証するinstallerを使います。
+`id`と`display_name`のないJSONはモデルpluginとして扱いません。学習scriptは上記fieldを出力します。過去の学習出力を移行する場合は、installerへidentityを明示してJSON自身を書き換えます。
 
 ```powershell
 .\tools\install-prosody-model.ps1 `
   -ModelPath .\out\prosody\my-model.json `
+  -Id my-model-v1 `
+  -DisplayName "My intonation model" `
+  -RecommendedRenderer openutau-classic-worldline-faithful `
   -DestinationDirectory .\models
 ```
 
@@ -66,4 +69,4 @@ GUIとserverは`models/`を走査します。追加directoryはnative JSONの`mo
 
 ## 配布物
 
-release buildは`plugins/renderers/`をそのまま配布し、`models/`に明示的にinstallされた自己記述モデルだけをコピーします。研究出力directoryからv8/v9など特定filenameを推測してコピーする処理はありません。これにより、モデル追加時にQt、Go、release scriptの複数箇所を修正する必要がなくなります。
+release buildは`plugins/renderers/`と、`models/`に明示的にinstallされた自己記述モデルをGUI・serverの両方へコピーします。研究出力directoryからv8/v9など特定filenameを推測してコピーする処理はありません。`models/`が空ならrelease buildは失敗します。これにより、モデル追加時にQt、Go、release scriptの複数箇所を修正する必要がなくなります。

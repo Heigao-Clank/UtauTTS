@@ -1,0 +1,21 @@
+{
+  "id":"standard-japanese-accent-v1",
+  "display_name":"Standard Japanese accent",
+  "description":"Rule-based standard Japanese accent reference model",
+  "recommended_renderers":["openutau-classic-worldline-faithful"],
+  "version": 9,
+  "feature_version": 1,
+  "mode": "standard_japanese_accent",
+  "standard_accent": {
+    "frame_ms": 10,
+    "accent_range_cents": 70,
+    "declination_cents": 18,
+    "question_rise_cents": 35,
+    "smoothing_ms": 25,
+    "p99_cents": 65,
+    "max_cents": 80
+  },
+  "duration_weights": {},
+  "metrics": {},
+  "training": {}
+}

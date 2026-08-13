@@ -67,3 +67,19 @@ func TestModelWithoutIdentityIsNotCatalogued(t *testing.T) {
 		t.Fatalf("identity-free model was catalogued from its filename: %#v", models)
 	}
 }
+
+func TestRepositoryBundlesSelfDescribingModels(t *testing.T) {
+	_, modelDirectories := DefaultDirectories()
+	models, err := DiscoverModels(modelDirectories)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) == 0 {
+		t.Fatal("no bundled self-describing models found")
+	}
+	for _, model := range models {
+		if model.ID == "" || model.DisplayName == "" {
+			t.Fatalf("incomplete bundled model: %#v", model)
+		}
+	}
+}

@@ -8,6 +8,7 @@ $guiRuntimePath = Join-Path $guiPath 'runtime'
 $guiModelsPath = Join-Path $guiPath 'models'
 $guiPluginsPath = Join-Path $guiPath 'plugins'
 $serverRuntimePath = Join-Path $serverPath 'runtime'
+$serverModelsPath = Join-Path $serverPath 'models'
 $guiZip = Join-Path $releaseRoot 'UtauTTS-win-x64.zip'
 $serverZip = Join-Path $releaseRoot 'UtauTTS-Server-win-x64.zip'
 $bundledVoicebankDirectory = Join-Path $root 'voice'
@@ -45,7 +46,7 @@ function Expand-BundledVoicebank([string]$Destination) {
 
 Reset-Directory $guiPath
 Reset-Directory $serverPath
-New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $guiModelsPath, $guiPluginsPath, $serverRuntimePath | Out-Null
+New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $guiModelsPath, $guiPluginsPath, $serverRuntimePath, $serverModelsPath | Out-Null
 foreach ($zip in @($guiZip, $serverZip)) {
     if (Test-Path -LiteralPath $zip) {
         Remove-Item -Force -LiteralPath $zip
@@ -129,9 +130,15 @@ try {
     Copy-Item -LiteralPath 'README.md', 'THIRD_PARTY_NOTICES.txt' -Destination $guiPath
 
     $sourceModels = Join-Path $root 'models'
+    $bundledModels = @()
     if (Test-Path -LiteralPath $sourceModels) {
-		Get-ChildItem -LiteralPath $sourceModels -Filter '*.json' -File | Copy-Item -Destination $guiModelsPath
+		$bundledModels = @(Get-ChildItem -LiteralPath $sourceModels -Filter '*.json' -File)
     }
+    if ($bundledModels.Count -eq 0) {
+        throw 'No bundled prosody models found. Install self-describing models into models/ with tools/install-prosody-model.ps1.'
+    }
+    $bundledModels | Copy-Item -Destination $guiModelsPath
+    $bundledModels | Copy-Item -Destination $serverModelsPath
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $guiPluginsPath -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination (Join-Path $serverPath 'plugins') -Recurse
     $guiDocs = Join-Path $guiPath 'docs'
