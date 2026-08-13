@@ -57,7 +57,7 @@ go run ./cmd/connection-train `
   --out out/connection-model/adachi-rei.json
 ```
 
-モデルは差分スペクトル10帯域、スペクトル平均差、RMS差、F0差、voicing不一致、波形相関を入力します。波形は240点へ正規化し、±5msの位相ずれを探索した最大相関を使います。標準は正規化ロジスティック回帰です。診断用に`--model mlp --hidden 32`で1隠れ層MLPも学習でき、同じGo推論経路から利用できます。モデルJSONにはモデル種別、seed、正規化係数、重み、学習音源、validationのaccuracy、balanced accuracy、AUC、log lossを保存します。`<out>.split.json`で分割後・欠損除外後の件数と音源名を監査できます。モデルv1/v2も推論互換のため読み込めます。
+モデルは差分スペクトル10帯域、スペクトル平均差、RMS差、F0差、voicing不一致、波形相関を入力します。波形は240点へ正規化し、±5msの位相ずれを探索した最大相関を使います。標準は正規化ロジスティック回帰です。診断用に`--model mlp --hidden 32`で1隠れ層MLPも学習でき、同じGo推論経路から利用できます。モデルJSONにはモデル種別、seed、正規化係数、重み、学習音源、validationのaccuracy、balanced accuracy、AUC、log lossを保存します。`<out>.split.json`で分割後・欠損除外後の件数と音源名を監査できます。
 
 ```powershell
 go run ./cmd/connection-train `

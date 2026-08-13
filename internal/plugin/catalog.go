@@ -130,7 +130,7 @@ func DiscoverModels(directories []string) ([]Model, error) {
 			id := strings.TrimSpace(loaded.ID)
 			name := strings.TrimSpace(loaded.DisplayName)
 			if id == "" || name == "" {
-				continue // Legacy models remain usable by explicit path, but are not catalog plugins.
+				continue // Identity-free files are not model plugins.
 			}
 			key := strings.ToLower(id)
 			if previous, exists := seenIDs[key]; exists {
@@ -195,7 +195,7 @@ func DefaultDirectories() (rendererDirectories, modelDirectories []string) {
 	if current, err := os.Getwd(); err == nil {
 		root := workspaceRoot(current)
 		rendererDirectories = append(rendererDirectories, filepath.Join(root, "plugins", "renderers"))
-		modelDirectories = append(modelDirectories, filepath.Join(root, "models"), filepath.Join(root, "out", "prosody"))
+		modelDirectories = append(modelDirectories, filepath.Join(root, "models"))
 	}
 	return
 }

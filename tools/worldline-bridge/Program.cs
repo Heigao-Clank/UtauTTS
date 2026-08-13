@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace UtauTTS.WorldlineBridge;
 
 internal sealed class Manifest {
-	[JsonPropertyName("engine")] public string Engine { get; set; } = "legacy";
+	[JsonPropertyName("engine")] public string Engine { get; set; } = "";
     [JsonPropertyName("worldline_path")] public string WorldlinePath { get; set; } = "";
     [JsonPropertyName("gpu_path")] public string GpuPath { get; set; } = "";
     [JsonPropertyName("mel_model_path")] public string MelModelPath { get; set; } = "";
@@ -117,6 +117,9 @@ internal static class Program {
 				WorldlineR2.Render(library, manifest,
 					string.Equals(manifest.Engine, "r2-directml", StringComparison.OrdinalIgnoreCase));
 				return;
+			}
+			if (!string.Equals(manifest.Engine, "phrase-synth", StringComparison.OrdinalIgnoreCase)) {
+				throw new InvalidDataException($"unknown engine: {manifest.Engine}");
 			}
             var create = Load<PhraseNew>(library, "PhraseSynthNew");
             var delete = Load<PhraseDelete>(library, "PhraseSynthDelete");

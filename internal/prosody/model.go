@@ -15,12 +15,11 @@ import (
 const ModelVersion = 3
 
 const (
-	SequenceModelVersion         = 4
-	AccentSequenceModelVersion   = 5
-	BoundedSequenceModelVersion  = 6
-	LegacyFramePitchModelVersion = 7
-	FramePitchModelVersion       = 8
-	StandardAccentModelVersion   = 9
+	SequenceModelVersion        = 4
+	AccentSequenceModelVersion  = 5
+	BoundedSequenceModelVersion = 6
+	FramePitchModelVersion      = 8
+	StandardAccentModelVersion  = 9
 )
 
 type Model struct {
@@ -138,16 +137,15 @@ func LoadModel(path string) (*Model, error) {
 	if err := json.Unmarshal(data, &model); err != nil {
 		return nil, err
 	}
-	legacy := model.Version == 2 && model.FeatureVersion == 1 && model.Mode == "speech_duration_residual"
 	current := model.Version == ModelVersion && model.FeatureVersion == 1 && model.Mode == "speech_prosody_residual"
 	sequence := model.FeatureVersion == 1 && ((model.Version == SequenceModelVersion && model.Mode == "intonation_tcn") ||
 		(model.Version == AccentSequenceModelVersion && model.Mode == "intonation_tcn_accent") ||
 		(model.Version == BoundedSequenceModelVersion && model.Mode == "intonation_tcn_accent_bounded"))
-	frame := model.FeatureVersion == 1 && (model.Version == LegacyFramePitchModelVersion || model.Version == FramePitchModelVersion) && model.Mode == "intonation_frame_tcn_accent_bounded"
+	frame := model.FeatureVersion == 1 && model.Version == FramePitchModelVersion && model.Mode == "intonation_frame_tcn_accent_bounded"
 	phrase := model.FeatureVersion == 1 && model.Version == StandardAccentModelVersion &&
 		(model.Mode == "intonation_phrase_anchor_v9" || model.Mode == "intonation_phrase_anchor_v9_1")
 	standardAccent := model.FeatureVersion == 1 && model.Version == StandardAccentModelVersion && model.Mode == "standard_japanese_accent"
-	if !legacy && !current && !sequence && !frame && !phrase && !standardAccent {
+	if !current && !sequence && !frame && !phrase && !standardAccent {
 		return nil, fmt.Errorf("unsupported prosody model version %d/%d", model.Version, model.FeatureVersion)
 	}
 	if sequence {

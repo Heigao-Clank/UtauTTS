@@ -34,13 +34,7 @@ var rendererImplementations = map[string]struct{}{
 	"waveform": {}, "waveform-gpu": {}, "waveform-long": {},
 	"worldline": {}, "worldline-v2": {},
 	"openutau-worldline-r2-cpu": {}, "openutau-worldline-r2-directml": {},
-	"openutau-classic-worldline": {}, "openutau-classic-worldline-local": {},
 	"openutau-classic-worldline-faithful": {}, "openutau-classic-worldline-faithful-gpu": {},
-	"openutau-classic-worldline-faithful-phase": {},
-	"waveform-openutau-pitch":                   {}, "waveform-openutau-pitch-local": {},
-	"waveform-openutau-pitch-local-dual": {}, "waveform-openutau-pitch-local-dual-smooth": {},
-	"waveform-openutau-pitch-post": {}, "waveform-openutau-pitch-post-controlled": {},
-	"waveform-openutau-pitch-post-spectral": {}, "waveform-openutau-pitch-post-spectral2": {},
 	"utau-classic": {}, "worldline-hybrid": {}, "worldline-hybrid-cv": {},
 	"worldline-hybrid-cv-balanced": {}, "worldline-hybrid-cv-gentle": {},
 }
@@ -55,8 +49,6 @@ func IsKnownRenderer(id string) bool {
 
 var boundaryBridgeRenderers = map[string]struct{}{
 	"": {}, "waveform": {}, "waveform-gpu": {}, "waveform-long": {},
-	"waveform-openutau-pitch": {}, "waveform-openutau-pitch-local": {},
-	"waveform-openutau-pitch-local-dual": {}, "waveform-openutau-pitch-local-dual-smooth": {},
 }
 
 type PitchCurve struct {
@@ -128,32 +120,10 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 		return renderWorldlineR2(synthesisPlan, cfg, false)
 	case "openutau-worldline-r2-directml":
 		return renderWorldlineR2(synthesisPlan, cfg, true)
-	case "openutau-classic-worldline":
-		return renderOpenUtauClassicWorldline(synthesisPlan, cfg)
-	case "openutau-classic-worldline-local":
-		return renderOpenUtauClassicWorldlineLocalPitch(synthesisPlan, cfg)
 	case "openutau-classic-worldline-faithful":
 		return renderOpenUtauClassicWorldlineFaithful(synthesisPlan, cfg)
 	case "openutau-classic-worldline-faithful-gpu":
 		return renderOpenUtauClassicWorldlineFaithfulGPU(synthesisPlan, cfg)
-	case "openutau-classic-worldline-faithful-phase":
-		return renderOpenUtauClassicWorldlineFaithfulPhase(synthesisPlan, cfg)
-	case "waveform-openutau-pitch":
-		return renderWaveformOpenUtauPitch(synthesisPlan, cfg)
-	case "waveform-openutau-pitch-local":
-		return renderWaveformOpenUtauPitchLocal(synthesisPlan, cfg)
-	case "waveform-openutau-pitch-local-dual":
-		return renderWaveformOpenUtauPitchLocalDual(synthesisPlan, cfg)
-	case "waveform-openutau-pitch-local-dual-smooth":
-		return renderWaveformOpenUtauPitchLocalDualSmooth(synthesisPlan, cfg)
-	case "waveform-openutau-pitch-post":
-		return renderWaveformOpenUtauPitchPost(synthesisPlan, cfg)
-	case "waveform-openutau-pitch-post-controlled":
-		return renderWaveformOpenUtauPitchPostControlled(synthesisPlan, cfg)
-	case "waveform-openutau-pitch-post-spectral":
-		return renderWaveformOpenUtauPitchPostSpectral(synthesisPlan, cfg)
-	case "waveform-openutau-pitch-post-spectral2":
-		return renderWaveformOpenUtauPitchPostSpectral2(synthesisPlan, cfg)
 	case "utau-classic":
 		return renderUTAUClassic(synthesisPlan, cfg)
 	case "worldline-hybrid":

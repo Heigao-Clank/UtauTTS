@@ -86,7 +86,7 @@ func TestResolveScoresDuplicateEntriesByOtoConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].Entry.Filename != "usable.wav" || got[0].Score == 0 {
+	if got[0].Entry.Filename != "usable.wav" || got[0].TargetScore == 0 {
 		t.Fatalf("selection = %#v", got[0])
 	}
 }
@@ -126,7 +126,7 @@ func TestResolveUsesPhrasePathInsteadOfGreedyDuplicateChoice(t *testing.T) {
 	if got[0].CandidateCount != 2 || got[0].TargetScore != 114 || got[0].JoinScore != 0 || got[0].PathScore != 114 {
 		t.Fatalf("first score audit = %#v", got[0])
 	}
-	if got[1].JoinScore != 8 || got[1].Score != 122 || got[1].PathScore != 236 {
+	if got[1].JoinScore != 8 || got[1].TargetScore+got[1].JoinScore != 122 || got[1].PathScore != 236 {
 		t.Fatalf("second score audit = %#v", got[1])
 	}
 

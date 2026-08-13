@@ -63,7 +63,7 @@ func main() {
 	flag.Float64Var(&moraMS, "mora-ms", 140, "base mora duration in milliseconds")
 	flag.Float64Var(&pauseMS, "pause-ms", 180, "punctuation pause in milliseconds")
 	flag.Float64Var(&releaseMS, "release-ms", 20, "unit release envelope in milliseconds")
-	flag.StringVar(&prosodyPath, "prosody", "", "optional learned prosody model JSON")
+	flag.StringVar(&prosodyPath, "prosody", "", "optional prosody model plugin ID")
 	flag.StringVar(&manualPitchPath, "manual-pitch", "", "optional mora pitch edit JSON")
 	flag.StringVar(&prosodyFeaturesPath, "prosody-features", "", "optional per-case mora-level accent feature JSON")
 	flag.StringVar(&prosodyFeaturesCase, "prosody-feature-case", "", "case ID in --prosody-features")
@@ -104,11 +104,11 @@ func main() {
 		log.Fatalf("renderer plugin %q is not installed", renderer)
 	}
 	if prosodyPath != "" {
-		if _, err := os.Stat(prosodyPath); err != nil {
-			if model, found := catalog.Model(prosodyPath); found {
-				prosodyPath = model.Path
-			}
+		model, found := catalog.Model(prosodyPath)
+		if !found {
+			log.Fatalf("prosody model plugin %q is not installed", prosodyPath)
 		}
+		prosodyPath = model.Path
 	}
 	worldlinePath = preferExplicit(worldlinePath, rendererPlugin.Asset("worldline"))
 	worldlineBridgePath = preferExplicit(worldlineBridgePath, rendererPlugin.Asset("worldline_bridge"))

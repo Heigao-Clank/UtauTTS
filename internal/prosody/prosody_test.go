@@ -156,22 +156,6 @@ func TestTrainPredictSaveLoad(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyDurationOnlyModel(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.json")
-	data := []byte(`{"version":2,"feature_version":1,"mode":"speech_duration_residual","duration_weights":{"bias":0.1}}`)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	model, err := LoadModel(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	prediction := model.Predict([]frontend.Mora{{Text: "あ", Vowel: "a"}})[0]
-	if prediction.PitchFactor != 1 || prediction.EnergyFactor != 1 {
-		t.Fatalf("legacy model changed pitch or energy: %+v", prediction)
-	}
-}
-
 func TestSequencePitchUsesTemporalContext(t *testing.T) {
 	model := &Model{
 		Version: SequenceModelVersion, FeatureVersion: 1, Mode: "intonation_tcn",

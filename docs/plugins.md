@@ -54,7 +54,7 @@ Qt GUI、native backend、HTTP API、CLIは同じcatalogを使用します。追
 }
 ```
 
-`id`と`display_name`のない旧モデルは自動catalogへ表示しません。CLIの`--prosody`などへpathを明示すれば従来どおり使用できます。新しい学習scriptは上記fieldを出力し、配布対象へ追加する際は自己記述fieldを検証するinstallerを使います。
+`id`と`display_name`のないJSONはモデルpluginとして扱いません。学習scriptは上記fieldを出力し、配布対象へ追加する際は自己記述fieldを検証するinstallerを使います。
 
 ```powershell
 .\tools\install-prosody-model.ps1 `
@@ -62,7 +62,7 @@ Qt GUI、native backend、HTTP API、CLIは同じcatalogを使用します。追
   -DestinationDirectory .\models
 ```
 
-GUIとserverは`models/`を走査します。追加directoryはnative JSONの`model_directories`、CLI/serverの`--model-dir`で指定します。CLIの`--prosody`にはpathだけでなくmodel IDも指定できます。
+GUIとserverは`models/`を走査します。追加directoryはnative JSONの`model_directories`、CLI/serverの`--model-dir`で指定します。CLIの`--prosody`にはmodel IDを指定します。
 
 ## 配布物
 

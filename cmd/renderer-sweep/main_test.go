@@ -14,25 +14,16 @@ func TestProvenanceWarningsExposeRendererMismatch(t *testing.T) {
 	project := &openutau.ProjectAudit{Tracks: []openutau.TrackRendererInfo{{Renderer: "CLASSIC", Resampler: "worldline", Wavtool: "convergence"}}}
 	warnings := provenanceWarnings(tts.Config{Renderer: "utau-classic", UTAUResamplerPath: `C:\UTAU\resampler.exe`}, project)
 	joined := strings.Join(warnings, "\n")
-	if !strings.Contains(joined, "does not match OpenUtau resampler") || !strings.Contains(joined, "internal mixer") {
+	if !strings.Contains(joined, "does not match OpenUtau resampler") || !strings.Contains(joined, "selected renderer manifest") {
 		t.Fatalf("unexpected warnings: %v", warnings)
 	}
 }
 
-func TestProvenanceRecognizesBuiltInOpenUtauPath(t *testing.T) {
+func TestProvenanceRecognizesFaithfulOpenUtauPath(t *testing.T) {
 	project := &openutau.ProjectAudit{Tracks: []openutau.TrackRendererInfo{{Renderer: "CLASSIC", Resampler: "worldline", Wavtool: "convergence"}}}
-	warnings := provenanceWarnings(tts.Config{Renderer: "openutau-classic-worldline"}, project)
+	warnings := provenanceWarnings(tts.Config{Renderer: "openutau-classic-worldline-faithful"}, project)
 	joined := strings.Join(warnings, "\n")
-	if strings.Contains(joined, "does not match") || !strings.Contains(joined, "not bit-exact") {
-		t.Fatalf("unexpected warnings: %v", warnings)
-	}
-}
-
-func TestProvenanceRecognizesWaveformOpenUtauPitch(t *testing.T) {
-	project := &openutau.ProjectAudit{Tracks: []openutau.TrackRendererInfo{{Renderer: "CLASSIC", Resampler: "worldline", Wavtool: "convergence"}}}
-	warnings := provenanceWarnings(tts.Config{Renderer: "waveform-openutau-pitch"}, project)
-	joined := strings.Join(warnings, "\n")
-	if strings.Contains(joined, "does not match") || !strings.Contains(joined, "not bit-exact") {
+	if strings.Contains(joined, "does not match") || !strings.Contains(joined, "selected renderer manifest") {
 		t.Fatalf("unexpected warnings: %v", warnings)
 	}
 }

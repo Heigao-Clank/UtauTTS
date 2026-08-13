@@ -17,6 +17,7 @@ import (
 	"utautts/internal/openutau"
 	"utautts/internal/plan"
 	"utautts/internal/render"
+	"utautts/internal/rendererplugin"
 	"utautts/internal/tts"
 )
 
@@ -56,7 +57,8 @@ type sweepManifest struct {
 
 func main() {
 	var cfg tts.Config
-	var outputDirectory, openUtauProject string
+	var outputDirectory, openUtauProject, rendererID, referenceRendererID string
+	var rendererDirectories []string
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&cfg.Text, "text", "あいうえお", "Japanese test text")
 	flag.StringVar(&cfg.Reading, "reading", "", "optional kana reading")
@@ -64,17 +66,32 @@ func main() {
 	flag.Float64Var(&cfg.MoraDurationMS, "mora-ms", 240, "mora duration for renderer diagnostics")
 	flag.Float64Var(&cfg.PauseDurationMS, "pause-ms", 180, "pause duration")
 	flag.Float64Var(&cfg.ReleaseMS, "release-ms", 20, "release envelope")
-	flag.StringVar(&cfg.Renderer, "renderer", "utau-classic", "renderer under test")
+	flag.StringVar(&rendererID, "renderer", "", "renderer plugin ID under test (required)")
+	flag.StringVar(&referenceRendererID, "reference-renderer", "", "reference renderer plugin ID (default: highest manifest priority)")
+	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
 	flag.StringVar(&cfg.WorldlinePath, "worldline", "", "path to worldline library")
 	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")
 	flag.StringVar(&cfg.UTAUResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler")
 	flag.StringVar(&openUtauProject, "openutau-project", "", "optional .ustx provenance source")
 	flag.StringVar(&outputDirectory, "out", "", "output directory")
 	flag.Parse()
-	if cfg.VoicebankPath == "" || outputDirectory == "" {
+	if cfg.VoicebankPath == "" || outputDirectory == "" || rendererID == "" {
 		flag.Usage()
-		log.Fatal("--voicebank and --out are required")
+		log.Fatal("--voicebank, --renderer and --out are required")
 	}
+	renderers, discoveryErr := rendererplugin.Discover(rendererDirectories)
+	if discoveryErr != nil {
+		log.Printf("renderer plugin discovery warning: %v", discoveryErr)
+	}
+	targetRenderer, err := rendererplugin.Resolve(renderers, rendererID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	referenceRenderer, err := rendererplugin.Resolve(renderers, referenceRendererID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rendererplugin.Apply(targetRenderer, &cfg)
 	if err := os.MkdirAll(outputDirectory, 0o755); err != nil {
 		log.Fatal(err)
 	}
@@ -108,13 +125,8 @@ func main() {
 	manifest := sweepManifest{
 		Version: 1, Text: cfg.Text, Reading: reading, Morae: moraNames,
 		Voicebank: cfg.VoicebankPath, Tone: cfg.Tone,
-		TargetRenderer: cfg.Renderer, ReferenceRenderer: "waveform",
+		TargetRenderer: targetRenderer.ID, ReferenceRenderer: referenceRenderer.ID,
 		Mixing: "UtauTTS internal overlap/envelope mixer",
-	}
-	if cfg.Renderer == "openutau-classic-worldline" {
-		manifest.Mixing = "OpenUtau convergence-like phase-aligned bridge mixer"
-	} else if cfg.Renderer == "waveform-openutau-pitch" {
-		manifest.Mixing = "waveform base with phase-aligned OpenUtau pitch replacement in stable vowels only"
 	}
 	if cfg.UTAUResamplerPath != "" {
 		identity, identityErr := identifyFile(cfg.UTAUResamplerPath)
@@ -132,7 +144,7 @@ func main() {
 	}
 
 	referenceCfg := cfg
-	referenceCfg.Renderer = "waveform"
+	rendererplugin.Apply(referenceRenderer, &referenceCfg)
 	referenceCfg.PitchFactors = nil
 	referenceCfg.ApplyPitch = false
 	reference, err := tts.Synthesize(referenceCfg)
@@ -156,12 +168,6 @@ func main() {
 		}
 		if contour.ID == "flat" {
 			manifest.FlatExact = equalPCM(reference.Audio, result.Audio)
-			// Only waveform-authoritative hybrid renderers promise an exact
-			// bypass for a flat curve. Fully resampled renderers are expected to
-			// differ even at zero cents and remain useful diagnostic targets.
-			if strings.HasPrefix(cfg.Renderer, "waveform-openutau-pitch") && !manifest.FlatExact {
-				log.Fatal("flat renderer case differs from waveform reference")
-			}
 		}
 		filename := contour.ID + ".wav"
 		if err := audio.WriteWav(filepath.Join(outputDirectory, filename), result.Audio); err != nil {
@@ -214,13 +220,13 @@ func provenanceWarnings(cfg tts.Config, project *openutau.ProjectAudit) []string
 	}
 	track := project.Tracks[0]
 	var warnings []string
-	classicRenderer := cfg.Renderer == "utau-classic" || cfg.Renderer == "openutau-classic-worldline" || cfg.Renderer == "waveform-openutau-pitch"
+	classicRenderer := cfg.Renderer == "utau-classic" || strings.HasPrefix(cfg.Renderer, "openutau-classic-worldline-faithful")
 	if classicRenderer && track.Renderer != "" && !strings.EqualFold(track.Renderer, "CLASSIC") {
 		warnings = append(warnings, fmt.Sprintf("target renderer utau-classic does not match OpenUtau renderer %s", track.Renderer))
 	}
 	if track.Resampler != "" {
 		configured := ""
-		if cfg.Renderer == "openutau-classic-worldline" || cfg.Renderer == "waveform-openutau-pitch" {
+		if strings.HasPrefix(cfg.Renderer, "openutau-classic-worldline-faithful") {
 			configured = "worldline"
 		} else if cfg.UTAUResamplerPath != "" {
 			configured = strings.TrimSuffix(filepath.Base(cfg.UTAUResamplerPath), filepath.Ext(cfg.UTAUResamplerPath))
@@ -230,11 +236,7 @@ func provenanceWarnings(cfg tts.Config, project *openutau.ProjectAudit) []string
 		}
 	}
 	if track.Wavtool != "" {
-		if (cfg.Renderer == "openutau-classic-worldline" || cfg.Renderer == "waveform-openutau-pitch") && strings.EqualFold(track.Wavtool, "convergence") {
-			warnings = append(warnings, "convergence mixing is structurally reproduced, but correlation alignment is not bit-exact with OpenUtau's NWaves phase filter")
-		} else {
-			warnings = append(warnings, fmt.Sprintf("OpenUtau wavtool %q is recorded but this sweep uses the UtauTTS internal mixer", track.Wavtool))
-		}
+		warnings = append(warnings, fmt.Sprintf("OpenUtau wavtool %q is recorded; compare it with the selected renderer manifest", track.Wavtool))
 	}
 	return warnings
 }

@@ -20,7 +20,6 @@ import (
 
 type Config struct {
 	VoiceDir            string   `json:"voice_dir"`
-	ProsodyModelPath    string   `json:"prosody_model_path"`
 	Renderer            string   `json:"renderer"`
 	WorldlinePath       string   `json:"worldline_path"`
 	WorldlineBridgePath string   `json:"worldline_bridge_path"`
@@ -45,9 +44,6 @@ func New(config Config) *Engine {
 	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
 	config.RendererDirectories = append(config.RendererDirectories, defaultRendererDirs...)
 	config.ModelDirectories = append(config.ModelDirectories, defaultModelDirs...)
-	if config.ProsodyModelPath != "" {
-		config.ModelDirectories = append(config.ModelDirectories, filepath.Dir(config.ProsodyModelPath))
-	}
 	catalog, _ := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
 	if config.Renderer == "" {
 		config.Renderer = catalog.DefaultRenderer()

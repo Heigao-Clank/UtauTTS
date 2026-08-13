@@ -64,6 +64,6 @@ func TestModelWithoutIdentityIsNotCatalogued(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(models) != 0 {
-		t.Fatalf("legacy model was catalogued from its filename: %#v", models)
+		t.Fatalf("identity-free model was catalogued from its filename: %#v", models)
 	}
 }

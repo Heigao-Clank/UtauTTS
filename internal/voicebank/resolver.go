@@ -22,7 +22,6 @@ type Selection struct {
 	JoinScore       float64
 	JoinProbability float64
 	PathScore       float64
-	Score           float64 // TargetScore + JoinScore; kept for plan v5 compatibility.
 }
 
 const maxCandidatesPerPosition = 32
@@ -102,7 +101,7 @@ func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selectio
 				targetScore := candidateScore(candidate.tier, entry)
 				candidatesAtPosition = append(candidatesAtPosition, Selection{
 					Position: position, Mora: mora, Alias: candidate.name, Entry: entry,
-					Candidates: candidates, TargetScore: targetScore, Score: targetScore,
+					Candidates: candidates, TargetScore: targetScore,
 				})
 			}
 		}
@@ -111,7 +110,7 @@ func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selectio
 				candidatesAtPosition = []Selection{{
 					Position: position, Mora: mora, Alias: "<closure>",
 					Candidates: candidates, CandidateCount: 1,
-					TargetScore: 100, Score: 100,
+					TargetScore: 100,
 				}}
 				layers = append(layers, candidatesAtPosition)
 				previousVowel = mora.Vowel

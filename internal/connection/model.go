@@ -306,16 +306,11 @@ func LoadLearnedModel(path string) (*LearnedModel, error) {
 	if err := json.Unmarshal(data, &model); err != nil {
 		return nil, err
 	}
-	legacy := model.Version == 1 && model.FeatureVersion == 1
-	logisticV2 := model.Version == 2 && model.FeatureVersion == 2
 	current := model.Version == LearnedModelVersion && model.FeatureVersion == 2
-	if (!legacy && !logisticV2 && !current) || (model.Mode != "acoustic_join_logistic" && model.Mode != "acoustic_join_mlp") {
+	if !current || (model.Mode != "acoustic_join_logistic" && model.Mode != "acoustic_join_mlp") {
 		return nil, fmt.Errorf("unsupported join model version %d/%d", model.Version, model.FeatureVersion)
 	}
 	length := len(featureNames())
-	if legacy {
-		length--
-	}
 	if len(model.Means) != length || len(model.Scales) != length {
 		return nil, errors.New("invalid join model feature dimensions")
 	}

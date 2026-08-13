@@ -220,7 +220,7 @@ type worldlineEnvelopePoint struct {
 }
 
 func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWorldlineEngine(synthesisPlan, cfg, "legacy", false)
+	return renderWorldlineEngine(synthesisPlan, cfg, "phrase-synth", false)
 }
 
 func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, localSourcePitch bool) (*audio.PCM, error) {
@@ -240,11 +240,11 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	}
 	melModelPath, vocoderPath := "", ""
 	if strings.HasPrefix(engine, "r2-") {
-		melModelPath, err = resolveRuntimeFile(cfg.WorldlineR2MelPath, "worldline-r2-mel.onnx", "WORLDLINE-R2 mel model")
+		melModelPath, err = resolveRuntimeFile(cfg.WorldlineR2MelPath, "WORLDLINE-R2 mel model")
 		if err != nil {
 			return nil, err
 		}
-		vocoderPath, err = resolveRuntimeFile(cfg.WorldlineR2VocoderPath, "worldline-r2-vocoder.onnx", "WORLDLINE-R2 vocoder model")
+		vocoderPath, err = resolveRuntimeFile(cfg.WorldlineR2VocoderPath, "WORLDLINE-R2 vocoder model")
 		if err != nil {
 			return nil, err
 		}
@@ -521,88 +521,36 @@ func openUtauEnvelopeFromTiming(unit plan.Unit, timing openUtauClassicTiming) []
 }
 
 func resolveWorldlineBridge(configured string) (string, error) {
-	if configured != "" {
-		if _, err := os.Stat(configured); err != nil {
-			return "", fmt.Errorf("worldline bridge %q: %w", configured, err)
-		}
-		return configured, nil
+	if configured == "" {
+		return "", errors.New("worldline bridge is not configured by the renderer plugin")
 	}
-	name := "utautts-worldline-bridge"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
+	if _, err := os.Stat(configured); err != nil {
+		return "", fmt.Errorf("worldline bridge %q: %w", configured, err)
 	}
-	if current, err := os.Executable(); err == nil {
-		for _, candidate := range packagedRuntimeCandidates(current, name) {
-			if _, err := os.Stat(candidate); err == nil {
-				return candidate, nil
-			}
-		}
-	}
-	if candidate, err := exec.LookPath(name); err == nil {
-		return candidate, nil
-	}
-	return "", fmt.Errorf("worldline bridge not found; pass --worldline-bridge")
+	return configured, nil
 }
 
 func resolveWorldlineLibrary(configured string) (string, error) {
-	if configured != "" {
-		if _, err := os.Stat(configured); err != nil {
-			return "", fmt.Errorf("worldline library %q: %w", configured, err)
-		}
-		return configured, nil
+	if configured == "" {
+		return "", errors.New("worldline library is not configured by the renderer plugin")
 	}
-	name := "libworldline.so"
-	if runtime.GOOS == "windows" {
-		name = "worldline.dll"
-	} else if runtime.GOOS == "darwin" {
-		name = "libworldline.dylib"
+	if _, err := os.Stat(configured); err != nil {
+		return "", fmt.Errorf("worldline library %q: %w", configured, err)
 	}
-	if current, err := os.Executable(); err == nil {
-		for _, candidate := range packagedRuntimeCandidates(current, name) {
-			if _, err := os.Stat(candidate); err == nil {
-				return candidate, nil
-			}
-		}
-	}
-	if candidate, err := exec.LookPath(name); err == nil {
-		return candidate, nil
-	}
-	return "", fmt.Errorf("worldline library not found; pass --worldline")
+	return configured, nil
 }
 
-func resolveRuntimeFile(configured, name, description string) (string, error) {
-	if configured != "" {
-		if info, err := os.Stat(configured); err != nil || info.IsDir() {
-			if err == nil {
-				err = errors.New("path is a directory")
-			}
-			return "", fmt.Errorf("%s %q: %w", description, configured, err)
+func resolveRuntimeFile(configured, description string) (string, error) {
+	if configured == "" {
+		return "", fmt.Errorf("%s is not configured by the renderer plugin", description)
+	}
+	if info, err := os.Stat(configured); err != nil || info.IsDir() {
+		if err == nil {
+			err = errors.New("path is a directory")
 		}
-		return configured, nil
+		return "", fmt.Errorf("%s %q: %w", description, configured, err)
 	}
-	if current, err := os.Executable(); err == nil {
-		for _, candidate := range packagedRuntimeCandidates(current, name) {
-			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-				return candidate, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("%s not found; configure its path explicitly", description)
-}
-
-// packagedRuntimeCandidates supports both the historical flat package and the
-// organized release layout. Auxiliary commands live in tools/, one level below
-// the shared runtime directory.
-func packagedRuntimeCandidates(executable, name string) []string {
-	directory := filepath.Dir(executable)
-	candidates := []string{
-		filepath.Join(directory, name),
-		filepath.Join(directory, "runtime", name),
-	}
-	if strings.EqualFold(filepath.Base(directory), "tools") {
-		candidates = append(candidates, filepath.Join(filepath.Dir(directory), "runtime", name))
-	}
-	return candidates
+	return configured, nil
 }
 
 func measureWorldlinePitches(synthesisPlan *plan.Plan, cache *sourceCache) ([]float64, int, error) {

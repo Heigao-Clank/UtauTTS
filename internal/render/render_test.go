@@ -2,7 +2,6 @@ package render
 
 import (
 	"math"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,19 +10,6 @@ import (
 	"utautts/internal/pitch"
 	"utautts/internal/plan"
 )
-
-func TestPackagedRuntimeCandidates(t *testing.T) {
-	root := filepath.FromSlash("C:/package/UtauTTS")
-	name := "worldline.dll"
-	rootCandidates := packagedRuntimeCandidates(filepath.Join(root, "utautts.exe"), name)
-	if want := filepath.Join(root, "runtime", name); !containsString(rootCandidates, want) {
-		t.Fatalf("root candidates %v do not contain %q", rootCandidates, want)
-	}
-	toolCandidates := packagedRuntimeCandidates(filepath.Join(root, "tools", "utautts-cli.exe"), name)
-	if want := filepath.Join(root, "runtime", name); !containsString(toolCandidates, want) {
-		t.Fatalf("tool candidates %v do not contain shared runtime %q", toolCandidates, want)
-	}
-}
 
 func TestFaithfulGPURendererIsRegistered(t *testing.T) {
 	const backend = "openutau-classic-worldline-faithful-gpu"
@@ -221,37 +207,6 @@ func TestPitchCurveHasShift(t *testing.T) {
 	}
 	if !pitchCurveHasShift(&PitchCurve{FrameMS: 5, Cents: []float64{0, 25}}) {
 		t.Fatal("non-flat curve was not treated as shifted")
-	}
-}
-
-func TestWaveformOpenUtauPitchFlatCurveIsExactWaveformBypass(t *testing.T) {
-	path := t.TempDir() + "/unit.wav"
-	data := make([]int16, 400)
-	for i := range data {
-		data[i] = int16(9000 * math.Sin(2*math.Pi*0.02*float64(i)))
-	}
-	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
-		t.Fatal(err)
-	}
-	makePlan := func() *plan.Plan {
-		return &plan.Plan{DurationMS: 180, Units: []plan.Unit{{
-			Alias: "a", Source: path, NoteStartMS: 0, DurationMS: 180,
-			ConsonantMS: 40, PreutteranceMS: 20, PitchFactor: 1, EnergyFactor: 1,
-		}}}
-	}
-	waveform, err := Render(makePlan(), Config{Backend: "waveform", ReleaseMS: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	hybrid, err := Render(makePlan(), Config{
-		Backend: "waveform-openutau-pitch", ReleaseMS: 20,
-		PitchCurve: &PitchCurve{FrameMS: 5, Cents: []float64{0, 0, 0}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(hybrid, waveform) {
-		t.Fatal("flat hybrid output differs from waveform reference")
 	}
 }
 
@@ -462,17 +417,6 @@ func TestBoundaryBridgeRequiresWaveformRenderer(t *testing.T) {
 	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "worldline", BoundaryBridgeMS: 20})
 	if err == nil {
 		t.Fatal("boundary bridge was accepted by non-waveform renderer")
-	}
-}
-
-func TestWaveformOpenUtauPitchAcceptsBoundaryBridge(t *testing.T) {
-	path := t.TempDir() + "/unit.wav"
-	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: make([]int16, 300)}); err != nil {
-		t.Fatal(err)
-	}
-	p := &plan.Plan{DurationMS: 100, Units: []plan.Unit{{Source: path, DurationMS: 100, PitchFactor: 1}}}
-	if _, err := Render(p, Config{Backend: "waveform-openutau-pitch", BoundaryBridgeMS: 20}); err != nil {
-		t.Fatal(err)
 	}
 }
 

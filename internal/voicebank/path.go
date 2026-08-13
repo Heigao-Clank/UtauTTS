@@ -82,7 +82,6 @@ func selectPhrasePath(layers [][]Selection, cache *connection.Extractor, model *
 		path[layerIndex].JoinScore = states[layerIndex][last].joinScore
 		path[layerIndex].JoinProbability = states[layerIndex][last].joinProbability
 		path[layerIndex].PathScore = states[layerIndex][last].score
-		path[layerIndex].Score = path[layerIndex].TargetScore + path[layerIndex].JoinScore
 		last = states[layerIndex][last].previous
 	}
 	return path
@@ -109,7 +108,6 @@ func selectGreedyPath(layers [][]Selection, cache *connection.Extractor, model *
 		selected := layer[bestIndex]
 		selected.JoinScore = bestJoin
 		selected.JoinProbability = bestProbability
-		selected.Score = bestLocal
 		pathScore += bestLocal
 		selected.PathScore = pathScore
 		path = append(path, selected)
