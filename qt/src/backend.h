@@ -17,6 +17,7 @@ class Backend final : public QObject {
     Q_PROPERTY(QVariantList models READ models NOTIFY metadataChanged)
     Q_PROPERTY(QVariantList renderers READ renderers NOTIFY metadataChanged)
     Q_PROPERTY(QString defaultRenderer READ defaultRenderer NOTIFY metadataChanged)
+    Q_PROPERTY(bool cudaAvailable READ cudaAvailable NOTIFY metadataChanged)
 public:
     explicit Backend(QObject *parent = nullptr);
     ~Backend() override;
@@ -27,6 +28,7 @@ public:
     QVariantList models() const { return m_models; }
     QVariantList renderers() const { return m_renderers; }
     QString defaultRenderer() const { return m_defaultRenderer; }
+    bool cudaAvailable() const { return m_cudaAvailable; }
 
     Q_INVOKABLE void initialize();
     Q_INVOKABLE void reloadVoicebanks();
@@ -57,5 +59,6 @@ private:
     int m_activeCallCount = 0;
     QVariantList m_voicebanks, m_models, m_renderers;
     QString m_defaultRenderer;
+    bool m_cudaAvailable = false;
     quint64 m_analysisGeneration = 0;
 };

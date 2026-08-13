@@ -16,8 +16,6 @@
 
 Backend::Backend(QObject *parent) : QObject(parent) {}
 Backend::~Backend() {
-    // Every worker captures this object in order to call the native handle.
-    // Keep both alive until those workers have stopped during application exit.
     m_activeCalls.waitForFinished();
     if (m_handle) {
         UtauTTSDestroy(m_handle);
@@ -69,10 +67,12 @@ void Backend::refreshMetadata() {
     const QVariantMap voices = call("voicebanks");
     const QVariantMap models = call("models");
     const QVariantMap renderers = call("renderers");
+    const QVariantMap hardware = call("hardware");
     m_voicebanks = voices.value("voicebanks").toList();
     m_models = models.value("models").toList();
     m_renderers = renderers.value("renderers").toList();
     m_defaultRenderer = renderers.value("default_renderer").toString();
+    m_cudaAvailable = hardware.value("cuda_available").toBool();
     emit metadataChanged();
 }
 

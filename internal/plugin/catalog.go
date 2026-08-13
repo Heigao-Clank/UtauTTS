@@ -28,6 +28,7 @@ type Renderer struct {
 	Backend         string            `json:"backend"`
 	Version         string            `json:"version,omitempty"`
 	Experimental    bool              `json:"experimental,omitempty"`
+	Acceleration    string            `json:"acceleration,omitempty"`
 	DefaultPriority int               `json:"default_priority,omitempty"`
 	Capabilities    Capabilities      `json:"capabilities,omitempty"`
 	Assets          map[string]string `json:"assets,omitempty"`
@@ -42,6 +43,7 @@ type Model struct {
 	Version              int      `json:"version"`
 	Mode                 string   `json:"mode"`
 	RecommendedRenderers []string `json:"recommended_renderers,omitempty"`
+	DefaultPriority      int      `json:"default_priority,omitempty"`
 	RequiresFeatures     bool     `json:"requires_features,omitempty"`
 	FrameContour         bool     `json:"frame_contour,omitempty"`
 }
@@ -125,12 +127,12 @@ func DiscoverModels(directories []string) ([]Model, error) {
 			}
 			loaded, err := prosody.LoadModel(path)
 			if err != nil {
-				continue // JSON files such as contour sets may share this directory.
+				continue
 			}
 			id := strings.TrimSpace(loaded.ID)
 			name := strings.TrimSpace(loaded.DisplayName)
 			if id == "" || name == "" {
-				continue // Identity-free files are not model plugins.
+				continue
 			}
 			key := strings.ToLower(id)
 			if previous, exists := seenIDs[key]; exists {
@@ -142,11 +144,17 @@ func DiscoverModels(directories []string) ([]Model, error) {
 				ID: id, DisplayName: name, Description: loaded.Description, Path: path,
 				Version: loaded.Version, Mode: loaded.Mode,
 				RecommendedRenderers: append([]string(nil), loaded.RecommendedRenderers...),
+				DefaultPriority:      loaded.DefaultPriority,
 				RequiresFeatures:     loaded.RequiresExternalFeatures(), FrameContour: loaded.HasFrameContour(),
 			})
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].DisplayName < result[j].DisplayName })
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].DefaultPriority != result[j].DefaultPriority {
+			return result[i].DefaultPriority > result[j].DefaultPriority
+		}
+		return result[i].DisplayName < result[j].DisplayName
+	})
 	return result, errors.Join(problems...)
 }
 
@@ -220,6 +228,9 @@ func validateRenderer(renderer Renderer, supportsBackend func(string) bool) erro
 	}
 	if renderer.Kind != "renderer" || renderer.ID == "" || renderer.DisplayName == "" || renderer.Backend == "" {
 		return errors.New("kind=renderer, id, display_name, and backend are required")
+	}
+	if renderer.Acceleration != "" && renderer.Acceleration != "cpu" && renderer.Acceleration != "cuda" && renderer.Acceleration != "directml" {
+		return fmt.Errorf("unsupported acceleration %q", renderer.Acceleration)
 	}
 	if supportsBackend != nil && !supportsBackend(renderer.Backend) {
 		return fmt.Errorf("backend %q is not installed", renderer.Backend)

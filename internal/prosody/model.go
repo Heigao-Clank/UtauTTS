@@ -27,6 +27,7 @@ type Model struct {
 	DisplayName          string               `json:"display_name,omitempty"`
 	Description          string               `json:"description,omitempty"`
 	RecommendedRenderers []string             `json:"recommended_renderers,omitempty"`
+	DefaultPriority      int                  `json:"default_priority,omitempty"`
 	Version              int                  `json:"version"`
 	FeatureVersion       int                  `json:"feature_version"`
 	Mode                 string               `json:"mode"`

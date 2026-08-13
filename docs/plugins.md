@@ -27,7 +27,7 @@ Rendererは`plugins/renderers/<plugin>/plugin.json`を1つ持ちます。
 
 `id`は保存データやAPIで使うプラグイン固有ID、`backend`はUtauTTSが実行する実装adapterです。この分離により、同じbackendへ異なる名前・資産・既定値を持つ複数のRendererを追加できます。現在のmanifest APIは組み込みbackendの構成をプラグイン化するもので、任意native codeをプロセスへロードしません。
 
-`default_priority`が最大のものが既定Rendererです。同値の場合は`display_name`順です。CLI/serverの`--renderer`はこれを明示的に上書きします。必要DLLやモデルはmanifestからの相対pathを`assets`へ記述します。
+`default_priority`が最大のものが既定Rendererです。同値の場合は`display_name`順です。`acceleration`には`cpu`、`cuda`、`directml`のいずれかを指定でき、GUIは利用可能な実行デバイスとモデルの`recommended_renderers`を照合して初期Rendererを選びます。CLI/serverの`--renderer`はこれを明示的に上書きします。必要DLLやモデルはmanifestからの相対pathを`assets`へ記述します。
 
 認識するasset key:
 
@@ -48,6 +48,7 @@ Qt GUI、native backend、HTTP API、CLIは同じcatalogを使用します。追
   "display_name": "My intonation model",
   "description": "モデルの用途と学習条件",
   "recommended_renderers": ["openutau-classic-worldline-faithful"],
+  "default_priority": 100,
   "version": 8,
   "feature_version": 1,
   "mode": "intonation_frame_tcn_accent_bounded"

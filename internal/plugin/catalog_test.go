@@ -77,9 +77,35 @@ func TestRepositoryBundlesSelfDescribingModels(t *testing.T) {
 	if len(models) == 0 {
 		t.Fatal("no bundled self-describing models found")
 	}
+	if models[0].ID != "frame-intonation-v8" {
+		t.Fatalf("default model = %q, want metadata-priority frame-intonation-v8", models[0].ID)
+	}
 	for _, model := range models {
 		if model.ID == "" || model.DisplayName == "" {
 			t.Fatalf("incomplete bundled model: %#v", model)
 		}
+	}
+}
+
+func TestClassicRenderersDeclareAcceleration(t *testing.T) {
+	rendererDirectories, _ := DefaultDirectories()
+	items, err := DiscoverRenderers(rendererDirectories, func(string) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"openutau-classic-worldline-faithful":     "cpu",
+		"openutau-classic-worldline-faithful-gpu": "cuda",
+	}
+	for _, item := range items {
+		if acceleration, ok := want[item.ID]; ok {
+			if item.Acceleration != acceleration {
+				t.Fatalf("renderer %q acceleration = %q, want %q", item.ID, item.Acceleration, acceleration)
+			}
+			delete(want, item.ID)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing classic renderers: %#v", want)
 	}
 }

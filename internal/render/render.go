@@ -47,6 +47,12 @@ func IsKnownRenderer(id string) bool {
 	return ok
 }
 
+// CUDAAvailable reports whether the optional CUDA renderer library and a
+// compatible device are available on this machine.
+func CUDAAvailable() bool {
+	return gpuWaveformAvailable() == nil
+}
+
 var boundaryBridgeRenderers = map[string]struct{}{
 	"": {}, "waveform": {}, "waveform-gpu": {}, "waveform-long": {},
 }
