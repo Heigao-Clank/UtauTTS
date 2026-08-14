@@ -6,10 +6,10 @@ Item {
     id: root
     property var points: []
     property var morae: []
-    property color accentColor: "#58a875"
-    property color axisColor: "#8fbc9c"
-    property color gridColor: "#d8e4db"
-    property color labelColor: "#59665e"
+    property color accentColor: "#d35f6b"
+    property color axisColor: "#c79298"
+    property color gridColor: "#eadcdf"
+    property color labelColor: "#66565a"
     property real moraWidth: 64
     property real sidePadding: 12
     signal pointsEdited(var points)

@@ -27,8 +27,8 @@ ApplicationWindow {
         text: window.darkMode ? "#e8eaed" : "#202124"
         button: window.darkMode ? "#303134" : "#f0f1f2"
         buttonText: window.darkMode ? "#e8eaed" : "#202124"
-        highlight: window.darkMode ? "#4fae79" : "#2f8b5b"
-        highlightedText: "#ffffff"
+        highlight: window.darkMode ? "#e8837d" : "#d35f6b"
+        highlightedText: window.darkMode ? "#202124" : "#ffffff"
         placeholderText: window.darkMode ? "#aeb4ba" : "#697078"
         mid: window.darkMode ? "#5f6368" : "#aeb4ba"
     }
