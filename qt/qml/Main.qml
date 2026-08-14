@@ -703,13 +703,12 @@ ApplicationWindow {
                 model: dictionaryEntriesModel
                 ScrollBar.vertical: ScrollBar {
                     id: dictionaryScrollBar
-                    width: 14
                     policy: ScrollBar.AlwaysOn
                 }
 
                 delegate: RowLayout {
                     id: dictionaryEntryRow
-                    width: Math.max(0, dictionaryList.width - dictionaryScrollBar.width - 2)
+                    width: Math.max(0, dictionaryList.width - 14 - 2)
                     height: 36
                     spacing: 4
 
@@ -1138,11 +1137,14 @@ ApplicationWindow {
                 ListView {
                     id: utteranceList
                     anchors.fill: parent
-                    anchors.bottomMargin: 58
                     model: utterances
                     clip: true
                     spacing: 4
                     boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {
+                        id: utteranceScrollBar
+                        policy: ScrollBar.AlwaysOn
+                    }
 
                     delegate: Item {
                         id: card
@@ -1151,7 +1153,7 @@ ApplicationWindow {
                         required property string voicebankId
                         required property string imagePath
 
-                        width: ListView.view.width
+                        width: Math.max(0, utteranceList.width - 14 - 2)
                         height: 46
 
                         RowLayout {
@@ -1302,10 +1304,12 @@ ApplicationWindow {
                     id: addButton
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
-                    anchors.margins: 8
+                    anchors.rightMargin: 24
+                    anchors.bottomMargin: 8
                     width: 48
                     height: 48
                     highlighted: true
+                    z: 2
                     contentItem: Canvas {
                         id: addIcon
                         anchors.fill: parent
