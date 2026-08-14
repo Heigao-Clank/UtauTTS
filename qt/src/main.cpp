@@ -3,6 +3,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QUrl>
 #include <QVariantList>
 
 namespace {
@@ -49,16 +50,18 @@ QVariantList legalDocuments() {
 int main(int argc, char *argv[]) {
     QQuickStyle::setStyle("Fusion");
     QGuiApplication app(argc, argv);
-    app.setApplicationName("UtauTTS");
-    app.setApplicationDisplayName("UtauTTS");
+    app.setApplicationName(UTAUTTS_APP_NAME);
+    app.setApplicationDisplayName(UTAUTTS_APP_NAME);
     app.setApplicationVersion(UTAUTTS_VERSION);
-    app.setOrganizationName("UtauTTS");
+    app.setOrganizationName(UTAUTTS_APP_ORGANIZATION);
 
     Backend backend;
     QQmlApplicationEngine engine;
     engine.setInitialProperties({
         {"injectedBackend", QVariant::fromValue(static_cast<QObject *>(&backend))},
         {"injectedLegalDocuments", legalDocuments()},
+        {"injectedAppName", QStringLiteral(UTAUTTS_APP_NAME)},
+        {"injectedRepositoryUrl", QUrl(QStringLiteral(UTAUTTS_APP_REPOSITORY))},
     });
     engine.loadFromModule("UtauTTS", "Main");
     if (engine.rootObjects().isEmpty()) {

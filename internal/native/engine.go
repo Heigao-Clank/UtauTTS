@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync"
 
+	"utautts/internal/appinfo"
 	"utautts/internal/audio"
 	"utautts/internal/frontend"
 	"utautts/internal/openjtalk"
@@ -78,7 +79,7 @@ func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
 	var err error
 	switch method {
 	case "health":
-		result = map[string]any{"status": "ok", "engine": e.config.Renderer}
+		result = map[string]any{"status": "ok", "engine": e.config.Renderer, "version": appinfo.Version()}
 	case "voicebanks":
 		result = map[string]any{"voicebanks": e.voicebankList()}
 	case "reloadVoicebanks":

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 
+	"utautts/internal/appinfo"
 	"utautts/internal/audio"
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
@@ -52,7 +53,9 @@ func main() {
 		joinScoreScale          float64
 		rendererDirectories     []string
 		modelDirectories        []string
+		showVersion             bool
 	)
+	flag.BoolVar(&showVersion, "version", false, "print application version")
 	flag.StringVar(&voicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&otoPath, "oto", "", "deprecated alias for --voicebank")
 	flag.StringVar(&reading, "kana", "", "kana reading to synthesize")
@@ -89,6 +92,10 @@ func main() {
 	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
 	flag.Func("model-dir", "prosody model directory (repeatable)", func(value string) error { modelDirectories = append(modelDirectories, value); return nil })
 	flag.Parse()
+	if showVersion {
+		fmt.Printf("%s %s\n", appinfo.Name(), appinfo.Version())
+		return
+	}
 	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
 	rendererDirectories = append(rendererDirectories, defaultRendererDirs...)
 	modelDirectories = append(modelDirectories, defaultModelDirs...)

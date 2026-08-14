@@ -10,12 +10,14 @@ ApplicationWindow {
     id: window
     required property var injectedBackend
     required property var injectedLegalDocuments
+    required property string injectedAppName
+    required property url injectedRepositoryUrl
     width: 1240
     height: 800
     minimumWidth: 880
     minimumHeight: 600
     visible: true
-    title: "UtauTTS"
+    title: injectedAppName
     color: palette.window
     palette: Palette {
         window: window.darkMode ? "#202124" : "#f6f6f6"
@@ -34,7 +36,7 @@ ApplicationWindow {
     property color accent: palette.highlight
     property color borderColor: palette.mid
     property color mutedText: palette.placeholderText
-    readonly property url repositoryUrl: "https://github.com/yh2237/UtauTTS"
+    readonly property url repositoryUrl: injectedRepositoryUrl
     readonly property var appBackend: injectedBackend
     readonly property bool darkMode: appBackend.darkMode
     readonly property var licenseDocuments: injectedLegalDocuments

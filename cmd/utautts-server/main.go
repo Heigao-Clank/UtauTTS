@@ -9,12 +9,15 @@ import (
 	"time"
 
 	"utautts/internal/api"
+	"utautts/internal/appinfo"
 )
 
 func main() {
 	var port int
 	var host string
+	var showVersion bool
 	var config api.Config
+	flag.BoolVar(&showVersion, "version", false, "print application version")
 	flag.IntVar(&port, "port", 8080, "port")
 	flag.StringVar(&host, "host", "127.0.0.1", "host")
 	flag.StringVar(&config.VoiceDir, "voice-dir", "voice", "directory containing voicebanks")
@@ -37,6 +40,10 @@ func main() {
 		return nil
 	})
 	flag.Parse()
+	if showVersion {
+		fmt.Printf("%s %s\n", appinfo.Name(), appinfo.Version())
+		return
+	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
