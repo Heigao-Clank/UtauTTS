@@ -132,6 +132,10 @@ function Copy-OpenJTalkLicenses {
     Copy-Required $dictionaryCopying (Join-Path $licenseRoot 'OpenJTalk/DICTIONARY_COPYING.txt')
 }
 
+function Copy-ProsodyDataProvenance {
+    Copy-Required (Join-Path $root 'licenses/JSUT-DATA-AND-LABELS.txt') (Join-Path $licenseRoot 'JSUT-DATA-AND-LABELS.txt')
+}
+
 function Copy-QtLicenses {
     $qtRoot = Resolve-QtRoot
     $qtVersion = (Get-Item -LiteralPath $qtRoot).Parent.Name
@@ -147,17 +151,51 @@ Qt source offer
 ===============
 
 This package contains dynamically linked Qt $qtVersion libraries.
-The corresponding Qt source for the modules used by this package can be obtained
-from the official Qt source archive:
+This is a written offer for the complete corresponding source of the LGPL-covered
+Qt modules used by this package. For at least three years after this package was
+distributed, UtauTTS will provide that source in a machine-readable archive at no
+charge other than the reasonable cost of performing the source distribution.
+
+Source requests:
+https://github.com/yh2237/UtauTTS/issues/new?title=Qt%20source%20request
+
+Include the UtauTTS release version and the Qt version shown in this file in a
+source request. The request must identify whether the request concerns Qt itself,
+Qt Multimedia's FFmpeg deployment, or both. The project repository and its build
+scripts provide the corresponding application source and relinking instructions.
+
+The upstream source archives used to prepare the corresponding source archive are:
 
 https://download.qt.io/official_releases/qt/$($qtVersion.Substring(0, $qtVersion.LastIndexOf('.')))/$qtVersion/submodules/
 https://code.qt.io/cgit/qt/qt5.git/tag/?h=v$qtVersion
 
 The Qt modules used here include Qt Core, Qt GUI, Qt QML, Qt Quick,
-Qt Quick Controls, Qt Multimedia, and Qt Concurrent. This source offer is
-provided for the corresponding Qt version used by the build.
+Qt Quick Controls, Qt Multimedia, and Qt Concurrent. This offer covers the
+corresponding Qt version used by the build, not an arbitrary later version.
 "@
     Write-ReleaseText (Join-Path $licenseRoot 'Qt/Qt-SOURCE-OFFER.txt') $qtSourceOffer
+
+    $qtRelinkInstructions = @"
+Qt replacement and relinking information
+==========================================
+
+The GUI links dynamically to the Qt DLLs distributed under app/. An end user may
+replace those DLLs with compatible modified LGPL-covered Qt builds, subject to
+Qt's license terms and ABI compatibility.
+
+To rebuild the application against a modified Qt build:
+
+1. Obtain the UtauTTS source for the same release.
+2. Set QT_ROOT to the Qt compiler kit directory containing lib/cmake/Qt6.
+3. Build the native application with tools/build-qt.ps1 and package it with
+   tools/build-release.ps1 as described in README.md.
+4. Deploy the resulting application with the compatible modified Qt DLLs.
+
+The corresponding Qt source offer, LGPLv3 text, and Qt third-party attribution
+information are included beside this file. The source request procedure is
+specified in Qt-SOURCE-OFFER.txt.
+"@
+    Write-ReleaseText (Join-Path $licenseRoot 'Qt/Qt-RELINK-INSTRUCTIONS.txt') $qtRelinkInstructions
 
     $qtAttributions = @"
 Qt $qtVersion third-party attributions
@@ -197,15 +235,20 @@ The Qt source offer and the LGPLv3 text are included beside this file.
     }
 
     $ffmpegDlls = @(Get-ChildItem -LiteralPath (Join-Path $PackageRoot 'app') -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^(avcodec|avformat|avutil)-\d+\.dll$|ffmpeg' })
+        Where-Object { $_.Name -match '^(avcodec|avformat|avutil|swresample|swscale)-\d+\.dll$|ffmpeg' })
     if ($ffmpegDlls.Count -gt 0) {
-        $dllList = ($ffmpegDlls | ForEach-Object { $_.FullName.Substring($PackageRoot.Length + 1) } | Sort-Object) -join "`n"
+        $dllList = ($ffmpegDlls | ForEach-Object {
+            $relativePath = $_.FullName.Substring($PackageRoot.Length + 1)
+            $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash
+            "$relativePath`n  SHA-256: $sha256"
+        } | Sort-Object) -join "`n"
         $ffmpegNotice = @"
 FFmpeg as deployed by Qt Multimedia
 ===================================
 
 The GUI package contains the following FFmpeg-related files from the Qt
-Multimedia deployment for Qt ${qtVersion}:
+Multimedia deployment for Qt ${qtVersion}. Each SHA-256 value identifies the
+exact binary covered by this notice:
 
 $dllList
 
@@ -215,7 +258,10 @@ https://doc.qt.io/qt-6.8/qtmultimedia-index.html
 https://doc.qt.io/qt-6.8/qtwebengine-3rdparty-ffmpeg.html
 https://ffmpeg.org/legal.html
 
-The corresponding Qt source archive is identified in Qt-SOURCE-OFFER.txt.
+The corresponding Qt and FFmpeg source request procedure is identified in
+Qt-SOURCE-OFFER.txt. The FFmpeg source/build must correspond to the exact files
+listed above; a generic FFmpeg source tree is not a substitute for the matching
+source.
 "@
         Write-ReleaseText (Join-Path $licenseRoot 'Qt/FFmpeg-SOURCE-AND-LICENSE.txt') $ffmpegNotice
     }
@@ -251,6 +297,7 @@ New-Item -ItemType Directory -Force -Path $licenseRoot | Out-Null
 Copy-GoLicenses
 Copy-OnnxLicenses
 Copy-OpenJTalkLicenses
+Copy-ProsodyDataProvenance
 
 if ($Variant -eq 'windows-gui') {
     Copy-QtLicenses

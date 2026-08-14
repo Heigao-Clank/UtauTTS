@@ -49,12 +49,24 @@ try {
     foreach ($asset in @(
         'licenses/Qt/LGPL-3.0.txt',
         'licenses/Qt/Qt-SOURCE-OFFER.txt',
+        'licenses/Qt/Qt-RELINK-INSTRUCTIONS.txt',
         'licenses/Qt/Qt-THIRD-PARTY-ATTRIBUTIONS.txt',
         'licenses/Qt/FFmpeg-SOURCE-AND-LICENSE.txt',
+        'licenses/JSUT-DATA-AND-LABELS.txt',
         'licenses/MinGW/COPYING.RUNTIME',
         'licenses/MinGW/COPYING.MinGW-w64-runtime.txt'
     )) {
         Assert-Path (Join-Path $guiRoot $asset) "GUI license asset $asset"
+    }
+
+    $ffmpegNoticePath = Join-Path $guiRoot 'licenses/Qt/FFmpeg-SOURCE-AND-LICENSE.txt'
+    $ffmpegNotice = Get-Content -LiteralPath $ffmpegNoticePath -Raw
+    $ffmpegFiles = @(Get-ChildItem -LiteralPath (Join-Path $guiRoot 'app') -Recurse -File |
+        Where-Object { $_.Name -match '^(avcodec|avformat|avutil|swresample|swscale)-\d+\.dll$|ffmpeg' })
+    foreach ($ffmpegFile in $ffmpegFiles) {
+        if ($ffmpegNotice -notmatch [regex]::Escape($ffmpegFile.Name)) {
+            throw "FFmpeg-related file is missing from its package notice: $($ffmpegFile.Name)"
+        }
     }
 
     $serverRuntime = Join-Path $serverRoot 'runtime'

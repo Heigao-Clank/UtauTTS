@@ -105,7 +105,7 @@ https://github.com/r9y9/pyopenjtalk
 Open JTalk
 ==========
 
-Copyright (c) 2008-2018 Nagoya Institute of Technology,
+Copyright (c) 2008-2016 Nagoya Institute of Technology,
 Department of Computer Science. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -300,9 +300,10 @@ License and source information:
 https://www.qt.io/licensing/
 https://code.qt.io/cgit/qt/
 
-The LGPLv3 text, an exact source offer for the Qt version used by the build,
-and Qt third-party attribution links are included under licenses/Qt. Qt
-Multimedia's FFmpeg deployment is also documented there.
+The LGPLv3 text, a written source offer for the Qt version used by the build,
+Qt replacement/relinking instructions, and Qt third-party attribution links are
+included under licenses/Qt. Qt Multimedia's FFmpeg deployment and corresponding
+source request procedure are also documented there.
 
 
 Go runtime and standard library
@@ -329,13 +330,28 @@ FFmpeg libraries distributed by Qt Multimedia
 ==============================================
 
 The Windows GUI distribution includes the FFmpeg DLLs delivered by the Qt
-Multimedia deployment (avcodec-61.dll, avformat-61.dll, avutil-59.dll, and
-ffmpegmediaplugin.dll in the current build). The exact Qt version, deployment
-provenance, and source/license links are included under licenses/Qt.
+Multimedia deployment (avcodec-61.dll, avformat-61.dll, avutil-59.dll,
+swresample-5.dll, swscale-8.dll, and ffmpegmediaplugin.dll in the current build).
+The exact Qt version, deployment provenance, and source/license links are
+included under licenses/Qt. The exact FFmpeg source/build corresponding to these
+files can be requested using the written source offer there.
 FFmpeg is generally LGPLv2.1-or-later, but optional GPL components change the
 applicable terms. Refer to the FFmpeg license and corresponding source for the
 exact binary build:
 https://ffmpeg.org/legal.html
+
+
+JSUT and jsut-label prosody data
+================================
+
+The bundled learned prosody models were trained from the JSUT Japanese speech
+corpus. The optional BASIC5000 HTS-style labels come from
+https://github.com/sarulab-speech/jsut-label. The original corpus and label files
+are not bundled in this release. JSUT and the label data are identified under
+CC BY-SA 4.0, with component text sources carrying their own terms (Wikipedia
+CC BY-SA 3.0 and TANAKA corpus CC BY 2.0). Contributors and complete source
+attribution are recorded in licenses/JSUT-DATA-AND-LABELS.txt, which is included
+in the release license bundle.
 
 
 MinGW runtime libraries

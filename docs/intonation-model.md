@@ -13,6 +13,20 @@ python tools/train-intonation-tcn.py `
   --seed 7
 ```
 
+## Training data and attribution
+
+The bundled learned prosody models identify the JSUT Japanese speech corpus as
+their training corpus and record that provenance in the model JSON files. The
+JSUT corpus and text data are used under CC BY-SA 4.0. The optional BASIC5000
+HTS-style labels come from `sarulab-speech/jsut-label`; its component text data
+has separate terms for Wikipedia (CC BY-SA 3.0), the TANAKA corpus (CC BY 2.0),
+and JSUT (CC BY-SA 4.0).
+
+UtauTTS does not redistribute the original recordings or label files. The
+contributors, source URLs, and applicable terms are recorded in
+`licenses/JSUT-DATA-AND-LABELS.txt`, which is included in the release license
+bundle.
+
 JSUT 4,915文の決定的な9:1分割では、v3のpitch MAE 300.8 centsに対してv4は281.6 centsだった。F0抽出値には無声区間やオクターブ推定誤りが含まれるため絶対値は大きいが、同じ487文の検証集合で比較できる。
 
 現時点の制約は次のとおり。

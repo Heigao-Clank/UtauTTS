@@ -26,6 +26,7 @@ type Model struct {
 	ID                   string               `json:"id,omitempty"`
 	DisplayName          string               `json:"display_name,omitempty"`
 	Description          string               `json:"description,omitempty"`
+	Provenance           *ModelProvenance     `json:"provenance,omitempty"`
 	RecommendedRenderers []string             `json:"recommended_renderers,omitempty"`
 	DefaultPriority      int                  `json:"default_priority,omitempty"`
 	Version              int                  `json:"version"`
@@ -40,6 +41,12 @@ type Model struct {
 	StandardAccent       *StandardAccentModel `json:"standard_accent,omitempty"`
 	Metrics              Metrics              `json:"metrics"`
 	Training             TrainingInfo         `json:"training"`
+}
+
+type ModelProvenance struct {
+	TrainingCorpus        string `json:"training_corpus,omitempty"`
+	TrainingCorpusLicense string `json:"training_corpus_license,omitempty"`
+	SourceNotice          string `json:"source_notice,omitempty"`
 }
 
 type FeatureFrame map[string]float64
