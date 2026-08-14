@@ -14,8 +14,10 @@ v8モデルは音声波形や話者の声を生成しません。必要なモデ
 
 ## ダウンロード
 
-- `release/UtauTTS-win-x64.zip`: GUI、CLI、診断・学習ツール、runtime、モデル、Renderer、同梱音源
-- `release/UtauTTS-Server-win-x64.zip`: GUIを含まないHTTPサーバー
+[リリース](https://github.com/yh2237/UtauTTS/releases) から最新版をダウンロードしてください。
+
+- `UtauTTS-win-x64.zip`: GUI、CLI、診断・学習ツール、runtime、モデル、Renderer、同梱音源
+- `UtauTTS-Server-win-x64.zip`: GUIを含まないHTTPサーバー
 
 ### GUI
 
