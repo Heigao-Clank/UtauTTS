@@ -385,7 +385,7 @@ ApplicationWindow {
     MessageDialog {
         id: aboutDialog
         title: "UtauTTSについて"
-        text: "UtauTTS " + Qt.application.version + "by yh"
+        text: "UtauTTS " + Qt.application.version + " by yh"
         informativeText: "UTAUボイスバンクの原音の選択と自然なつなぎ方を学習する日本語TTSソフトウェア"
         buttons: MessageDialog.Ok
     }

@@ -125,7 +125,7 @@ void Backend::clearLogs() {
 bool Backend::showNativeAboutDialog() {
 #ifdef Q_OS_WIN
     const QString title = tr("UtauTTSについて");
-    const QString text = QStringLiteral("UtauTTS %1\n\nUTAU音源を利用する音声合成ソフトウェア")
+    const QString text = QStringLiteral("UtauTTS %1 by yh\n\nUTAU音源を利用する音声合成ソフトウェア")
                              .arg(QCoreApplication::applicationVersion());
     MessageBoxW(GetActiveWindow(),
                 reinterpret_cast<LPCWSTR>(text.utf16()),
