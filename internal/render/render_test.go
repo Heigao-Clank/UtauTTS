@@ -198,6 +198,15 @@ func TestRenderRejectsNonFinitePitchCurve(t *testing.T) {
 	}
 }
 
+func TestRenderRejectsNonFiniteTimingConfiguration(t *testing.T) {
+	for _, value := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{ReleaseMS: value})
+		if err == nil {
+			t.Fatalf("accepted non-finite release_ms %v", value)
+		}
+	}
+}
+
 func TestRenderRejectsUnsafePitchCurveRangeAndFrame(t *testing.T) {
 	for _, curve := range []*PitchCurve{
 		{FrameMS: 0.01, Cents: []float64{0}},

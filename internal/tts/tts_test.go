@@ -100,3 +100,16 @@ func TestValidateRuntimeMoraAlignment(t *testing.T) {
 		t.Fatal("mismatched Open JTalk frame count was accepted")
 	}
 }
+
+func TestValidateConfigRejectsNonFiniteValues(t *testing.T) {
+	for _, cfg := range []Config{
+		{MoraDurationMS: math.NaN()},
+		{PauseDurationMS: math.Inf(1)},
+		{ReleaseMS: math.Inf(-1)},
+		{PitchFactors: []float64{math.NaN()}},
+	} {
+		if err := validateConfig(cfg); err == nil {
+			t.Fatalf("accepted invalid config: %#v", cfg)
+		}
+	}
+}

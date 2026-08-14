@@ -166,7 +166,13 @@ func (s *Server) loadVoiceDirectory() error {
 	next := make(map[string]Voicebank, len(summaries))
 	for _, summary := range summaries {
 		id := filepath.Base(summary.Path)
-		next[id] = Voicebank{ID: id, Name: summary.Name, Path: summary.Path}
+		item := Voicebank{ID: id, Name: summary.Name, Path: summary.Path}
+		if inspected, inspectErr := inspectVoicebank(summary.Path); inspectErr != nil {
+			log.Printf("voicebank metadata: %s: %v", summary.Path, inspectErr)
+		} else {
+			item = inspected
+		}
+		next[id] = item
 		log.Printf("voicebank: %s (%s)", summary.Name, id)
 	}
 	s.mu.Lock()
@@ -425,6 +431,20 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": fmt.Sprintf("batch supports at most %d items", maxBatchItems)})
 		return
 	}
+	names := make([]string, len(request.Items))
+	seenNames := make(map[string]struct{}, len(request.Items))
+	for index, item := range request.Items {
+		name := filepath.Base(item.Name)
+		if name == "." || name == "" || name == ".." {
+			name = fmt.Sprintf("utterance-%d.wav", index+1)
+		}
+		if _, exists := seenNames[name]; exists {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("duplicate batch filename %q", name)})
+			return
+		}
+		seenNames[name] = struct{}{}
+		names[index] = name
+	}
 	var output bytes.Buffer
 	archive := zip.NewWriter(&output)
 	totalWAVBytes := 0
@@ -435,10 +455,7 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, status, map[string]string{"error": fmt.Sprintf("item %d: %v", index+1, err)})
 			return
 		}
-		name := filepath.Base(item.Name)
-		if name == "." || name == "" {
-			name = fmt.Sprintf("utterance-%d.wav", index+1)
-		}
+		name := names[index]
 		wav := audio.PCMToWavBytes(result.Audio)
 		totalWAVBytes += len(wav)
 		if totalWAVBytes > maxBatchWAVBytes {

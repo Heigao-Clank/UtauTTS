@@ -119,3 +119,30 @@ func TestClassicRenderersDeclareAcceleration(t *testing.T) {
 		t.Fatalf("missing classic renderers: %#v", want)
 	}
 }
+
+func TestPackagedDirectoriesTakePrecedenceOverWorkspaceDirectories(t *testing.T) {
+	workspace := t.TempDir()
+	packaged := filepath.Join(workspace, "release", "UtauTTS")
+	if err := os.MkdirAll(filepath.Join(workspace, "plugins", "renderers"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspace, "models"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(packaged, "plugins", "renderers"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(packaged, "models"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "go.mod"), []byte("module test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	renderers, models := defaultDirectories(filepath.Join(packaged, "tools", "utautts-cli.exe"), workspace)
+	if len(renderers) != 1 || filepath.Clean(renderers[0]) != filepath.Join(packaged, "plugins", "renderers") {
+		t.Fatalf("renderer directories = %#v", renderers)
+	}
+	if len(models) != 1 || filepath.Clean(models[0]) != filepath.Join(packaged, "models") {
+		t.Fatalf("model directories = %#v", models)
+	}
+}

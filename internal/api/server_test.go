@@ -121,6 +121,23 @@ func TestJSONAndBatchLimits(t *testing.T) {
 	}
 }
 
+func TestBatchRejectsDuplicateArchiveNamesBeforeSynthesis(t *testing.T) {
+	server := &Server{}
+	request := httptest.NewRequest(http.MethodPost, "/api/synthesize/batch", strings.NewReader(`{"items":[{"name":"audio.wav"},{"name":"audio.wav"}]}`))
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "duplicate batch filename") {
+		t.Fatalf("duplicate batch response = %d %s", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/synthesize/batch", strings.NewReader(`{"items":[{"name":".."},{"name":"utterance-1.wav"}]}`))
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("unsafe batch name response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestSynthesizeEndpointReportsWaveformRenderer(t *testing.T) {
 	root := t.TempDir()
 	wavPath := filepath.Join(root, "a.wav")
@@ -320,6 +337,10 @@ func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
 	}
 
 	makeBank("beta", "ベータ")
+	if first.Voicebanks[0].OtoFileCount != 1 || first.Voicebanks[0].PhonemeCount != 1 || first.Voicebanks[0].DiagnosticCount != 0 {
+		t.Fatalf("voicebank metadata = %#v", first.Voicebanks[0])
+	}
+
 	request = httptest.NewRequest(http.MethodPost, "/api/voicebanks/reload", nil)
 	response = httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)

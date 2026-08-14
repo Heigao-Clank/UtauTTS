@@ -94,3 +94,20 @@ func TestReadIniNormalizesWindowsRelativePath(t *testing.T) {
 		t.Fatalf("filename = %q, want %q", got, want)
 	}
 }
+
+func TestReadIniRejectsNonFiniteParameters(t *testing.T) {
+	dir := t.TempDir()
+	for _, value := range []string{"NaN", "Inf", "-Inf"} {
+		path := filepath.Join(dir, value+".ini")
+		if err := os.WriteFile(path, []byte("a.wav=alias,"+value+",0,0,0,0\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		ini, err := ReadIni(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ini.Entries) != 0 || len(ini.Diagnostics) != 1 {
+			t.Fatalf("accepted non-finite parameter %q: %#v", value, ini)
+		}
+	}
+}

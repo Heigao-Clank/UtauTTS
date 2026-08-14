@@ -196,20 +196,49 @@ func (catalog *Catalog) Model(id string) (Model, bool) {
 }
 
 func DefaultDirectories() (rendererDirectories, modelDirectories []string) {
-	if executable, err := os.Executable(); err == nil {
+	var executable, current string
+	if path, err := os.Executable(); err == nil {
+		executable = path
+	}
+	if path, err := os.Getwd(); err == nil {
+		current = path
+	}
+	return defaultDirectories(executable, current)
+}
+
+func defaultDirectories(executable, current string) (rendererDirectories, modelDirectories []string) {
+	var packagedRendererDirectory, packagedModelDirectory string
+	if executable != "" {
 		root := filepath.Dir(executable)
 		if strings.EqualFold(filepath.Base(root), "tools") || strings.EqualFold(filepath.Base(root), "app") {
 			root = filepath.Dir(root)
 		}
-		rendererDirectories = append(rendererDirectories, filepath.Join(root, "plugins", "renderers"))
-		modelDirectories = append(modelDirectories, filepath.Join(root, "models"))
+		packagedRendererDirectory = filepath.Join(root, "plugins", "renderers")
+		packagedModelDirectory = filepath.Join(root, "models")
+		if isDirectory(packagedRendererDirectory) {
+			rendererDirectories = append(rendererDirectories, packagedRendererDirectory)
+		}
+		if isDirectory(packagedModelDirectory) {
+			modelDirectories = append(modelDirectories, packagedModelDirectory)
+		}
 	}
-	if current, err := os.Getwd(); err == nil {
+	if current != "" {
 		root := workspaceRoot(current)
-		rendererDirectories = append(rendererDirectories, filepath.Join(root, "plugins", "renderers"))
-		modelDirectories = append(modelDirectories, filepath.Join(root, "models"))
+		workspaceRendererDirectory := filepath.Join(root, "plugins", "renderers")
+		workspaceModelDirectory := filepath.Join(root, "models")
+		if len(rendererDirectories) == 0 {
+			rendererDirectories = append(rendererDirectories, workspaceRendererDirectory)
+		}
+		if len(modelDirectories) == 0 {
+			modelDirectories = append(modelDirectories, workspaceModelDirectory)
+		}
 	}
-	return
+	return uniqueDirectories(rendererDirectories), uniqueDirectories(modelDirectories)
+}
+
+func isDirectory(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 func workspaceRoot(start string) string {

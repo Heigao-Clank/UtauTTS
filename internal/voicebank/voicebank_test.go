@@ -58,6 +58,18 @@ func TestLoadRejectsDirectoryWithoutOto(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsOtoSourceOutsideVoicebank(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "bank")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(root, "oto.ini"), "../outside.wav=alias,0,0,0,0,0\n")
+	if _, err := Load(root); err == nil {
+		t.Fatal("accepted oto source outside voicebank root")
+	}
+}
+
 func write(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

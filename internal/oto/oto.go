@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -145,6 +146,9 @@ func parseLine(line, baseDir string) (Entry, error) {
 		parsed, err := strconv.ParseFloat(value, 64)
 		if err != nil {
 			return Entry{}, fmt.Errorf("invalid parameter %d %q", i+1, value)
+		}
+		if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return Entry{}, fmt.Errorf("parameter %d %q must be finite", i+1, value)
 		}
 		values[i] = parsed
 	}

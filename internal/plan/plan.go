@@ -2,6 +2,7 @@ package plan
 
 import (
 	"fmt"
+	"math"
 
 	"utautts/internal/frontend"
 	"utautts/internal/prosody"
@@ -104,6 +105,12 @@ type Unit struct {
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {
+	if math.IsNaN(cfg.MoraDurationMS) || math.IsInf(cfg.MoraDurationMS, 0) {
+		return nil, fmt.Errorf("mora duration must be finite, got %v", cfg.MoraDurationMS)
+	}
+	if math.IsNaN(cfg.PauseDurationMS) || math.IsInf(cfg.PauseDurationMS, 0) {
+		return nil, fmt.Errorf("pause duration must be finite, got %v", cfg.PauseDurationMS)
+	}
 	if cfg.MoraDurationMS <= 0 {
 		cfg.MoraDurationMS = 140
 	}

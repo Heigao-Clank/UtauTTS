@@ -83,6 +83,11 @@ func Load(root string) (*Bank, error) {
 			return nil, err
 		}
 		for alias, entries := range ini.Entries {
+			for _, entry := range entries {
+				if !sourcePathWithin(absRoot, entry.Filename) {
+					return nil, fmt.Errorf("oto entry %q in %s points outside voicebank root", entry.Filename, path)
+				}
+			}
 			bank.Entries[alias] = append(bank.Entries[alias], entries...)
 		}
 		for _, diagnostic := range ini.Diagnostics {
@@ -94,6 +99,27 @@ func Load(root string) (*Bank, error) {
 		}
 	}
 	return bank, nil
+}
+
+func sourcePathWithin(root, candidate string) bool {
+	root = filepath.Clean(root)
+	candidate = filepath.Clean(candidate)
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return false
+	}
+
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return true
+	}
+	resolvedParent, err := filepath.EvalSymlinks(filepath.Dir(candidate))
+	if err != nil {
+		return true
+	}
+	resolvedCandidate := filepath.Join(resolvedParent, filepath.Base(candidate))
+	resolvedRelative, err := filepath.Rel(resolvedRoot, resolvedCandidate)
+	return err == nil && resolvedRelative != ".." && !strings.HasPrefix(resolvedRelative, ".."+string(filepath.Separator)) && !filepath.IsAbs(resolvedRelative)
 }
 
 func (b *Bank) Aliases() []string {

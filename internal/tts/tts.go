@@ -59,6 +59,9 @@ type Result struct {
 }
 
 func Synthesize(cfg Config) (*Result, error) {
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
 	bank := cfg.Voicebank
 	var err error
 	if bank == nil {
@@ -221,6 +224,35 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 	return &Result{Voicebank: bank, Plan: synthesisPlan, Audio: pcm}, nil
+}
+
+func validateConfig(cfg Config) error {
+	finite := map[string]float64{
+		"mora_duration_ms":          cfg.MoraDurationMS,
+		"pause_duration_ms":         cfg.PauseDurationMS,
+		"release_ms":                cfg.ReleaseMS,
+		"intonation_strength":       cfg.IntonationStrength,
+		"boundary_bridge_ms":        cfg.BoundaryBridgeMS,
+		"boundary_bridge_threshold": cfg.BoundaryBridgeThreshold,
+		"join_score_scale":          cfg.JoinScoreScale,
+	}
+	for name, value := range finite {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("%s must be finite, got %v", name, value)
+		}
+	}
+	for index, factor := range cfg.PitchFactors {
+		if math.IsNaN(factor) || math.IsInf(factor, 0) {
+			return fmt.Errorf("pitch factors: value %d must be finite, got %v", index, factor)
+		}
+	}
+	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > 1 {
+		return fmt.Errorf("intonation_strength must be between 0 and 1, got %v", cfg.IntonationStrength)
+	}
+	if cfg.ReleaseMS < 0 {
+		return fmt.Errorf("release_ms must be non-negative, got %v", cfg.ReleaseMS)
+	}
+	return nil
 }
 
 func mergeManualPitchCurve(base *render.PitchCurve, manual *prosody.PitchContour, mode string) *render.PitchCurve {

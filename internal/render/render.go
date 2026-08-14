@@ -89,6 +89,22 @@ type effectiveTiming struct {
 }
 
 func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	for name, value := range map[string]float64{
+		"release_ms":                cfg.ReleaseMS,
+		"intonation_strength":       cfg.IntonationStrength,
+		"boundary_bridge_ms":        cfg.BoundaryBridgeMS,
+		"boundary_bridge_threshold": cfg.BoundaryBridgeThreshold,
+	} {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return nil, fmt.Errorf("%s must be finite, got %v", name, value)
+		}
+	}
+	if cfg.ReleaseMS < 0 {
+		return nil, fmt.Errorf("release_ms must be non-negative, got %v", cfg.ReleaseMS)
+	}
+	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > 1 {
+		return nil, fmt.Errorf("intonation_strength must be between 0 and 1, got %v", cfg.IntonationStrength)
+	}
 	if !cfg.ApplyPitch {
 		cfg.IntonationStrength = 0
 		cfg.PitchCurve = nil
