@@ -2,6 +2,7 @@
 #include "utautts_abi.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFutureWatcher>
@@ -9,12 +10,47 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QSettings>
 #include <QUuid>
 #include <QtConcurrent>
 #include <memory>
 #include <stdexcept>
 
-Backend::Backend(QObject *parent) : QObject(parent) {}
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
+namespace {
+QDir resourceRoot() {
+    QDir application(QCoreApplication::applicationDirPath());
+    if (application.dirName().compare("app", Qt::CaseInsensitive) == 0) {
+        application.cdUp();
+        return application;
+    }
+
+    QDir candidate(QDir::current());
+    for (int depth = 0; depth < 8; ++depth) {
+        if (candidate.exists("plugins/renderers") || candidate.exists("models") || candidate.exists("voice")) {
+            return candidate;
+        }
+        if (!candidate.cdUp()) {
+            break;
+        }
+    }
+    return application;
+}
+}
+
+Backend::Backend(QObject *parent)
+    : QObject(parent),
+      m_darkMode(QSettings().value("appearance/darkMode", false).toBool()),
+      m_closeLogOnSuccess(QSettings().value("logging/closeOnSuccess", true).toBool()),
+      m_defaultMoraDuration(QSettings().value("synthesis/defaultMoraDuration", 120).toInt()),
+      m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
+      m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()) {
+    m_defaultMoraDuration = qBound(20, m_defaultMoraDuration, 1000);
+    m_defaultPauseDuration = qBound(0, m_defaultPauseDuration, 3000);
+}
 Backend::~Backend() {
     m_activeCalls.waitForFinished();
     if (m_handle) {
@@ -22,11 +58,85 @@ Backend::~Backend() {
     }
 }
 
-void Backend::initialize() {
-    QDir root(QCoreApplication::applicationDirPath());
-    if (!root.exists("voice") && root.cdUp() && !root.exists("voice")) {
-        root = QDir(QCoreApplication::applicationDirPath());
+void Backend::setDarkMode(bool value) {
+    if (m_darkMode == value) {
+        return;
     }
+    m_darkMode = value;
+    QSettings settings;
+    settings.setValue("appearance/darkMode", value);
+    settings.sync();
+    emit themeChanged();
+}
+
+void Backend::setCloseLogOnSuccess(bool value) {
+    if (m_closeLogOnSuccess == value) {
+        return;
+    }
+    m_closeLogOnSuccess = value;
+    QSettings settings;
+    settings.setValue("logging/closeOnSuccess", value);
+    settings.sync();
+    emit logSettingsChanged();
+}
+
+void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch) {
+    const int boundedMoraDuration = qBound(20, moraDuration, 1000);
+    const int boundedPauseDuration = qBound(0, pauseDuration, 3000);
+    if (m_defaultMoraDuration == boundedMoraDuration
+            && m_defaultPauseDuration == boundedPauseDuration
+            && m_defaultApplyPitch == applyPitch) {
+        return;
+    }
+    m_defaultMoraDuration = boundedMoraDuration;
+    m_defaultPauseDuration = boundedPauseDuration;
+    m_defaultApplyPitch = applyPitch;
+    QSettings settings;
+    settings.setValue("synthesis/defaultMoraDuration", m_defaultMoraDuration);
+    settings.setValue("synthesis/defaultPauseDuration", m_defaultPauseDuration);
+    settings.setValue("synthesis/defaultApplyPitch", m_defaultApplyPitch);
+    settings.sync();
+    emit synthesisDefaultsChanged();
+}
+
+void Backend::appendLog(const QString &message) {
+    if (message.trimmed().isEmpty()) {
+        return;
+    }
+    const QString timestamp = QDateTime::currentDateTime().toString("HH:mm:ss");
+    m_logLines.append(QStringLiteral("[%1] %2").arg(timestamp, message));
+    constexpr int maxLogLines = 500;
+    while (m_logLines.size() > maxLogLines) {
+        m_logLines.removeFirst();
+    }
+    emit logsChanged();
+}
+
+void Backend::clearLogs() {
+    if (m_logLines.isEmpty()) {
+        return;
+    }
+    m_logLines.clear();
+    emit logsChanged();
+}
+
+bool Backend::showNativeAboutDialog() {
+#ifdef Q_OS_WIN
+    const QString title = tr("UtauTTSについて");
+    const QString text = QStringLiteral("UtauTTS %1\n\nUTAU音源を利用する音声合成ソフトウェア")
+                             .arg(QCoreApplication::applicationVersion());
+    MessageBoxW(GetActiveWindow(),
+                reinterpret_cast<LPCWSTR>(text.utf16()),
+                reinterpret_cast<LPCWSTR>(title.utf16()),
+                MB_OK | MB_ICONINFORMATION);
+    return true;
+#else
+    return false;
+#endif
+}
+
+void Backend::initialize() {
+    const QDir root = resourceRoot();
     QJsonObject config{{"voice_dir", root.filePath("voice")}};
     config.insert("renderer_directories", QJsonArray{root.filePath("plugins/renderers")});
     config.insert("model_directories", QJsonArray{root.filePath("models")});
@@ -35,7 +145,12 @@ void Backend::initialize() {
     config.insert("openjtalk_dictionary", QDir(runtime).filePath("open_jtalk_dic_utf_8-1.11"));
     QByteArray encoded = QJsonDocument(config).toJson(QJsonDocument::Compact);
     m_handle = UtauTTSCreate(encoded.data());
-    if (!m_handle) { setError(tr("Goバックエンドを初期化できませんでした")); return; }
+    if (!m_handle) {
+        std::unique_ptr<char, decltype(&UtauTTSFree)> detail(UtauTTSLastError(), &UtauTTSFree);
+        const QString message = detail ? QString::fromUtf8(detail.get()) : QString();
+        setError(message.isEmpty() ? tr("Goバックエンドを初期化できませんでした") : message);
+        return;
+    }
     emit connectedChanged();
     try { refreshMetadata(); setError({}); } catch (const std::exception &exception) { setError(QString::fromUtf8(exception.what())); }
 }
@@ -110,16 +225,22 @@ void Backend::reloadVoicebanks() {
 }
 
 void Backend::analyze(const QString &text, const QString &requestId) {
-    const quint64 generation = ++m_analysisGeneration;
+    const quint64 generation = ++m_nextAnalysisGeneration;
+    m_analysisGenerations.insert(requestId, generation);
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
     connect(watcher, &QFutureWatcher<QVariantMap>::finished, this,
             [this, watcher, generation, requestId, text]() {
                 const QVariantMap value = watcher->result();
-                if (generation == m_analysisGeneration) {
+                if (m_analysisGenerations.value(requestId) == generation) {
+                    m_analysisGenerations.remove(requestId);
                     if (value.contains("_error")) {
                         setError(value.value("_error").toString());
                     } else {
-                        emit analysisReady(requestId, text, value);
+                        m_analysisRequestId = requestId;
+                        m_analysisSourceText = text;
+                        m_analysisJson = QString::fromUtf8(
+                            QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact));
+                        emit analysisChanged();
                         setError({});
                     }
                 }
@@ -152,6 +273,7 @@ void Backend::synthesize(const QVariantMap &input) {
     const QString outputPath = m_previewDirectory.filePath(
         "utautts-" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".wav");
     request.insert("output_path", outputPath);
+    appendLog(tr("音声合成を開始しました: %1").arg(request.value("text").toString()));
     setBusy(true);
     setError({});
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
@@ -160,10 +282,14 @@ void Backend::synthesize(const QVariantMap &input) {
                 setBusy(false);
                 const QVariantMap result = watcher->result();
                 if (result.contains("_error")) {
-                    setError(result.value("_error").toString());
+                    const QString error = result.value("_error").toString();
+                    appendLog(tr("音声合成に失敗しました: %1").arg(error));
+                    setError(error);
                 } else {
                     m_previewPath = outputPath;
-                    emit synthesisReady(QUrl::fromLocalFile(outputPath), result);
+                    m_previewUrl = QUrl::fromLocalFile(outputPath);
+                    appendLog(tr("音声合成が完了しました。"));
+                    emit previewReady();
                 }
                 watcher->deleteLater();
                 if (--m_activeCallCount == 0) {

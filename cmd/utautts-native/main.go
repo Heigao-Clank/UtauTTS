@@ -9,6 +9,7 @@ import "C"
 import (
 	"encoding/json"
 	"runtime/cgo"
+	"sync"
 	"unsafe"
 
 	"utautts/internal/native"
@@ -20,6 +21,11 @@ type response struct {
 	Error  string          `json:"error,omitempty"`
 }
 
+var lastCreateError struct {
+	sync.Mutex
+	message string
+}
+
 //export UtauTTSCreate
 func UtauTTSCreate(configJSON *C.char) C.uintptr_t {
 	var data []byte
@@ -28,9 +34,22 @@ func UtauTTSCreate(configJSON *C.char) C.uintptr_t {
 	}
 	engine, err := native.NewJSON(data)
 	if err != nil {
+		lastCreateError.Lock()
+		lastCreateError.message = err.Error()
+		lastCreateError.Unlock()
 		return 0
 	}
+	lastCreateError.Lock()
+	lastCreateError.message = ""
+	lastCreateError.Unlock()
 	return C.uintptr_t(cgo.NewHandle(engine))
+}
+
+//export UtauTTSLastError
+func UtauTTSLastError() *C.char {
+	lastCreateError.Lock()
+	defer lastCreateError.Unlock()
+	return C.CString(lastCreateError.message)
 }
 
 //export UtauTTSCall

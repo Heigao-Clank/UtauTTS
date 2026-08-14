@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"utautts/internal/processutil"
 	"utautts/internal/prosody"
 )
 
@@ -45,6 +46,7 @@ func Analyze(text string, cfg Config) (*Analysis, error) {
 		return nil, err
 	}
 	command := exec.Command(helper, "--dictionary", dictionary)
+	processutil.Configure(command)
 	command.Stdin = bytes.NewReader(request)
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout

@@ -14,6 +14,7 @@ import (
 	"utautts/internal/audio"
 	"utautts/internal/pitch"
 	"utautts/internal/plan"
+	"utautts/internal/processutil"
 )
 
 const worldlineFrameMS = 10.0
@@ -166,6 +167,7 @@ func renderWaveformOpenUtauPitchPostMode(synthesisPlan *plan.Plan, cfg Config, m
 		return nil, err
 	}
 	command := exec.Command(bridge, manifestPath)
+	processutil.Configure(command)
 	if output, err := command.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("worldline post-process bridge failed: %w: %s", err, output)
 	}
@@ -283,7 +285,10 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		unit.EffectiveOverlapMS = timings[i].overlapMS
 		unit.IntonationFactor = 1
 	}
-	intonation := analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
+	intonation := identityFactors(len(synthesisPlan.Units))
+	if cfg.ApplyPitch {
+		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
+	}
 	pitches, sampleRate, err := measureWorldlinePitches(synthesisPlan, &cache)
 	if err != nil {
 		return nil, err
@@ -296,9 +301,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	pitchFactors := make([]float64, len(synthesisPlan.Units))
 	for i, unit := range synthesisPlan.Units {
 		pitchFactors[i] = intonation[i]
-		if unit.PitchFactor > 0 {
-			pitchFactors[i] *= unit.PitchFactor
-		}
+		pitchFactors[i] *= effectiveUnitPitchFactor(unit, cfg.ApplyPitch)
 	}
 	frameMS := worldlineFrameMS
 	if strings.HasPrefix(engine, "r2-") {
@@ -399,6 +402,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		return nil, err
 	}
 	command := exec.Command(bridge, manifestPath)
+	processutil.Configure(command)
 	if output, err := command.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("worldline bridge failed: %w: %s", err, output)
 	}

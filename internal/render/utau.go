@@ -14,6 +14,7 @@ import (
 
 	"utautts/internal/audio"
 	"utautts/internal/plan"
+	"utautts/internal/processutil"
 )
 
 const utauPitchFrameMS = 60000.0 / 120.0 * 5.0 / 480.0
@@ -52,7 +53,7 @@ func renderUTAUClassic(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error)
 		unit.IntonationFactor = 1
 	}
 	intonation := identityFactors(len(synthesisPlan.Units))
-	if cfg.IntonationStrength > 0 {
+	if cfg.ApplyPitch && cfg.IntonationStrength > 0 {
 		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
 	}
 	pitches, _, err := measureWorldlinePitches(synthesisPlan, &cache)
@@ -70,9 +71,7 @@ func renderUTAUClassic(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error)
 			sourceF0 = reference
 		}
 		factor := intonation[i]
-		if unit.PitchFactor > 0 {
-			factor *= unit.PitchFactor
-		}
+		factor *= effectiveUnitPitchFactor(unit, cfg.ApplyPitch)
 		targets[i] = sourceF0 * factor
 		unit.SourceF0Hz = pitches[i]
 		unit.TargetF0Hz = targets[i] * pitchCurveFactorAt(cfg.PitchCurve, unit.NoteStartMS)
@@ -127,7 +126,9 @@ func renderUTAUClassic(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error)
 		utauClassicCache.Unlock()
 		pcm := cached
 		if pcm == nil {
-			if result, runErr := exec.Command(resampler, args...).CombinedOutput(); runErr != nil {
+			command := exec.Command(resampler, args...)
+			processutil.Configure(command)
+			if result, runErr := command.CombinedOutput(); runErr != nil {
 				return nil, fmt.Errorf("UTAU resampler failed for %q: %w: %s", unit.Alias, runErr, result)
 			}
 			pcm, err = audio.ReadWav(output)
