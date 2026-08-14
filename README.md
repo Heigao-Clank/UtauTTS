@@ -49,7 +49,7 @@ v8モデルを明示する場合は、次のようにモデルIDと互換Rendere
   --text "あらゆる現実をすべて自分のほうへねじ曲げたのだ。"
 ```
 
-モデルやRendererの追加・互換性は [docs/plugins.md](docs/plugins.md)、ピッチ編集は [docs/manual-pitch.md](docs/manual-pitch.md) を参照してください。
+モデルやRendererの追加・互換性は [docs/plugins.md](docs/plugins.md)、ピッチ編集は [docs/manual-pitch.md](docs/manual-pitch.md)、辞書設定は [docs/dictionary.md](docs/dictionary.md) を参照してください。
 
 ### HTTP Server
 
