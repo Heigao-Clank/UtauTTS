@@ -9,6 +9,7 @@ $guiModelsPath = Join-Path $guiPath 'models'
 $guiPluginsPath = Join-Path $guiPath 'plugins'
 $serverRuntimePath = Join-Path $serverPath 'runtime'
 $serverModelsPath = Join-Path $serverPath 'models'
+$serverPluginsPath = Join-Path $serverPath 'plugins'
 $guiZip = Join-Path $releaseRoot 'UtauTTS-win-x64.zip'
 $serverZip = Join-Path $releaseRoot 'UtauTTS-Server-win-x64.zip'
 $bundledVoicebankDirectory = Join-Path $root 'voice'
@@ -46,7 +47,7 @@ function Expand-BundledVoicebank([string]$Destination) {
 
 Reset-Directory $guiPath
 Reset-Directory $serverPath
-New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $guiModelsPath, $guiPluginsPath, $serverRuntimePath, $serverModelsPath | Out-Null
+New-Item -ItemType Directory -Force -Path $guiToolsPath, $guiRuntimePath, $guiModelsPath, $guiPluginsPath, $serverRuntimePath, $serverModelsPath, $serverPluginsPath | Out-Null
 foreach ($zip in @($guiZip, $serverZip)) {
     if (Test-Path -LiteralPath $zip) {
         Remove-Item -Force -LiteralPath $zip
@@ -140,7 +141,7 @@ try {
     $bundledModels | Copy-Item -Destination $guiModelsPath
     $bundledModels | Copy-Item -Destination $serverModelsPath
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $guiPluginsPath -Recurse
-    Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination (Join-Path $serverPath 'plugins') -Recurse
+    Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $serverPluginsPath -Recurse
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
     Copy-Item -Path 'docs/*' -Destination $guiDocs -Recurse

@@ -4,6 +4,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$standaloneDevelopmentPackage = [string]::IsNullOrWhiteSpace($OutputDirectory)
 $nativeDir = Join-Path $root 'build/native'
 $qtBuildDir = Join-Path $root 'build/qt'
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = Join-Path $root 'build/qt-package' }
@@ -55,6 +56,12 @@ try {
     Push-Location $nativeDir
     try {
         & $gendef 'utautts_native.dll'; if ($LASTEXITCODE -ne 0) { throw 'gendef failed' }
+        $nativeDefinition = Get-Content -LiteralPath 'utautts_native.def' -Raw
+        $requiredExports = @('UtauTTSCreate','UtauTTSLastError','UtauTTSCall','UtauTTSDestroy','UtauTTSFree')
+        $missingExports = @($requiredExports | Where-Object { $nativeDefinition -notmatch "(?m)^$([regex]::Escape($_))\s*$" })
+        if ($missingExports.Count -gt 0) {
+            throw "Go native DLL is missing C exports: $($missingExports -join ', '). Keep each //export directive directly above its Go function."
+        }
         & $dlltool -d 'utautts_native.def' -l 'utautts_native.dll.a' -D 'utautts_native.dll'; if ($LASTEXITCODE -ne 0) { throw 'dlltool failed' }
     } finally { Pop-Location }
 } finally { $env:CGO_ENABLED=$previousCgo;$env:CC=$previousCC;$env:CXX=$previousCXX;$env:GOCACHE=$previousGoCache;$env:Path=$previousPath }
@@ -70,15 +77,47 @@ Copy-Item -LiteralPath $executable.FullName -Destination (Join-Path $appDirector
 Copy-Item -LiteralPath (Join-Path $nativeDir 'utautts_native.dll') -Destination $appDirectory -Force
 & $deployTool --release --qmldir (Join-Path $root 'qt/qml') (Join-Path $appDirectory 'utautts-gui.exe')
 if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
+$previousLauncherGoCache = $env:GOCACHE
+$env:GOCACHE = Join-Path $root '.tmp-go-cache'
 Push-Location $root
 try {
     & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $OutputDirectory 'utautts.exe') ./cmd/utautts-launcher
     if ($LASTEXITCODE -ne 0) { throw 'Qt launcher build failed' }
-} finally { Pop-Location }
+} finally {
+    Pop-Location
+    $env:GOCACHE = $previousLauncherGoCache
+}
 $staleDeployDirectories = @('generic','iconengines','imageformats','multimedia','networkinformation','platforms','qml','qmltooling','tls','translations')
 foreach ($name in $staleDeployDirectories) {
 	$stalePath = Join-Path $OutputDirectory $name
 	if (Test-Path -LiteralPath $stalePath -PathType Container) { Remove-Item -LiteralPath $stalePath -Recurse -Force }
 }
 Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.dll' -File | Remove-Item -Force
+if ($standaloneDevelopmentPackage) {
+    foreach ($name in @('models','plugins','runtime','voice')) {
+        $assetPath = Join-Path $OutputDirectory $name
+        if (Test-Path -LiteralPath $assetPath) { Remove-Item -LiteralPath $assetPath -Recurse -Force }
+    }
+    Copy-Item -LiteralPath (Join-Path $root 'models') -Destination (Join-Path $OutputDirectory 'models') -Recurse
+    New-Item -ItemType Directory -Force -Path (Join-Path $OutputDirectory 'plugins') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination (Join-Path $OutputDirectory 'plugins') -Recurse
+    $runtimeCandidates = @(
+        (Join-Path $root 'runtime'),
+        (Join-Path $root 'release/UtauTTS/runtime')
+    )
+    $runtimeSource = $runtimeCandidates | Where-Object {
+        Test-Path -LiteralPath (Join-Path $_ 'utautts-openjtalk-features.exe') -PathType Leaf
+    } | Select-Object -First 1
+    if ($runtimeSource) {
+        Copy-Item -LiteralPath $runtimeSource -Destination (Join-Path $OutputDirectory 'runtime') -Recurse
+    } else {
+        Write-Warning 'Runtime assets were not found. Run build.bat once to prepare Open JTalk and WORLDLINE assets.'
+    }
+    $voiceDirectory = Join-Path $OutputDirectory 'voice'
+    New-Item -ItemType Directory -Force -Path $voiceDirectory | Out-Null
+    $voiceArchives = @(Get-ChildItem -LiteralPath (Join-Path $root 'voice') -Filter '*.zip' -File)
+    foreach ($archive in $voiceArchives) {
+        Expand-Archive -LiteralPath $archive.FullName -DestinationPath $voiceDirectory
+    }
+}
 Write-Host "Built Qt package at $OutputDirectory"

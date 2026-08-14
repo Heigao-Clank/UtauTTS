@@ -33,7 +33,7 @@ aliasのtarget優先度は配列位置ではなく意味的tierで付けます�
 
 ## レンダラ
 
-RendererのID、表示名、説明、機能、既定優先度、必要資産は個別の`plugins/renderers/*/plugin.json`が所有します。Go側に残すのはbackend実装のdispatchだけです。抑揚モデルもJSON自身に`id`、`display_name`、`description`、`recommended_renderers`を持ちます。Qt、旧GUI、CLI、HTTP APIは共通catalogから列挙し、release scriptは特定バージョン名を推測しません。形式と追加方法は[モデル／Rendererプラグイン](plugins.md)を参照してください。
+RendererのID、表示名、説明、機能、既定優先度、必要資産は個別の`plugins/renderers/*/plugin.json`が所有します。Go側に残すのはbackend実装のdispatchだけです。抑揚モデルもJSON自身に`id`、`display_name`、`description`、`recommended_renderers`を持ちます。Qt GUI、CLI、HTTP APIは共通catalogから列挙し、release scriptは特定バージョン名を推測しません。形式と追加方法は[モデル／Rendererプラグイン](plugins.md)を参照してください。
 
 ### waveform
 

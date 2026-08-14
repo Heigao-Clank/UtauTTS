@@ -27,6 +27,8 @@ Rendererは`plugins/renderers/<plugin>/plugin.json`を1つ持ちます。
 
 `id`は保存データやAPIで使うプラグイン固有ID、`backend`はUtauTTSが実行する実装adapterです。この分離により、同じbackendへ異なる名前・資産・既定値を持つ複数のRendererを追加できます。現在のmanifest APIは組み込みbackendの構成をプラグイン化するもので、任意native codeをプロセスへロードしません。
 
+壊れたmanifest、未対応backend、Renderer IDの重複は起動時エラーになります。有効な項目だけを表示して問題を黙って無視することはありません。モデルJSONの破損とモデルIDの重複も同様です。identityを持たない研究用JSONはモデルpluginではないため走査対象から除外されます。
+
 `default_priority`が最大のものが既定Rendererです。同値の場合は`display_name`順です。`acceleration`には`cpu`、`cuda`、`directml`のいずれかを指定でき、GUIは利用可能な実行デバイスとモデルの`recommended_renderers`を照合して初期Rendererを選びます。CLI/serverの`--renderer`はこれを明示的に上書きします。必要DLLやモデルはmanifestからの相対pathを`assets`へ記述します。
 
 認識するasset key:

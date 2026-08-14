@@ -2,7 +2,7 @@
 
 GUI版には、メカニカルガール公式配布の「足立レイ UTAU音源 ver3.5.0」を初期ボイスバンクとして同梱します。リポジトリでは公式ZIPを`voice/足立レイver3.5.0.zip`に保持し、リリースビルド時に`voice/足立レイver3.5.0`へ展開します。
 
-GUIは`character.txt`の`name`と`image`を読み、BMPを音源選択欄へ表示します。画像枠を押すと`character.txt`とルートのreadmeを別ウィンドウで確認できます。UTF-8、Shift_JIS、BOM付きUTF-16LE/BEを判別し、`image`が音源ディレクトリ外を指す場合は読み込みません。
+GUIは`character.txt`の`name`と`image`を読み、画像を発話行と音源選択欄へ表示します。発話行の画像はドラッグによる並べ替えハンドルとして機能します。UTF-8、Shift_JIS、BOM付きUTF-16LE/BEを判別し、`image`が音源ディレクトリ外を指す場合は読み込みません。
 
 ## 利用条件
 
