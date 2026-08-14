@@ -29,6 +29,9 @@ class Backend final : public QObject {
     Q_PROPERTY(int defaultMoraDuration READ defaultMoraDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(int defaultPauseDuration READ defaultPauseDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(bool defaultApplyPitch READ defaultApplyPitch NOTIFY synthesisDefaultsChanged)
+    Q_PROPERTY(QString synthesizeShortcut READ synthesizeShortcut NOTIFY shortcutSettingsChanged)
+    Q_PROPERTY(QString saveProjectShortcut READ saveProjectShortcut NOTIFY shortcutSettingsChanged)
+    Q_PROPERTY(QString reloadVoicebanksShortcut READ reloadVoicebanksShortcut NOTIFY shortcutSettingsChanged)
     Q_PROPERTY(QStringList logLines READ logLines NOTIFY logsChanged)
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -50,6 +53,9 @@ public:
     int defaultMoraDuration() const { return m_defaultMoraDuration; }
     int defaultPauseDuration() const { return m_defaultPauseDuration; }
     bool defaultApplyPitch() const { return m_defaultApplyPitch; }
+    QString synthesizeShortcut() const { return m_synthesizeShortcut; }
+    QString saveProjectShortcut() const { return m_saveProjectShortcut; }
+    QString reloadVoicebanksShortcut() const { return m_reloadVoicebanksShortcut; }
     QStringList logLines() const { return m_logLines; }
 
     Q_INVOKABLE void initialize();
@@ -66,6 +72,7 @@ public:
     Q_INVOKABLE void clearLogs();
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
     Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);
+    Q_INVOKABLE void setShortcutSequences(const QString &synthesize, const QString &saveProject, const QString &reloadVoicebanks);
 
 signals:
     void connectedChanged();
@@ -77,6 +84,7 @@ signals:
     void themeChanged();
     void logSettingsChanged();
     void synthesisDefaultsChanged();
+    void shortcutSettingsChanged();
     void logsChanged();
 
 private:
@@ -101,6 +109,9 @@ private:
     int m_defaultMoraDuration = 120;
     int m_defaultPauseDuration = 180;
     bool m_defaultApplyPitch = true;
+    QString m_synthesizeShortcut;
+    QString m_saveProjectShortcut;
+    QString m_reloadVoicebanksShortcut;
     QStringList m_logLines;
     QHash<QString, quint64> m_analysisGenerations;
     quint64 m_nextAnalysisGeneration = 0;

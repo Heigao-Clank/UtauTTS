@@ -49,7 +49,10 @@ Backend::Backend(QObject *parent)
       m_closeLogOnSuccess(QSettings().value("logging/closeOnSuccess", true).toBool()),
       m_defaultMoraDuration(QSettings().value("synthesis/defaultMoraDuration", 120).toInt()),
       m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
-      m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()) {
+      m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()),
+      m_synthesizeShortcut(QSettings().value("shortcuts/synthesize", QStringLiteral("Ctrl+Enter")).toString()),
+      m_saveProjectShortcut(QSettings().value("shortcuts/saveProject", QStringLiteral("Ctrl+S")).toString()),
+      m_reloadVoicebanksShortcut(QSettings().value("shortcuts/reloadVoicebanks", QStringLiteral("Ctrl+O")).toString()) {
     m_defaultMoraDuration = qBound(20, m_defaultMoraDuration, 1000);
     m_defaultPauseDuration = qBound(0, m_defaultPauseDuration, 3000);
 }
@@ -101,6 +104,23 @@ void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration, bool app
     emit synthesisDefaultsChanged();
 }
 
+void Backend::setShortcutSequences(const QString &synthesize, const QString &saveProject, const QString &reloadVoicebanks) {
+    if (m_synthesizeShortcut == synthesize
+            && m_saveProjectShortcut == saveProject
+            && m_reloadVoicebanksShortcut == reloadVoicebanks) {
+        return;
+    }
+    m_synthesizeShortcut = synthesize.trimmed();
+    m_saveProjectShortcut = saveProject.trimmed();
+    m_reloadVoicebanksShortcut = reloadVoicebanks.trimmed();
+    QSettings settings;
+    settings.setValue("shortcuts/synthesize", m_synthesizeShortcut);
+    settings.setValue("shortcuts/saveProject", m_saveProjectShortcut);
+    settings.setValue("shortcuts/reloadVoicebanks", m_reloadVoicebanksShortcut);
+    settings.sync();
+    emit shortcutSettingsChanged();
+}
+
 void Backend::appendLog(const QString &message) {
     if (message.trimmed().isEmpty()) {
         return;
@@ -125,7 +145,7 @@ void Backend::clearLogs() {
 bool Backend::showNativeAboutDialog() {
 #ifdef Q_OS_WIN
     const QString title = tr("UtauTTSについて");
-    const QString text = QStringLiteral("UtauTTS %1 by yh\n\nUTAUボイスバンクの原音の選択と自然なつなぎ方を学習する日本語TTSソフトウェア")
+    const QString text = QStringLiteral("UtauTTS %1 by yh\n\nUTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS")
                              .arg(QCoreApplication::applicationVersion());
     MessageBoxW(GetActiveWindow(),
                 reinterpret_cast<LPCWSTR>(text.utf16()),

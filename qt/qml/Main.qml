@@ -56,6 +56,25 @@ ApplicationWindow {
     property int batchExportCompleted: 0
     property url batchExportDirectory
 
+    Shortcut {
+        sequence: window.qtShortcutSequence(window.appBackend.synthesizeShortcut)
+        enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
+                 && utterances.count > 0 && window.current().content.trim().length > 0
+        onActivated: window.synthesizeCurrent()
+    }
+
+    Shortcut {
+        sequence: window.qtShortcutSequence(window.appBackend.saveProjectShortcut)
+        enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
+        onActivated: window.openProjectSaveDialog()
+    }
+
+    Shortcut {
+        sequence: window.qtShortcutSequence(window.appBackend.reloadVoicebanksShortcut)
+        enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
+        onActivated: window.appBackend.reloadVoicebanks()
+    }
+
     ListModel {
         id: utterances
     }
@@ -189,6 +208,9 @@ ApplicationWindow {
         property bool pendingApplyPitch: true
         property bool pendingDarkMode: false
         property bool pendingCloseLogOnSuccess: true
+        property string pendingSynthesizeShortcut: "Ctrl+Enter"
+        property string pendingSaveProjectShortcut: "Ctrl+S"
+        property string pendingReloadVoicebanksShortcut: "Ctrl+O"
 
         function loadCurrent() {
             pendingMoraDuration = window.appBackend.defaultMoraDuration;
@@ -196,7 +218,59 @@ ApplicationWindow {
             pendingApplyPitch = window.appBackend.defaultApplyPitch;
             pendingDarkMode = window.appBackend.darkMode;
             pendingCloseLogOnSuccess = window.appBackend.closeLogOnSuccess;
+            pendingSynthesizeShortcut = window.appBackend.synthesizeShortcut;
+            pendingSaveProjectShortcut = window.appBackend.saveProjectShortcut;
+            pendingReloadVoicebanksShortcut = window.appBackend.reloadVoicebanksShortcut;
             themeCombo.currentIndex = pendingDarkMode ? 1 : 0;
+        }
+
+        function shortcutFromEvent(event) {
+            const key = event.key;
+            if (key === Qt.Key_Control || key === Qt.Key_Shift || key === Qt.Key_Alt || key === Qt.Key_Meta)
+                return "";
+
+            const parts = [];
+            if (event.modifiers & Qt.ControlModifier)
+                parts.push("Ctrl");
+            if (event.modifiers & Qt.AltModifier)
+                parts.push("Alt");
+            if (event.modifiers & Qt.ShiftModifier)
+                parts.push("Shift");
+            if (event.modifiers & Qt.MetaModifier)
+                parts.push("Meta");
+
+            let keyName = "";
+            if (key >= Qt.Key_A && key <= Qt.Key_Z)
+                keyName = String.fromCharCode(key);
+            else if (key >= Qt.Key_0 && key <= Qt.Key_9)
+                keyName = String.fromCharCode(key);
+            else if (key >= Qt.Key_F1 && key <= Qt.Key_F35)
+                keyName = "F" + (key - Qt.Key_F1 + 1);
+            else {
+                switch (key) {
+                case Qt.Key_Return:
+                case Qt.Key_Enter: keyName = "Enter"; break;
+                case Qt.Key_Space: keyName = "Space"; break;
+                case Qt.Key_Tab:
+                case Qt.Key_Backtab: keyName = "Tab"; break;
+                case Qt.Key_Escape: keyName = "Esc"; break;
+                case Qt.Key_Left: keyName = "Left"; break;
+                case Qt.Key_Right: keyName = "Right"; break;
+                case Qt.Key_Up: keyName = "Up"; break;
+                case Qt.Key_Down: keyName = "Down"; break;
+                case Qt.Key_Home: keyName = "Home"; break;
+                case Qt.Key_End: keyName = "End"; break;
+                case Qt.Key_PageUp: keyName = "PageUp"; break;
+                case Qt.Key_PageDown: keyName = "PageDown"; break;
+                case Qt.Key_Insert: keyName = "Insert"; break;
+                case Qt.Key_Delete: keyName = "Delete"; break;
+                case Qt.Key_Plus: keyName = "Plus"; break;
+                case Qt.Key_Minus: keyName = "Minus"; break;
+                case Qt.Key_Comma: keyName = "Comma"; break;
+                case Qt.Key_Period: keyName = "Period"; break;
+                }
+            }
+            return keyName ? parts.concat([keyName]).join("+") : "";
         }
 
         RowLayout {
@@ -209,7 +283,7 @@ ApplicationWindow {
                 Layout.preferredWidth: 170
                 Layout.fillHeight: true
                 clip: true
-                model: ["音声合成", "表示", "ログ"]
+                model: ["音声合成", "表示", "ログ", "ショートカット"]
                 currentIndex: settingsWindow.currentPage
 
                 delegate: ItemDelegate {
@@ -366,6 +440,106 @@ ApplicationWindow {
                             }
                         }
                     }
+
+                    ScrollView {
+                        id: shortcutSettingsPage
+                        contentWidth: availableWidth
+
+                        ColumnLayout {
+                            width: shortcutSettingsPage.availableWidth
+                            spacing: 12
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: "変更したい欄を選択して、割り当てるキーを押してください。Backspaceで無効にできます。"
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "音声合成"
+                                }
+                                TextField {
+                                    id: synthesizeShortcutField
+                                    Layout.preferredWidth: 180
+                                    text: settingsWindow.pendingSynthesizeShortcut
+                                    readOnly: true
+                                    selectByMouse: false
+                                    onActiveFocusChanged: if (activeFocus) selectAll()
+                                    Keys.onPressed: event => {
+                                        if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+                                            settingsWindow.pendingSynthesizeShortcut = "";
+                                            event.accepted = true;
+                                            return;
+                                        }
+                                        const sequence = settingsWindow.shortcutFromEvent(event);
+                                        if (sequence.length) {
+                                            settingsWindow.pendingSynthesizeShortcut = sequence;
+                                            event.accepted = true;
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "プロジェクト保存"
+                                }
+                                TextField {
+                                    id: saveProjectShortcutField
+                                    Layout.preferredWidth: 180
+                                    text: settingsWindow.pendingSaveProjectShortcut
+                                    readOnly: true
+                                    selectByMouse: false
+                                    onActiveFocusChanged: if (activeFocus) selectAll()
+                                    Keys.onPressed: event => {
+                                        if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+                                            settingsWindow.pendingSaveProjectShortcut = "";
+                                            event.accepted = true;
+                                            return;
+                                        }
+                                        const sequence = settingsWindow.shortcutFromEvent(event);
+                                        if (sequence.length) {
+                                            settingsWindow.pendingSaveProjectShortcut = sequence;
+                                            event.accepted = true;
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "ボイスバンク再読み込み"
+                                }
+                                TextField {
+                                    id: reloadVoicebanksShortcutField
+                                    Layout.preferredWidth: 180
+                                    text: settingsWindow.pendingReloadVoicebanksShortcut
+                                    readOnly: true
+                                    selectByMouse: false
+                                    onActiveFocusChanged: if (activeFocus) selectAll()
+                                    Keys.onPressed: event => {
+                                        if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+                                            settingsWindow.pendingReloadVoicebanksShortcut = "";
+                                            event.accepted = true;
+                                            return;
+                                        }
+                                        const sequence = settingsWindow.shortcutFromEvent(event);
+                                        if (sequence.length) {
+                                            settingsWindow.pendingReloadVoicebanksShortcut = sequence;
+                                            event.accepted = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 RowLayout {
@@ -386,7 +560,7 @@ ApplicationWindow {
         id: aboutDialog
         title: "UtauTTSについて"
         text: "UtauTTS " + Qt.application.version + " by yh"
-        informativeText: "UTAUボイスバンクの原音の選択と自然なつなぎ方を学習する日本語TTSソフトウェア"
+        informativeText: "UTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS"
         buttons: MessageDialog.Ok
     }
 
@@ -1343,6 +1517,13 @@ ApplicationWindow {
         return utterances.get(selectedIndex);
     }
 
+    function qtShortcutSequence(sequence) {
+        const parts = String(sequence || "").split("+");
+        if (parts.length && parts[parts.length - 1] === "Enter")
+            parts[parts.length - 1] = "Return";
+        return parts.join("+");
+    }
+
     function showVoicebankDetails() {
         if (!window.appBackend.voicebanks.length)
             return;
@@ -1360,6 +1541,9 @@ ApplicationWindow {
         window.appBackend.setSynthesisDefaults(settingsWindow.pendingMoraDuration, settingsWindow.pendingPauseDuration, settingsWindow.pendingApplyPitch);
         window.appBackend.setDarkMode(settingsWindow.pendingDarkMode);
         window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
+        window.appBackend.setShortcutSequences(settingsWindow.pendingSynthesizeShortcut,
+                                               settingsWindow.pendingSaveProjectShortcut,
+                                               settingsWindow.pendingReloadVoicebanksShortcut);
         settingsWindow.close();
         settingsWindow.visible = false;
     }
