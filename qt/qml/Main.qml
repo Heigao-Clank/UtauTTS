@@ -55,6 +55,10 @@ ApplicationWindow {
     property int batchExportOriginalIndex: 0
     property int batchExportCompleted: 0
     property url batchExportDirectory
+    property bool projectDirty: false
+    property bool metadataInitialized: false
+    property bool closeAfterProjectSave: false
+    property bool closeBypass: false
 
     Shortcut {
         sequence: window.qtShortcutSequence(window.appBackend.synthesizeShortcut)
@@ -130,6 +134,7 @@ ApplicationWindow {
         nameFilters: ["UtauTTSプロジェクト (*.utautts)"]
         defaultSuffix: "utautts"
         onAccepted: window.saveProjectTo(selectedFile)
+        onRejected: window.closeAfterProjectSave = false
     }
 
     FileDialog {
@@ -137,6 +142,59 @@ ApplicationWindow {
         fileMode: FileDialog.OpenFile
         nameFilters: ["UtauTTSプロジェクト (*.utautts)"]
         onAccepted: window.loadProjectFrom(selectedFile)
+    }
+
+    Dialog {
+        id: closeWarningDialog
+        title: "終了の確認"
+        modal: true
+        width: Math.min(window.width - 40, 460)
+        anchors.centerIn: Overlay.overlay
+        closePolicy: Popup.NoAutoClose
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: window.appBackend.busy || window.batchExportActive
+                      ? "音声合成が実行中です。終了しますか？"
+                      : "未保存の変更があります。保存せずに終了しますか？"
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    text: "キャンセル"
+                    onClicked: closeWarningDialog.close()
+                }
+
+                Button {
+                    text: "保存して終了"
+                    enabled: window.projectDirty && !window.appBackend.busy && !window.batchExportActive
+                    onClicked: {
+                        closeWarningDialog.close();
+                        window.closeAfterProjectSave = true;
+                        window.openProjectSaveDialog();
+                    }
+                }
+
+                Button {
+                    text: "保存せずに終了"
+                    onClicked: {
+                        closeWarningDialog.close();
+                        window.quitWithoutWarning();
+                    }
+                }
+            }
+        }
     }
 
     ApplicationWindow {
@@ -689,8 +747,12 @@ ApplicationWindow {
         target: window.appBackend
 
         function onMetadataChanged() {
-            window.assignDefaultVoicebank();
-            window.assignDefaultSynthesisSettings();
+            const suppressDirty = !window.metadataInitialized;
+            window.assignDefaultVoicebank(suppressDirty);
+            window.assignDefaultSynthesisSettings(suppressDirty);
+            window.metadataInitialized = true;
+            if (suppressDirty)
+                window.projectDirty = false;
         }
 
         function onAnalysisChanged() {
@@ -782,7 +844,18 @@ ApplicationWindow {
         }
     }
 
-    Component.onCompleted: addUtterance()
+    Component.onCompleted: addUtterance(false)
+
+    onClosing: close => {
+        if (window.closeBypass) {
+            window.closeBypass = false;
+            return;
+        }
+        if (!window.projectDirty && !window.appBackend.busy && !window.batchExportActive)
+            return;
+        close.accepted = false;
+        closeWarningDialog.open();
+    }
 
     menuBar: MenuBar {
         Menu {
@@ -1715,7 +1788,16 @@ ApplicationWindow {
     function saveProjectTo(destination) {
         if (!destination || !destination.toString().length)
             return;
-        window.appBackend.saveProject(destination, window.projectData());
+        const saved = window.appBackend.saveProject(destination, window.projectData());
+        if (!saved) {
+            window.closeAfterProjectSave = false;
+            return;
+        }
+        window.projectDirty = false;
+        if (window.closeAfterProjectSave) {
+            window.closeAfterProjectSave = false;
+            window.quitWithoutWarning();
+        }
     }
 
     function loadProjectFrom(source) {
@@ -1725,6 +1807,7 @@ ApplicationWindow {
         if (!project || project._error !== undefined || !Array.isArray(project.utterances))
             return;
 
+        window.projectDirty = false;
         window.clearPlayback();
         utterances.clear();
         window.nextUtteranceId = 1;
@@ -1813,11 +1896,13 @@ ApplicationWindow {
         markUtteranceDirty(selectedIndex);
     }
 
-    function markUtteranceDirty(index) {
+    function markUtteranceDirty(index, markProject) {
         if (index < 0 || index >= utterances.count)
             return;
         const item = utterances.get(index);
         utterances.setProperty(index, "revision", item.revision + 1);
+        if (markProject !== false)
+            window.projectDirty = true;
         if (window.audioUtteranceId === item.utteranceId)
             clearPlayback();
     }
@@ -1838,7 +1923,7 @@ ApplicationWindow {
         window.audioRevision = -1;
     }
 
-    function assignDefaultVoicebank() {
+    function assignDefaultVoicebank(suppressDirty) {
         if (!utterances.count || !window.appBackend.voicebanks.length)
             return;
         for (let i = 0; i < utterances.count; ++i) {
@@ -1846,13 +1931,13 @@ ApplicationWindow {
             if (!item.voicebankId || !window.voicebankById(item.voicebankId)) {
                 utterances.setProperty(i, "voicebankId", window.appBackend.voicebanks[0].id);
                 utterances.setProperty(i, "imagePath", window.appBackend.voicebanks[0].image_path || "");
-                markUtteranceDirty(i);
+                markUtteranceDirty(i, suppressDirty !== true);
             }
         }
         selectUtterance(selectedIndex);
     }
 
-    function assignDefaultSynthesisSettings() {
+    function assignDefaultSynthesisSettings(suppressDirty) {
         if (!utterances.count || !window.appBackend.models.length || !window.appBackend.renderers.length)
             return;
         const modelId = window.defaultModelId();
@@ -1869,7 +1954,7 @@ ApplicationWindow {
                 changed = true;
             }
             if (changed)
-                markUtteranceDirty(index);
+                markUtteranceDirty(index, suppressDirty !== true);
         }
         selectUtterance(selectedIndex);
     }
@@ -1944,7 +2029,7 @@ ApplicationWindow {
         window.updateSetting("pauseDuration", 180);
     }
 
-    function addUtterance() {
+    function addUtterance(markDirty) {
         const voice = window.appBackend.voicebanks.length ? window.appBackend.voicebanks[0] : null;
         utterances.append({
             utteranceId: "utterance-" + nextUtteranceId++,
@@ -1963,6 +2048,8 @@ ApplicationWindow {
             applyPitch: window.appBackend.defaultApplyPitch,
             revision: 0
         });
+        if (markDirty !== false)
+            window.projectDirty = true;
         selectUtterance(utterances.count - 1);
         utteranceList.positionViewAtEnd();
     }
@@ -1970,6 +2057,7 @@ ApplicationWindow {
     function removeUtterance() {
         clearPlayback();
         utterances.remove(selectedIndex);
+        window.projectDirty = true;
         if (!utterances.count) {
             selectedIndex = 0;
             pitchEditor.points = [];
@@ -1985,6 +2073,7 @@ ApplicationWindow {
         if (target < 0 || target >= utterances.count)
             return;
         utterances.move(selectedIndex, target, 1);
+        window.projectDirty = true;
         selectedIndex = target;
         utteranceList.positionViewAtIndex(target, ListView.Contain);
     }
@@ -1997,6 +2086,11 @@ ApplicationWindow {
         window.appBackend.clearLogs();
         window.showAuxiliaryWindow(synthesisLogWindow);
         window.appBackend.synthesize(window.buildSynthesisRequest(item));
+    }
+
+    function quitWithoutWarning() {
+        window.closeBypass = true;
+        Qt.quit();
     }
 
     function buildSynthesisRequest(item) {
