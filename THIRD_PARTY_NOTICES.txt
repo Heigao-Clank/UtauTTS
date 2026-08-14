@@ -66,6 +66,9 @@ Upstream sources:
 https://github.com/ikawaha/kagome
 https://github.com/ikawaha/kagome-dict
 
+The exact module license files for Kagome v2.11.0 and kagome-dict/ipa v1.2.6
+are included under licenses/Go in the release package.
+
 
 pyopenjtalk frontend bridge
 ==========================
@@ -134,6 +137,10 @@ runtime/open_jtalk_dic_utf_8-1.11. The helper also embeds CPython and the
 PyInstaller bootloader; their complete license texts are included under
 runtime/licenses.
 
+The pyopenjtalk frontend also incorporates hts_engine_API, MeCab, and the
+NAIST/UniDic dictionary terms. Their original COPYING files are included
+under licenses/OpenJTalk.
+
 Upstream source:
 https://github.com/r9y9/open_jtalk
 
@@ -166,7 +173,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Upstream source:
-https://github.com/openutau/OpenUtau/tree/master/cpp/worldline
+https://github.com/openutau/OpenUtau/tree/0.1.565/cpp/worldline
 
 
 OpenUtau WORLDLINE-R2 mel conversion model
@@ -190,9 +197,12 @@ ONNX Runtime DirectML
 
 Copyright (c) Microsoft Corporation. All rights reserved.
 
-Licensed under the MIT License. The complete license and third-party notices
-are available in the Microsoft.ML.OnnxRuntime.DirectML NuGet package used to
-publish the WORLDLINE-R2 bridge.
+The Windows release uses Microsoft.ML.OnnxRuntime.DirectML 1.23.0 and the
+resolved DirectML/managed dependencies. The exact LICENSE and
+ThirdPartyNotices files from the packages used by the build are included under
+licenses/ONNX-Runtime.
+
+Licensed under the MIT License.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -289,3 +299,67 @@ Copyright (C) The Qt Company Ltd. and other contributors.
 License and source information:
 https://www.qt.io/licensing/
 https://code.qt.io/cgit/qt/
+
+The LGPLv3 text, an exact source offer for the Qt version used by the build,
+and Qt third-party attribution links are included under licenses/Qt. Qt
+Multimedia's FFmpeg deployment is also documented there.
+
+
+Go runtime and standard library
+===============================
+
+The release binaries include code from the Go runtime and standard library.
+The exact Go runtime license text used by the build is included under
+licenses/Go/GO-LICENSE.txt. Go is distributed under a BSD-style license. The
+upstream text is available at:
+https://go.dev/LICENSE
+
+
+golang.org/x/text
+=================
+
+UtauTTS uses golang.org/x/text for Japanese encoding and Unicode processing.
+The release uses golang.org/x/text v0.32.0. Its exact license text is included
+under licenses/Go. The module is distributed under the BSD-3-Clause license.
+The upstream text is available at:
+https://github.com/golang/text/blob/master/LICENSE
+
+
+FFmpeg libraries distributed by Qt Multimedia
+==============================================
+
+The Windows GUI distribution includes the FFmpeg DLLs delivered by the Qt
+Multimedia deployment (avcodec-61.dll, avformat-61.dll, avutil-59.dll, and
+ffmpegmediaplugin.dll in the current build). The exact Qt version, deployment
+provenance, and source/license links are included under licenses/Qt.
+FFmpeg is generally LGPLv2.1-or-later, but optional GPL components change the
+applicable terms. Refer to the FFmpeg license and corresponding source for the
+exact binary build:
+https://ffmpeg.org/legal.html
+
+
+MinGW runtime libraries
+=======================
+
+The Windows GUI distribution includes MinGW runtime DLLs supplied by the Qt
+toolchain. The exact GCC, MinGW-w64, and winpthreads license files from the
+toolchain used by the build are included under licenses/MinGW.
+
+
+Microsoft ONNX Runtime dependencies
+====================================
+
+The WORLDLINE-R2 bridge uses Microsoft.ML.OnnxRuntime.DirectML and its
+transitive managed/native dependencies. The complete notices for the exact
+NuGet package versions used by the build are included under
+licenses/ONNX-Runtime. The upstream project and notices are available at:
+https://github.com/microsoft/onnxruntime
+
+
+NVIDIA CUDA runtime (optional waveform renderer)
+================================================
+
+When the optional waveform-gpu renderer is included, it is built with the
+CUDA toolkit and links the CUDA runtime statically. The exact CUDA toolkit
+EULA, license, and nvcc version output are included under licenses/CUDA. No
+NVIDIA GPU driver is distributed by UtauTTS.
