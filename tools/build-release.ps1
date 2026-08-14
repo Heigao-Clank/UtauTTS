@@ -14,6 +14,7 @@ $guiZip = Join-Path $releaseRoot 'UtauTTS-win-x64.zip'
 $serverZip = Join-Path $releaseRoot 'UtauTTS-Server-win-x64.zip'
 $bundledVoicebankDirectory = Join-Path $root 'voice'
 $bundledVoicebankSHA256 = 'B96D1B21145F22E573AFD9EC8AEAAD0EC9CBAEE581C2623C64ADDEB31DE46B3D'
+$cudaAvailable = $null -ne (Get-Command nvcc -ErrorAction SilentlyContinue)
 
 function Invoke-Checked([string]$Command, [string[]]$Arguments) {
     & $Command @Arguments
@@ -94,14 +95,20 @@ try {
     if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
         throw '.NET 8 SDK is required'
     }
-    Invoke-Checked 'dotnet' @(
-        'publish', 'tools/worldline-bridge/worldline-bridge.csproj',
-        '-c', 'Release', '-r', 'win-x64', '--self-contained', 'false', '-o', $guiRuntimePath
-    )
+    $previousNugetPackages = $env:NUGET_PACKAGES
+    $env:NUGET_PACKAGES = Join-Path $env:USERPROFILE '.nuget/packages'
+    try {
+        Invoke-Checked 'dotnet' @(
+            'publish', 'tools/worldline-bridge/worldline-bridge.csproj',
+            '-c', 'Release', '-r', 'win-x64', '--self-contained', 'false', '--ignore-failed-sources', '-o', $guiRuntimePath
+        )
+    } finally {
+        $env:NUGET_PACKAGES = $previousNugetPackages
+    }
     & (Join-Path $PSScriptRoot 'fetch-worldline.ps1') -OutputPath (Join-Path $guiRuntimePath 'worldline.dll')
     & (Join-Path $PSScriptRoot 'fetch-worldline-r2-mel.ps1') -OutputPath (Join-Path $guiRuntimePath 'worldline-r2-mel.onnx')
 
-    if (Get-Command nvcc -ErrorAction SilentlyContinue) {
+    if ($cudaAvailable) {
         Write-Host '=== Build optional CUDA waveform renderer ==='
         & (Join-Path $PSScriptRoot 'build-waveform-gpu.ps1') -OutputDirectory $guiRuntimePath
         if ($LASTEXITCODE -ne 0) { throw "CUDA waveform renderer build failed with exit code $LASTEXITCODE" }
@@ -111,6 +118,20 @@ try {
     }
 
     Get-ChildItem -LiteralPath $guiRuntimePath -Filter 'utautts-worldline-bridge*' | Copy-Item -Destination $serverRuntimePath
+    $worldlineR2RuntimeAssets = @(
+        'DirectML.dll',
+        'Microsoft.ML.OnnxRuntime.dll',
+        'System.Numerics.Tensors.dll',
+        'onnxruntime.dll',
+        'onnxruntime_providers_shared.dll'
+    )
+    foreach ($asset in $worldlineR2RuntimeAssets) {
+        $source = Join-Path $guiRuntimePath $asset
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "WORLDLINE-R2 runtime asset was not published: $asset"
+        }
+        Copy-Item -LiteralPath $source -Destination $serverRuntimePath -Force
+    }
     Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline.dll') -Destination $serverRuntimePath
     Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline-r2-mel.onnx') -Destination $serverRuntimePath
 
@@ -128,7 +149,7 @@ try {
         Copy-Item -LiteralPath $pyInstallerLicense[0].FullName -Destination (Join-Path $licensePath 'PYINSTALLER_COPYING.txt')
     }
 
-    Copy-Item -LiteralPath 'README.md', 'THIRD_PARTY_NOTICES.txt' -Destination $guiPath
+    Copy-Item -LiteralPath 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.txt' -Destination $guiPath
 
     $sourceModels = Join-Path $root 'models'
     $bundledModels = @()
@@ -142,6 +163,14 @@ try {
     $bundledModels | Copy-Item -Destination $serverModelsPath
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $guiPluginsPath -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $serverPluginsPath -Recurse
+    if (-not $cudaAvailable) {
+        foreach ($pluginsPath in @($guiPluginsPath, $serverPluginsPath)) {
+            $waveformGPUManifest = Join-Path $pluginsPath 'renderers/waveform-gpu'
+            if (Test-Path -LiteralPath $waveformGPUManifest) {
+                Remove-Item -LiteralPath $waveformGPUManifest -Recurse -Force
+            }
+        }
+    }
     $guiDocs = Join-Path $guiPath 'docs'
     New-Item -ItemType Directory -Force -Path $guiDocs | Out-Null
     Copy-Item -Path 'docs/*' -Destination $guiDocs -Recurse
@@ -155,11 +184,30 @@ try {
     Set-Content -LiteralPath (Join-Path $serverVoiceDirectory 'PUT_VOICEBANKS_HERE.txt') -Encoding UTF8 -Value 'Place each UTAU voicebank in its own folder here.'
 
     Copy-Item -LiteralPath 'docs/server.md' -Destination (Join-Path $serverPath 'README.md')
-    Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.txt' -Destination $serverPath
+    Copy-Item -LiteralPath 'LICENSE', 'THIRD_PARTY_NOTICES.txt' -Destination $serverPath
+
+    Write-Host '=== Collect exact third-party licenses ==='
+    & (Join-Path $PSScriptRoot 'collect-third-party-licenses.ps1') -PackageRoot $guiPath -Variant windows-gui -CudaIncluded:$cudaAvailable
+    if ($LASTEXITCODE -ne 0) { throw 'GUI third-party license collection failed' }
+    & (Join-Path $PSScriptRoot 'collect-third-party-licenses.ps1') -PackageRoot $serverPath -Variant windows-server -CudaIncluded:$cudaAvailable
+    if ($LASTEXITCODE -ne 0) { throw 'Server third-party license collection failed' }
+
+    foreach ($packagePath in @($guiPath, $serverPath)) {
+        Get-ChildItem -LiteralPath $packagePath -Recurse -File |
+            Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') -or $_.Name -eq 'DirectML.Debug.dll' } |
+            Remove-Item -Force
+    }
+    $qmlToolingPath = Join-Path $guiPath 'app/qmltooling'
+    if (Test-Path -LiteralPath $qmlToolingPath) {
+        Remove-Item -LiteralPath $qmlToolingPath -Recurse -Force
+    }
 
     Write-Host '=== Package ==='
     Compress-Archive -Path (Join-Path $guiPath '*') -DestinationPath $guiZip -CompressionLevel Optimal
     Compress-Archive -Path (Join-Path $serverPath '*') -DestinationPath $serverZip -CompressionLevel Optimal
+
+    & (Join-Path $PSScriptRoot 'test-release-package.ps1') -ReleaseRoot $releaseRoot
+    if ($LASTEXITCODE -ne 0) { throw "Release package smoke test failed with exit code $LASTEXITCODE" }
 
     Write-Host 'GUI:'
     Get-ChildItem -LiteralPath $guiPath | Select-Object Name, Length

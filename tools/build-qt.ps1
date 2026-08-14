@@ -92,6 +92,8 @@ foreach ($name in $staleDeployDirectories) {
 	$stalePath = Join-Path $OutputDirectory $name
 	if (Test-Path -LiteralPath $stalePath -PathType Container) { Remove-Item -LiteralPath $stalePath -Recurse -Force }
 }
+$appQmlToolingPath = Join-Path $appDirectory 'qmltooling'
+if (Test-Path -LiteralPath $appQmlToolingPath -PathType Container) { Remove-Item -LiteralPath $appQmlToolingPath -Recurse -Force }
 Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.dll' -File | Remove-Item -Force
 if ($standaloneDevelopmentPackage) {
     foreach ($name in @('models','plugins','runtime','voice')) {
