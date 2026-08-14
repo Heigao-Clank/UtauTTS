@@ -50,15 +50,17 @@ ApplicationWindow {
     property bool playbackRequested: false
     property string playbackError: ""
 
-    ListModel { id: utterances }
+    ListModel {
+        id: utterances
+    }
 
     Timer {
         id: analyzeTimer
         interval: 250
         onTriggered: {
             if (utterances.count && window.current().content.trim()) {
-                const item = window.current()
-                window.appBackend.analyze(item.content, item.utteranceId)
+                const item = window.current();
+                window.appBackend.analyze(item.content, item.utteranceId);
             }
         }
     }
@@ -73,16 +75,14 @@ ApplicationWindow {
         id: player
         audioOutput: previewAudioOutput
         onMediaStatusChanged: {
-            if (window.playbackRequested
-                    && (mediaStatus === MediaPlayer.LoadedMedia
-                        || mediaStatus === MediaPlayer.BufferedMedia)) {
-                window.playbackRequested = false
-                play()
+            if (window.playbackRequested && (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)) {
+                window.playbackRequested = false;
+                play();
             }
         }
         onErrorOccurred: (error, errorString) => {
-            window.playbackRequested = false
-            window.playbackError = errorString
+            window.playbackRequested = false;
+            window.playbackError = errorString;
         }
     }
 
@@ -133,7 +133,9 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
                 Button {
                     text: "閉じる"
                     onClicked: synthesisLogWindow.close()
@@ -163,11 +165,11 @@ ApplicationWindow {
         property bool pendingCloseLogOnSuccess: true
 
         function loadCurrent() {
-            pendingMoraDuration = window.appBackend.defaultMoraDuration
-            pendingPauseDuration = window.appBackend.defaultPauseDuration
-            pendingApplyPitch = window.appBackend.defaultApplyPitch
-            pendingDarkMode = window.appBackend.darkMode
-            pendingCloseLogOnSuccess = window.appBackend.closeLogOnSuccess
+            pendingMoraDuration = window.appBackend.defaultMoraDuration;
+            pendingPauseDuration = window.appBackend.defaultPauseDuration;
+            pendingApplyPitch = window.appBackend.defaultApplyPitch;
+            pendingDarkMode = window.appBackend.darkMode;
+            pendingCloseLogOnSuccess = window.appBackend.closeLogOnSuccess;
         }
 
         RowLayout {
@@ -217,7 +219,11 @@ ApplicationWindow {
                             width: timingSettingsPage.availableWidth
                             spacing: 14
 
-                            Label { text: "タイミング"; font.pixelSize: 18; font.bold: true }
+                            Label {
+                                text: "タイミング"
+                                font.pixelSize: 18
+                                font.bold: true
+                            }
                             Label {
                                 Layout.fillWidth: true
                                 text: "発音と休止の標準時間を設定します。各セリフの右ペインから個別に上書きできます。"
@@ -230,7 +236,9 @@ ApplicationWindow {
                                 columnSpacing: 12
                                 rowSpacing: 10
 
-                                Label { text: "モーラ長" }
+                                Label {
+                                    text: "モーラ長"
+                                }
                                 SpinBox {
                                     id: moraSpin
                                     Layout.fillWidth: true
@@ -245,11 +253,13 @@ ApplicationWindow {
                                         acceptedButtons: Qt.LeftButton
                                         grabPermissions: PointerHandler.CanTakeOverFromAnything
                                         onDoubleTapped: {
-                                            settingsWindow.pendingMoraDuration = 120
+                                            settingsWindow.pendingMoraDuration = 120;
                                         }
                                     }
                                 }
-                                Label { text: "休止長" }
+                                Label {
+                                    text: "休止長"
+                                }
                                 SpinBox {
                                     id: pauseSpin
                                     Layout.fillWidth: true
@@ -264,7 +274,7 @@ ApplicationWindow {
                                         acceptedButtons: Qt.LeftButton
                                         grabPermissions: PointerHandler.CanTakeOverFromAnything
                                         onDoubleTapped: {
-                                            settingsWindow.pendingPauseDuration = 180
+                                            settingsWindow.pendingPauseDuration = 180;
                                         }
                                     }
                                 }
@@ -286,7 +296,11 @@ ApplicationWindow {
                             width: pitchSettingsPage.availableWidth
                             spacing: 14
 
-                            Label { text: "ピッチ加工"; font.pixelSize: 18; font.bold: true }
+                            Label {
+                                text: "ピッチ加工"
+                                font.pixelSize: 18
+                                font.bold: true
+                            }
                             Switch {
                                 id: applyPitchCheck
                                 checked: settingsWindow.pendingApplyPitch
@@ -320,10 +334,17 @@ ApplicationWindow {
                             width: appearanceSettingsPage.availableWidth
                             spacing: 14
 
-                            Label { text: "外観"; font.pixelSize: 18; font.bold: true }
+                            Label {
+                                text: "外観"
+                                font.pixelSize: 18
+                                font.bold: true
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Label { Layout.fillWidth: true; text: "アプリケーションのテーマ" }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "アプリケーションのテーマ"
+                                }
                                 Switch {
                                     checked: settingsWindow.pendingDarkMode
                                     text: checked ? "ダークモード" : "ライトモード"
@@ -347,10 +368,17 @@ ApplicationWindow {
                             width: logSettingsPage.availableWidth
                             spacing: 14
 
-                            Label { text: "ログ"; font.pixelSize: 18; font.bold: true }
+                            Label {
+                                text: "ログ"
+                                font.pixelSize: 18
+                                font.bold: true
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
-                                Label { Layout.fillWidth: true; text: "音声合成に成功したときログウィンドウを閉じる" }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "音声合成に成功したときログウィンドウを閉じる"
+                                }
                                 Switch {
                                     checked: settingsWindow.pendingCloseLogOnSuccess
                                     text: checked ? "ON" : "OFF"
@@ -359,9 +387,7 @@ ApplicationWindow {
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: settingsWindow.pendingCloseLogOnSuccess
-                                      ? "成功時は自動的に閉じます。失敗時はログを確認できます。"
-                                      : "成功してもログウィンドウを開いたままにします。"
+                                text: settingsWindow.pendingCloseLogOnSuccess ? "成功時は自動的に閉じます。失敗時はログを確認できます。" : "成功してもログウィンドウを開いたままにします。"
                                 color: window.mutedText
                                 wrapMode: Text.Wrap
                             }
@@ -371,7 +397,9 @@ ApplicationWindow {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Item { Layout.fillWidth: true }
+                    Item {
+                        Layout.fillWidth: true
+                    }
                     Button {
                         text: "保存"
                         onClicked: window.saveSettings()
@@ -384,8 +412,8 @@ ApplicationWindow {
     MessageDialog {
         id: aboutDialog
         title: "UtauTTSについて"
-        text: "UtauTTS " + Qt.application.version
-        informativeText: "UTAU音源を利用する音声合成ソフトウェア"
+        text: "UtauTTS " + Qt.application.version + "by yh"
+        informativeText: "UTAUボイスバンクの原音の選択と自然なつなぎ方を学習する日本語TTSソフトウェア"
         buttons: MessageDialog.Ok
     }
 
@@ -431,8 +459,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 TextArea {
                     width: parent.width
-                    text: window.licenseDocuments.length && licenseList.currentIndex >= 0
-                          ? window.licenseDocuments[licenseList.currentIndex].text : ""
+                    text: window.licenseDocuments.length && licenseList.currentIndex >= 0 ? window.licenseDocuments[licenseList.currentIndex].text : ""
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
@@ -454,10 +481,7 @@ ApplicationWindow {
         flags: Qt.Dialog
         palette: window.palette
         color: palette.window
-        property var selectedVoicebank: window.appBackend.voicebanks.length
-                                      && voicebankDetailsList.currentIndex >= 0
-                                      && voicebankDetailsList.currentIndex < window.appBackend.voicebanks.length
-                                      ? window.appBackend.voicebanks[voicebankDetailsList.currentIndex] : null
+        property var selectedVoicebank: window.appBackend.voicebanks.length && voicebankDetailsList.currentIndex >= 0 && voicebankDetailsList.currentIndex < window.appBackend.voicebanks.length ? window.appBackend.voicebanks[voicebankDetailsList.currentIndex] : null
 
         RowLayout {
             anchors.fill: parent
@@ -489,8 +513,7 @@ ApplicationWindow {
 
                 Label {
                     Layout.fillWidth: true
-                    text: voicebankDetailsWindow.selectedVoicebank
-                          ? voicebankDetailsWindow.selectedVoicebank.name : ""
+                    text: voicebankDetailsWindow.selectedVoicebank ? voicebankDetailsWindow.selectedVoicebank.name : ""
                     font.pixelSize: 18
                     font.bold: true
                 }
@@ -506,8 +529,7 @@ ApplicationWindow {
                     contentWidth: availableWidth
                     Label {
                         width: voicebankReadmeScroll.availableWidth
-                        text: voicebankDetailsWindow.selectedVoicebank
-                              ? (voicebankDetailsWindow.selectedVoicebank.readme_text || "READMEがありません") : ""
+                        text: voicebankDetailsWindow.selectedVoicebank ? (voicebankDetailsWindow.selectedVoicebank.readme_text || "READMEがありません") : ""
                         wrapMode: Text.Wrap
                         padding: 4
                     }
@@ -520,52 +542,51 @@ ApplicationWindow {
         target: window.appBackend
 
         function onMetadataChanged() {
-            window.assignDefaultVoicebank()
-            window.assignDefaultSynthesisSettings()
+            window.assignDefaultVoicebank();
+            window.assignDefaultSynthesisSettings();
         }
 
         function onAnalysisChanged() {
-            const requestId = window.appBackend.analysisRequestId
-            const sourceText = window.appBackend.analysisSourceText
-            const index = window.utteranceIndex(requestId)
+            const requestId = window.appBackend.analysisRequestId;
+            const sourceText = window.appBackend.analysisSourceText;
+            const index = window.utteranceIndex(requestId);
             if (index < 0 || utterances.get(index).content !== sourceText)
-                return
-            const analysis = JSON.parse(window.appBackend.analysisJson)
-            const old = utterances.get(index)
-            const oldPoints = window.decodeSequence(old.pointsJson)
-            const morae = window.copySequence(analysis.morae)
-            const values = []
+                return;
+            const analysis = JSON.parse(window.appBackend.analysisJson);
+            const old = utterances.get(index);
+            const oldPoints = window.decodeSequence(old.pointsJson);
+            const morae = window.copySequence(analysis.morae);
+            const values = [];
             for (let i = 0; i < morae.length; ++i)
-                values.push(i < oldPoints.length ? oldPoints[i] : 0)
-            utterances.setProperty(index, "reading", analysis.reading)
-            utterances.setProperty(index, "moraeJson", JSON.stringify(morae))
-            utterances.setProperty(index, "pointsJson", JSON.stringify(values))
+                values.push(i < oldPoints.length ? oldPoints[i] : 0);
+            utterances.setProperty(index, "reading", analysis.reading);
+            utterances.setProperty(index, "moraeJson", JSON.stringify(morae));
+            utterances.setProperty(index, "pointsJson", JSON.stringify(values));
             if (index === window.selectedIndex) {
-                pitchEditor.points = values.slice()
-                pitchEditor.morae = morae.slice()
+                pitchEditor.points = values.slice();
+                pitchEditor.morae = morae.slice();
             }
         }
 
         function onPreviewReady() {
-            const audio = window.appBackend.previewUrl
-            const index = window.utteranceIndex(window.pendingUtteranceId)
-            if (index < 0 || index !== window.selectedIndex
-                    || utterances.get(index).revision !== window.pendingRevision) {
-                window.pendingUtteranceId = ""
-                window.pendingRevision = -1
-                return
+            const audio = window.appBackend.previewUrl;
+            const index = window.utteranceIndex(window.pendingUtteranceId);
+            if (index < 0 || index !== window.selectedIndex || utterances.get(index).revision !== window.pendingRevision) {
+                window.pendingUtteranceId = "";
+                window.pendingRevision = -1;
+                return;
             }
-            window.audioUtteranceId = window.pendingUtteranceId
-            window.audioRevision = window.pendingRevision
-            window.pendingUtteranceId = ""
-            window.pendingRevision = -1
-            window.playbackError = ""
-            window.playbackRequested = true
+            window.audioUtteranceId = window.pendingUtteranceId;
+            window.audioRevision = window.pendingRevision;
+            window.pendingUtteranceId = "";
+            window.pendingRevision = -1;
+            window.playbackError = "";
+            window.playbackRequested = true;
             if (window.appBackend.closeLogOnSuccess)
-                synthesisLogWindow.close()
-            player.stop()
-            player.source = audio
-            player.play()
+                synthesisLogWindow.close();
+            player.stop();
+            player.source = audio;
+            player.play();
         }
     }
 
@@ -585,15 +606,18 @@ ApplicationWindow {
                 onTriggered: window.appBackend.reloadVoicebanks()
             }
             MenuSeparator {}
-            MenuItem { text: "終了"; onTriggered: Qt.quit() }
+            MenuItem {
+                text: "終了"
+                onTriggered: Qt.quit()
+            }
         }
         Menu {
             title: "設定"
             MenuItem {
                 text: "設定..."
                 onTriggered: {
-                    window.showAuxiliaryWindow(settingsWindow)
-                    settingsWindow.loadCurrent()
+                    window.showAuxiliaryWindow(settingsWindow);
+                    settingsWindow.loadCurrent();
                 }
             }
         }
@@ -603,11 +627,17 @@ ApplicationWindow {
                 text: "UtauTTSについて..."
                 onTriggered: {
                     if (!window.appBackend.showNativeAboutDialog())
-                        aboutDialog.open()
+                        aboutDialog.open();
                 }
             }
-            MenuItem { text: "GitHubリポジトリ"; onTriggered: Qt.openUrlExternally(window.repositoryUrl) }
-            MenuItem { text: "ライセンス..."; onTriggered: window.showAuxiliaryWindow(licenseWindow) }
+            MenuItem {
+                text: "GitHubリポジトリ"
+                onTriggered: Qt.openUrlExternally(window.repositoryUrl)
+            }
+            MenuItem {
+                text: "ライセンス..."
+                onTriggered: window.showAuxiliaryWindow(licenseWindow)
+            }
             MenuItem {
                 text: "ボイスバンクの詳細..."
                 enabled: window.appBackend.voicebanks.length > 0
@@ -628,7 +658,9 @@ ApplicationWindow {
                 SplitView.fillWidth: true
                 SplitView.minimumWidth: 560
                 padding: 10
-                background: Rectangle { color: window.palette.window }
+                background: Rectangle {
+                    color: window.palette.window
+                }
 
                 ListView {
                     id: utteranceList
@@ -659,8 +691,7 @@ ApplicationWindow {
                                 Layout.preferredHeight: 42
                                 radius: 2
                                 color: window.palette.alternateBase
-                                border.color: card.index === window.selectedIndex
-                                              ? window.accent : window.borderColor
+                                border.color: card.index === window.selectedIndex ? window.accent : window.borderColor
 
                                 Image {
                                     anchors.fill: parent
@@ -682,16 +713,19 @@ ApplicationWindow {
                                     target: dragProxy
                                     onActiveChanged: {
                                         if (active) {
-                                            window.selectUtterance(card.index)
-                                            window.draggedUtteranceIndex = card.index
-                                            dragProxy.x = imageHandle.x
-                                            dragProxy.y = imageHandle.y
-                                        } else window.draggedUtteranceIndex = -1
+                                            window.selectUtterance(card.index);
+                                            window.draggedUtteranceIndex = card.index;
+                                            dragProxy.x = imageHandle.x;
+                                            dragProxy.y = imageHandle.y;
+                                        } else
+                                            window.draggedUtteranceIndex = -1;
                                     }
                                 }
                                 ToolTip.visible: imageHover.hovered && !imageDrag.active
                                 ToolTip.text: window.voicebankName(card.voicebankId) + "\nドラッグして並べ替え"
-                                HoverHandler { id: imageHover }
+                                HoverHandler {
+                                    id: imageHover
+                                }
                             }
 
                             TextField {
@@ -703,11 +737,12 @@ ApplicationWindow {
                                 placeholderText: "読み上げる文章を入力"
                                 selectByMouse: true
 
-                                onActiveFocusChanged: if (activeFocus) window.selectUtterance(card.index)
+                                onActiveFocusChanged: if (activeFocus)
+                                    window.selectUtterance(card.index)
                                 onTextChanged: {
                                     if (card.index >= utterances.count || utterances.get(card.index).content === text)
-                                        return
-                                    window.updateUtteranceText(card.index, text)
+                                        return;
+                                    window.updateUtteranceText(card.index, text);
                                 }
                             }
 
@@ -723,16 +758,16 @@ ApplicationWindow {
                                         text: "上へ移動"
                                         enabled: card.index > 0
                                         onTriggered: {
-                                            window.selectUtterance(card.index)
-                                            window.moveUtterance(-1)
+                                            window.selectUtterance(card.index);
+                                            window.moveUtterance(-1);
                                         }
                                     }
                                     MenuItem {
                                         text: "下へ移動"
                                         enabled: card.index < utterances.count - 1
                                         onTriggered: {
-                                            window.selectUtterance(card.index)
-                                            window.moveUtterance(1)
+                                            window.selectUtterance(card.index);
+                                            window.moveUtterance(1);
                                         }
                                     }
                                     MenuSeparator {}
@@ -740,8 +775,8 @@ ApplicationWindow {
                                         text: "削除"
                                         enabled: true
                                         onTriggered: {
-                                            window.selectUtterance(card.index)
-                                            window.removeUtterance()
+                                            window.selectUtterance(card.index);
+                                            window.removeUtterance();
                                         }
                                     }
                                 }
@@ -776,13 +811,15 @@ ApplicationWindow {
                             anchors.fill: parent
                             keys: ["utterance"]
                             onEntered: drag => {
-                                if (!drag.source) return
-                                const from = window.draggedUtteranceIndex
-                                const to = card.index
-                                if (from < 0 || to < 0 || from === to) return
-                                utterances.move(from, to, 1)
-                                window.selectedIndex = to
-                                window.draggedUtteranceIndex = to
+                                if (!drag.source)
+                                    return;
+                                const from = window.draggedUtteranceIndex;
+                                const to = card.index;
+                                if (from < 0 || to < 0 || from === to)
+                                    return;
+                                utterances.move(from, to, 1);
+                                window.selectedIndex = to;
+                                window.draggedUtteranceIndex = to;
                             }
                         }
                     }
@@ -799,7 +836,7 @@ ApplicationWindow {
                     highlighted: true
                     onClicked: window.addUtterance()
                     ToolTip.visible: hovered
-                    ToolTip.text: "発話を追加"
+                    ToolTip.text: "追加"
                 }
             }
 
@@ -808,7 +845,10 @@ ApplicationWindow {
                 SplitView.minimumWidth: 238
                 SplitView.maximumWidth: 340
                 padding: 14
-                background: Rectangle { color: window.palette.window; border.color: window.borderColor }
+                background: Rectangle {
+                    color: window.palette.window
+                    border.color: window.borderColor
+                }
 
                 ScrollView {
                     id: parameterScroll
@@ -820,7 +860,11 @@ ApplicationWindow {
                         width: Math.max(0, parameterScroll.availableWidth - 14)
                         spacing: 12
 
-                        Label { text: "音源"; font.pixelSize: 12; color: window.mutedText }
+                        Label {
+                            text: "音源"
+                            font.pixelSize: 12
+                            color: window.mutedText
+                        }
                         ComboBox {
                             id: voiceCombo
                             Layout.fillWidth: true
@@ -828,32 +872,44 @@ ApplicationWindow {
                             textRole: "name"
                             valueRole: "id"
                             onActivated: {
-                                window.updateSetting("voicebankId", currentValue)
-                                const voice = window.voicebankById(currentValue)
-                                utterances.setProperty(window.selectedIndex, "imagePath",
-                                                       voice ? voice.image_path : "")
+                                window.updateSetting("voicebankId", currentValue);
+                                const voice = window.voicebankById(currentValue);
+                                utterances.setProperty(window.selectedIndex, "imagePath", voice ? voice.image_path : "");
                             }
                         }
 
-                        Label { text: "抑揚モデル"; font.pixelSize: 12; color: window.mutedText }
+                        Label {
+                            text: "抑揚モデル"
+                            font.pixelSize: 12
+                            color: window.mutedText
+                        }
                         ComboBox {
                             id: modelCombo
                             Layout.fillWidth: true
-                            model: [{id: "none", display_name: "なし"}].concat(window.appBackend.models)
+                            model: [
+                                {
+                                    id: "none",
+                                    display_name: "なし"
+                                }
+                            ].concat(window.appBackend.models)
                             textRole: "display_name"
                             valueRole: "id"
                             onActivated: {
-                                window.updateSetting("modelId", currentValue)
-                                const model = window.modelById(currentValue)
-                                const renderer = window.preferredRendererForModel(model)
+                                window.updateSetting("modelId", currentValue);
+                                const model = window.modelById(currentValue);
+                                const renderer = window.preferredRendererForModel(model);
                                 if (renderer) {
-                                    window.updateSetting("renderer", renderer)
-                                    window.selectCombo(rendererCombo, renderer)
+                                    window.updateSetting("renderer", renderer);
+                                    window.selectCombo(rendererCombo, renderer);
                                 }
                             }
                         }
 
-                        Label { text: "Renderer"; font.pixelSize: 12; color: window.mutedText }
+                        Label {
+                            text: "Renderer"
+                            font.pixelSize: 12
+                            color: window.mutedText
+                        }
                         ComboBox {
                             id: rendererCombo
                             Layout.fillWidth: true
@@ -864,16 +920,14 @@ ApplicationWindow {
                         }
                         Label {
                             Layout.fillWidth: true
-                            text: window.appBackend.cudaAvailable
-                                  ? "CUDA GPUを検出しました" : "CPUモード"
+                            text: window.appBackend.cudaAvailable ? "CUDA GPUを検出しました" : "CPUモード"
                             color: window.mutedText
                             font.pixelSize: 11
                         }
                         Label {
                             Layout.fillWidth: true
                             visible: window.appBackend.error.length > 0 || window.playbackError.length > 0
-                            text: window.appBackend.error.length > 0
-                                  ? window.appBackend.error : window.playbackError
+                            text: window.appBackend.error.length > 0 ? window.appBackend.error : window.playbackError
                             color: window.palette.text
                             wrapMode: Text.Wrap
                             font.pixelSize: 11
@@ -881,7 +935,10 @@ ApplicationWindow {
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: "音高"; Layout.fillWidth: true }
+                            Label {
+                                text: "音高"
+                                Layout.fillWidth: true
+                            }
                             TextField {
                                 id: toneField
                                 Layout.preferredWidth: 72
@@ -893,7 +950,10 @@ ApplicationWindow {
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: "抑揚"; Layout.fillWidth: true }
+                            Label {
+                                text: "抑揚"
+                                Layout.fillWidth: true
+                            }
                             SpinBox {
                                 id: intonationInput
                                 Layout.preferredWidth: 86
@@ -905,8 +965,8 @@ ApplicationWindow {
                                 textFromValue: value => (value / 100).toFixed(2)
                                 valueFromText: text => Math.round(parseFloat(text) * 100)
                                 onValueModified: {
-                                    intonationSlider.value = value / 100
-                                    window.updateSetting("intonation", value / 100)
+                                    intonationSlider.value = value / 100;
+                                    window.updateSetting("intonation", value / 100);
                                 }
                             }
                         }
@@ -920,8 +980,8 @@ ApplicationWindow {
                                 to: 1
                                 stepSize: .05
                                 onMoved: {
-                                    intonationInput.value = Math.round(value * 100)
-                                    window.updateSetting("intonation", value)
+                                    intonationInput.value = Math.round(value * 100);
+                                    window.updateSetting("intonation", value);
                                 }
                             }
                             MouseArea {
@@ -929,25 +989,26 @@ ApplicationWindow {
                                 cursorShape: Qt.PointingHandCursor
                                 onPressed: mouse => updateAt(mouse.x)
                                 onPositionChanged: mouse => {
-                                    if (pressed) updateAt(mouse.x)
+                                    if (pressed)
+                                        updateAt(mouse.x);
                                 }
                                 onDoubleClicked: window.resetIntonation()
                                 function updateAt(x) {
-                                    const fraction = Math.max(0, Math.min(1, x / width))
-                                    const value = Math.round(
-                                        (intonationSlider.from + fraction
-                                         * (intonationSlider.to - intonationSlider.from))
-                                        / intonationSlider.stepSize) * intonationSlider.stepSize
-                                    intonationSlider.value = value
-                                    intonationInput.value = Math.round(value * 100)
-                                    window.updateSetting("intonation", value)
+                                    const fraction = Math.max(0, Math.min(1, x / width));
+                                    const value = Math.round((intonationSlider.from + fraction * (intonationSlider.to - intonationSlider.from)) / intonationSlider.stepSize) * intonationSlider.stepSize;
+                                    intonationSlider.value = value;
+                                    intonationInput.value = Math.round(value * 100);
+                                    window.updateSetting("intonation", value);
                                 }
                             }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: "モーラ長"; Layout.fillWidth: true }
+                            Label {
+                                text: "モーラ長"
+                                Layout.fillWidth: true
+                            }
                             SpinBox {
                                 id: moraInput
                                 Layout.preferredWidth: 96
@@ -959,8 +1020,8 @@ ApplicationWindow {
                                 textFromValue: value => value + " ms"
                                 valueFromText: text => parseInt(text)
                                 onValueModified: {
-                                    moraSlider.value = value
-                                    window.updateSetting("moraDuration", value)
+                                    moraSlider.value = value;
+                                    window.updateSetting("moraDuration", value);
                                 }
                             }
                         }
@@ -974,8 +1035,8 @@ ApplicationWindow {
                                 to: 300
                                 stepSize: 5
                                 onMoved: {
-                                    window.updateSetting("moraDuration", value)
-                                    moraInput.value = value
+                                    window.updateSetting("moraDuration", value);
+                                    moraInput.value = value;
                                 }
                             }
                             MouseArea {
@@ -983,25 +1044,26 @@ ApplicationWindow {
                                 cursorShape: Qt.PointingHandCursor
                                 onPressed: mouse => updateAt(mouse.x)
                                 onPositionChanged: mouse => {
-                                    if (pressed) updateAt(mouse.x)
+                                    if (pressed)
+                                        updateAt(mouse.x);
                                 }
                                 onDoubleClicked: window.resetMoraDuration()
                                 function updateAt(x) {
-                                    const fraction = Math.max(0, Math.min(1, x / width))
-                                    const value = Math.round(
-                                        (moraSlider.from + fraction
-                                         * (moraSlider.to - moraSlider.from))
-                                        / moraSlider.stepSize) * moraSlider.stepSize
-                                    moraSlider.value = value
-                                    moraInput.value = value
-                                    window.updateSetting("moraDuration", value)
+                                    const fraction = Math.max(0, Math.min(1, x / width));
+                                    const value = Math.round((moraSlider.from + fraction * (moraSlider.to - moraSlider.from)) / moraSlider.stepSize) * moraSlider.stepSize;
+                                    moraSlider.value = value;
+                                    moraInput.value = value;
+                                    window.updateSetting("moraDuration", value);
                                 }
                             }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: "休止長"; Layout.fillWidth: true }
+                            Label {
+                                text: "休止長"
+                                Layout.fillWidth: true
+                            }
                             SpinBox {
                                 id: pauseInput
                                 Layout.preferredWidth: 96
@@ -1013,8 +1075,8 @@ ApplicationWindow {
                                 textFromValue: value => value + " ms"
                                 valueFromText: text => parseInt(text)
                                 onValueModified: {
-                                    pauseSlider.value = value
-                                    window.updateSetting("pauseDuration", value)
+                                    pauseSlider.value = value;
+                                    window.updateSetting("pauseDuration", value);
                                 }
                             }
                         }
@@ -1028,8 +1090,8 @@ ApplicationWindow {
                                 to: 800
                                 stepSize: 10
                                 onMoved: {
-                                    window.updateSetting("pauseDuration", value)
-                                    pauseInput.value = value
+                                    window.updateSetting("pauseDuration", value);
+                                    pauseInput.value = value;
                                 }
                             }
                             MouseArea {
@@ -1037,23 +1099,23 @@ ApplicationWindow {
                                 cursorShape: Qt.PointingHandCursor
                                 onPressed: mouse => updateAt(mouse.x)
                                 onPositionChanged: mouse => {
-                                    if (pressed) updateAt(mouse.x)
+                                    if (pressed)
+                                        updateAt(mouse.x);
                                 }
                                 onDoubleClicked: window.resetPauseDuration()
                                 function updateAt(x) {
-                                    const fraction = Math.max(0, Math.min(1, x / width))
-                                    const value = Math.round(
-                                        (pauseSlider.from + fraction
-                                         * (pauseSlider.to - pauseSlider.from))
-                                        / pauseSlider.stepSize) * pauseSlider.stepSize
-                                    pauseSlider.value = value
-                                    pauseInput.value = value
-                                    window.updateSetting("pauseDuration", value)
+                                    const fraction = Math.max(0, Math.min(1, x / width));
+                                    const value = Math.round((pauseSlider.from + fraction * (pauseSlider.to - pauseSlider.from)) / pauseSlider.stepSize) * pauseSlider.stepSize;
+                                    pauseSlider.value = value;
+                                    pauseInput.value = value;
+                                    window.updateSetting("pauseDuration", value);
                                 }
                             }
                         }
 
-                        Item { Layout.fillHeight: true }
+                        Item {
+                            Layout.fillHeight: true
+                        }
                     }
                 }
             }
@@ -1063,7 +1125,10 @@ ApplicationWindow {
             SplitView.preferredHeight: 238
             SplitView.minimumHeight: 150
             padding: 0
-            background: Rectangle { color: window.palette.window; border.color: window.borderColor }
+            background: Rectangle {
+                color: window.palette.window
+                border.color: window.borderColor
+            }
 
             ColumnLayout {
                 anchors.fill: parent
@@ -1074,11 +1139,24 @@ ApplicationWindow {
                     Layout.preferredHeight: 38
                     Layout.leftMargin: 12
                     Layout.rightMargin: 10
-                    Label { text: "イントネーション"; font.pixelSize: 12 }
-                    Item { Layout.fillWidth: true }
-                    Label { text: "±300 cent"; color: window.mutedText; font.pixelSize: 11 }
+                    Label {
+                        text: "イントネーション"
+                        font.pixelSize: 12
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: "±300 cent"
+                        color: window.mutedText
+                        font.pixelSize: 11
+                    }
                 }
-                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: window.borderColor }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: window.borderColor
+                }
                 PitchEditor {
                     id: pitchEditor
                     Layout.fillWidth: true
@@ -1110,8 +1188,7 @@ ApplicationWindow {
                     Rectangle {
                         id: pitchScrollThumb
                         readonly property real minimumWidth: 28
-                        width: Math.max(minimumWidth,
-                                        pitchScrollTrack.width * pitchEditor.horizontalVisibleRatio)
+                        width: Math.max(minimumWidth, pitchScrollTrack.width * pitchEditor.horizontalVisibleRatio)
                         height: 10
                         radius: height / 2
                         y: (parent.height - height) / 2
@@ -1123,14 +1200,15 @@ ApplicationWindow {
                         cursorShape: Qt.SizeHorCursor
                         onPressed: mouse => setOffset(mouse.x)
                         onPositionChanged: mouse => {
-                            if (pressed) setOffset(mouse.x)
+                            if (pressed)
+                                setOffset(mouse.x);
                         }
                         function setOffset(x) {
-                            const travel = pitchScrollTrack.width - pitchScrollThumb.width
-                            if (travel <= 0) return
-                            const position = Math.max(0, Math.min(1,
-                                (x - pitchScrollThumb.width / 2) / travel))
-                            pitchEditor.horizontalOffset = position * pitchEditor.horizontalMaximum
+                            const travel = pitchScrollTrack.width - pitchScrollThumb.width;
+                            if (travel <= 0)
+                                return;
+                            const position = Math.max(0, Math.min(1, (x - pitchScrollThumb.width / 2) / travel));
+                            pitchEditor.horizontalOffset = position * pitchEditor.horizontalMaximum;
                         }
                     }
                 }
@@ -1144,30 +1222,21 @@ ApplicationWindow {
                     RoundButton {
                         Layout.preferredWidth: 42
                         Layout.preferredHeight: 42
-                        text: window.appBackend.busy ? "…"
-                              : player.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
+                        text: window.appBackend.busy ? "…" : player.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
                         highlighted: true
-                        enabled: player.playbackState === MediaPlayer.PlayingState
-                                 || window.hasCurrentAudio()
-                                 || (!window.appBackend.busy && utterances.count
-                                     && window.current().content.trim().length > 0)
+                        enabled: player.playbackState === MediaPlayer.PlayingState || window.hasCurrentAudio() || (!window.appBackend.busy && utterances.count && window.current().content.trim().length > 0)
                         onClicked: {
                             if (player.playbackState === MediaPlayer.PlayingState)
-                                player.pause()
+                                player.pause();
                             else if (window.hasCurrentAudio()) {
                                 if (player.duration > 0 && player.position >= player.duration - 1)
-                                    player.position = 0
-                                player.play()
+                                    player.position = 0;
+                                player.play();
                             } else
-                                window.synthesizeCurrent()
+                                window.synthesizeCurrent();
                         }
                         ToolTip.visible: hovered
-                        ToolTip.text: window.appBackend.error.length
-                                      ? window.appBackend.error
-                                      : window.playbackError.length
-                                        ? window.playbackError
-                                      : player.playbackState === MediaPlayer.PlayingState
-                                        ? "一時停止" : "生成して再生"
+                        ToolTip.text: window.appBackend.error.length ? window.appBackend.error : window.playbackError.length ? window.playbackError : player.playbackState === MediaPlayer.PlayingState ? "一時停止" : "生成して再生"
                     }
                     Slider {
                         Layout.fillWidth: true
@@ -1187,318 +1256,340 @@ ApplicationWindow {
         }
     }
 
-    function current() { return utterances.get(selectedIndex) }
+    function current() {
+        return utterances.get(selectedIndex);
+    }
 
     function showVoicebankDetails() {
-        if (!window.appBackend.voicebanks.length) return
-        voicebankDetailsList.currentIndex = Math.max(0,
-                                                       Math.min(voicebankDetailsList.currentIndex,
-                                                                window.appBackend.voicebanks.length - 1))
-        window.showAuxiliaryWindow(voicebankDetailsWindow)
+        if (!window.appBackend.voicebanks.length)
+            return;
+        voicebankDetailsList.currentIndex = Math.max(0, Math.min(voicebankDetailsList.currentIndex, window.appBackend.voicebanks.length - 1));
+        window.showAuxiliaryWindow(voicebankDetailsWindow);
     }
 
     function saveSettings() {
         if (utterances.count) {
-            window.updateSetting("moraDuration", settingsWindow.pendingMoraDuration)
-            window.updateSetting("pauseDuration", settingsWindow.pendingPauseDuration)
-            window.updateSetting("applyPitch", settingsWindow.pendingApplyPitch)
-            window.selectUtterance(window.selectedIndex)
+            window.updateSetting("moraDuration", settingsWindow.pendingMoraDuration);
+            window.updateSetting("pauseDuration", settingsWindow.pendingPauseDuration);
+            window.updateSetting("applyPitch", settingsWindow.pendingApplyPitch);
+            window.selectUtterance(window.selectedIndex);
         }
-        window.appBackend.setSynthesisDefaults(
-                    settingsWindow.pendingMoraDuration,
-                    settingsWindow.pendingPauseDuration,
-                    settingsWindow.pendingApplyPitch)
-        window.appBackend.setDarkMode(settingsWindow.pendingDarkMode)
-        window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess)
-        settingsWindow.close()
-        settingsWindow.visible = false
+        window.appBackend.setSynthesisDefaults(settingsWindow.pendingMoraDuration, settingsWindow.pendingPauseDuration, settingsWindow.pendingApplyPitch);
+        window.appBackend.setDarkMode(settingsWindow.pendingDarkMode);
+        window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
+        settingsWindow.close();
+        settingsWindow.visible = false;
     }
 
     function showAuxiliaryWindow(auxiliaryWindow) {
-        auxiliaryWindow.visible = true
-        auxiliaryWindow.raise()
-        auxiliaryWindow.requestActivate()
+        auxiliaryWindow.visible = true;
+        auxiliaryWindow.raise();
+        auxiliaryWindow.requestActivate();
     }
 
     function openSettings() {
-        settingsWindow.loadCurrent()
-        showAuxiliaryWindow(settingsWindow)
+        settingsWindow.loadCurrent();
+        showAuxiliaryWindow(settingsWindow);
     }
 
     function voicebankById(id) {
         for (let i = 0; i < window.appBackend.voicebanks.length; ++i)
-            if (window.appBackend.voicebanks[i].id === id) return window.appBackend.voicebanks[i]
-        return null
+            if (window.appBackend.voicebanks[i].id === id)
+                return window.appBackend.voicebanks[i];
+        return null;
     }
 
     function modelById(id) {
         for (let i = 0; i < window.appBackend.models.length; ++i)
-            if (window.appBackend.models[i].id === id) return window.appBackend.models[i]
-        return null
+            if (window.appBackend.models[i].id === id)
+                return window.appBackend.models[i];
+        return null;
     }
 
     function rendererById(id) {
         for (let i = 0; i < window.appBackend.renderers.length; ++i)
-            if (window.appBackend.renderers[i].id === id) return window.appBackend.renderers[i]
-        return null
+            if (window.appBackend.renderers[i].id === id)
+                return window.appBackend.renderers[i];
+        return null;
     }
 
     function modelDescription(id) {
-        if (!id || id === "none") return "モデルを使わず、原音のピッチを維持します。"
-        const model = modelById(id)
-        return model ? model.description || "" : ""
+        if (!id || id === "none")
+            return "モデルを使わず、原音のピッチを維持します。";
+        const model = modelById(id);
+        return model ? model.description || "" : "";
     }
 
     function rendererDescription(id) {
-        if (!id) return "既定Rendererはplugin manifestの優先度から選択されます。"
-        const renderer = rendererById(id)
-        return renderer ? renderer.description || "" : ""
+        if (!id)
+            return "既定Rendererはplugin manifestの優先度から選択されます。";
+        const renderer = rendererById(id);
+        return renderer ? renderer.description || "" : "";
     }
 
     function defaultModelId() {
-        return window.appBackend.models.length ? window.appBackend.models[0].id : "none"
+        return window.appBackend.models.length ? window.appBackend.models[0].id : "none";
     }
 
     function preferredRendererForModel(model) {
-        const preferredAcceleration = window.appBackend.cudaAvailable ? "cuda" : "cpu"
-        const recommended = model && model.recommended_renderers ? model.recommended_renderers : []
+        const preferredAcceleration = window.appBackend.cudaAvailable ? "cuda" : "cpu";
+        const recommended = model && model.recommended_renderers ? model.recommended_renderers : [];
         for (let pass = 0; pass < 2; ++pass) {
             for (let index = 0; index < recommended.length; ++index) {
-                const renderer = window.rendererById(recommended[index])
+                const renderer = window.rendererById(recommended[index]);
                 if (renderer && (pass === 1 || renderer.acceleration === preferredAcceleration))
-                    return renderer.id
+                    return renderer.id;
             }
         }
         for (let index = 0; index < window.appBackend.renderers.length; ++index) {
-            const renderer = window.appBackend.renderers[index]
+            const renderer = window.appBackend.renderers[index];
             if (renderer.acceleration === preferredAcceleration)
-                return renderer.id
+                return renderer.id;
         }
-        return window.appBackend.defaultRenderer
+        return window.appBackend.defaultRenderer;
     }
 
     function defaultRendererId() {
-        return window.preferredRendererForModel(window.modelById(window.defaultModelId()))
+        return window.preferredRendererForModel(window.modelById(window.defaultModelId()));
     }
 
     function utteranceIndex(id) {
         for (let i = 0; i < utterances.count; ++i)
-            if (utterances.get(i).utteranceId === id) return i
-        return -1
+            if (utterances.get(i).utteranceId === id)
+                return i;
+        return -1;
     }
 
     function voicebankName(id) {
-        const voice = voicebankById(id)
-        return voice ? voice.name : "音源未選択"
+        const voice = voicebankById(id);
+        return voice ? voice.name : "音源未選択";
     }
 
     function localImageUrl(path) {
-        return path ? encodeURI("file:///" + path.replace(/\\/g, "/")) : ""
+        return path ? encodeURI("file:///" + path.replace(/\\/g, "/")) : "";
     }
 
     function formatTime(milliseconds) {
-        const seconds = Math.max(0, Math.floor(milliseconds / 1000))
-        return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
+        const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+        return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
     }
 
     function updateSetting(name, value) {
-        if (!utterances.count) return
-        const item = current()
-        if (item[name] === value) return
-        utterances.setProperty(selectedIndex, name, value)
-        markUtteranceDirty(selectedIndex)
+        if (!utterances.count)
+            return;
+        const item = current();
+        if (item[name] === value)
+            return;
+        utterances.setProperty(selectedIndex, name, value);
+        markUtteranceDirty(selectedIndex);
     }
 
     function updateUtteranceText(index, text) {
-        if (index < 0 || index >= utterances.count) return
-        utterances.setProperty(index, "content", text)
-        utterances.setProperty(index, "reading", "")
-        utterances.setProperty(index, "moraeJson", "[]")
-        utterances.setProperty(index, "pointsJson", "[]")
-        markUtteranceDirty(index)
-        selectUtterance(index)
-        analyzeTimer.restart()
+        if (index < 0 || index >= utterances.count)
+            return;
+        utterances.setProperty(index, "content", text);
+        utterances.setProperty(index, "reading", "");
+        utterances.setProperty(index, "moraeJson", "[]");
+        utterances.setProperty(index, "pointsJson", "[]");
+        markUtteranceDirty(index);
+        selectUtterance(index);
+        analyzeTimer.restart();
     }
 
     function updatePitchPoints(points) {
-        if (!utterances.count) return
-        utterances.setProperty(selectedIndex, "pointsJson", JSON.stringify(points))
+        if (!utterances.count)
+            return;
+        utterances.setProperty(selectedIndex, "pointsJson", JSON.stringify(points));
         if (!current().applyPitch) {
-            utterances.setProperty(selectedIndex, "applyPitch", true)
-            settingsWindow.pendingApplyPitch = true
+            utterances.setProperty(selectedIndex, "applyPitch", true);
+            settingsWindow.pendingApplyPitch = true;
         }
-        markUtteranceDirty(selectedIndex)
+        markUtteranceDirty(selectedIndex);
     }
 
     function markUtteranceDirty(index) {
-        if (index < 0 || index >= utterances.count) return
-        const item = utterances.get(index)
-        utterances.setProperty(index, "revision", item.revision + 1)
+        if (index < 0 || index >= utterances.count)
+            return;
+        const item = utterances.get(index);
+        utterances.setProperty(index, "revision", item.revision + 1);
         if (window.audioUtteranceId === item.utteranceId)
-            clearPlayback()
+            clearPlayback();
     }
 
     function hasCurrentAudio() {
         if (!utterances.count || !window.audioUtteranceId || !player.source.toString().length)
-            return false
-        const item = current()
-        return item.utteranceId === window.audioUtteranceId && item.revision === window.audioRevision
+            return false;
+        const item = current();
+        return item.utteranceId === window.audioUtteranceId && item.revision === window.audioRevision;
     }
 
     function clearPlayback() {
-        window.playbackRequested = false
-        window.playbackError = ""
-        player.stop()
-        player.source = ""
-        window.audioUtteranceId = ""
-        window.audioRevision = -1
+        window.playbackRequested = false;
+        window.playbackError = "";
+        player.stop();
+        player.source = "";
+        window.audioUtteranceId = "";
+        window.audioRevision = -1;
     }
 
     function assignDefaultVoicebank() {
-        if (!utterances.count || !window.appBackend.voicebanks.length) return
+        if (!utterances.count || !window.appBackend.voicebanks.length)
+            return;
         for (let i = 0; i < utterances.count; ++i) {
-            const item = utterances.get(i)
+            const item = utterances.get(i);
             if (!item.voicebankId || !window.voicebankById(item.voicebankId)) {
-                utterances.setProperty(i, "voicebankId", window.appBackend.voicebanks[0].id)
-                utterances.setProperty(i, "imagePath", window.appBackend.voicebanks[0].image_path || "")
-                markUtteranceDirty(i)
+                utterances.setProperty(i, "voicebankId", window.appBackend.voicebanks[0].id);
+                utterances.setProperty(i, "imagePath", window.appBackend.voicebanks[0].image_path || "");
+                markUtteranceDirty(i);
             }
         }
-        selectUtterance(selectedIndex)
+        selectUtterance(selectedIndex);
     }
 
     function assignDefaultSynthesisSettings() {
         if (!utterances.count || !window.appBackend.models.length || !window.appBackend.renderers.length)
-            return
-        const modelId = window.defaultModelId()
-        const rendererId = window.defaultRendererId()
+            return;
+        const modelId = window.defaultModelId();
+        const rendererId = window.defaultRendererId();
         for (let index = 0; index < utterances.count; ++index) {
-            const item = utterances.get(index)
-            let changed = false
+            const item = utterances.get(index);
+            let changed = false;
             if (!item.modelId) {
-                utterances.setProperty(index, "modelId", modelId)
-                changed = true
+                utterances.setProperty(index, "modelId", modelId);
+                changed = true;
             }
             if (!item.renderer) {
-                utterances.setProperty(index, "renderer", rendererId)
-                changed = true
+                utterances.setProperty(index, "renderer", rendererId);
+                changed = true;
             }
-            if (changed) markUtteranceDirty(index)
+            if (changed)
+                markUtteranceDirty(index);
         }
-        selectUtterance(selectedIndex)
+        selectUtterance(selectedIndex);
     }
 
     function selectCombo(combo, value) {
         for (let i = 0; i < combo.count; ++i) {
             if (combo.valueAt(i) === value) {
-                combo.currentIndex = i
-                return
+                combo.currentIndex = i;
+                return;
             }
         }
     }
 
     function selectUtterance(index) {
-        if (index < 0 || index >= utterances.count) return
-        const changed = index !== selectedIndex
-        if (changed) clearPlayback()
-        selectedIndex = index
-        const item = current()
-        toneField.text = item.tone
-        moraSlider.value = item.moraDuration
-        pauseSlider.value = item.pauseDuration
-        moraInput.value = item.moraDuration
-        pauseInput.value = item.pauseDuration
-        intonationSlider.value = item.intonation
-        intonationInput.value = Math.round(item.intonation * 100)
-        pitchEditor.points = window.decodeSequence(item.pointsJson)
-        pitchEditor.morae = window.decodeSequence(item.moraeJson)
-        selectCombo(voiceCombo, item.voicebankId)
-        selectCombo(modelCombo, item.modelId)
-        selectCombo(rendererCombo, item.renderer)
+        if (index < 0 || index >= utterances.count)
+            return;
+        const changed = index !== selectedIndex;
+        if (changed)
+            clearPlayback();
+        selectedIndex = index;
+        const item = current();
+        toneField.text = item.tone;
+        moraSlider.value = item.moraDuration;
+        pauseSlider.value = item.pauseDuration;
+        moraInput.value = item.moraDuration;
+        pauseInput.value = item.pauseDuration;
+        intonationSlider.value = item.intonation;
+        intonationInput.value = Math.round(item.intonation * 100);
+        pitchEditor.points = window.decodeSequence(item.pointsJson);
+        pitchEditor.morae = window.decodeSequence(item.moraeJson);
+        selectCombo(voiceCombo, item.voicebankId);
+        selectCombo(modelCombo, item.modelId);
+        selectCombo(rendererCombo, item.renderer);
     }
 
     function copySequence(sequence) {
-        const result = []
-        if (!sequence) return result
-        const size = sequence.length !== undefined ? sequence.length : sequence.count
+        const result = [];
+        if (!sequence)
+            return result;
+        const size = sequence.length !== undefined ? sequence.length : sequence.count;
         for (let index = 0; index < size; ++index)
-            result.push(sequence.get ? sequence.get(index) : sequence[index])
-        return result
+            result.push(sequence.get ? sequence.get(index) : sequence[index]);
+        return result;
     }
 
     function decodeSequence(json) {
-        if (!json || !json.length) return []
+        if (!json || !json.length)
+            return [];
         try {
-            const value = JSON.parse(json)
-            return Array.isArray(value) ? value : []
+            const value = JSON.parse(json);
+            return Array.isArray(value) ? value : [];
         } catch (error) {
-            return []
+            return [];
         }
     }
 
     function resetMoraDuration() {
-        moraSlider.value = 120
-        moraInput.value = 120
-        window.updateSetting("moraDuration", 120)
+        moraSlider.value = 120;
+        moraInput.value = 120;
+        window.updateSetting("moraDuration", 120);
     }
 
     function resetIntonation() {
-        intonationSlider.value = 0
-        intonationInput.value = 0
-        window.updateSetting("intonation", 0)
+        intonationSlider.value = 0;
+        intonationInput.value = 0;
+        window.updateSetting("intonation", 0);
     }
 
     function resetPauseDuration() {
-        pauseSlider.value = 180
-        pauseInput.value = 180
-        window.updateSetting("pauseDuration", 180)
+        pauseSlider.value = 180;
+        pauseInput.value = 180;
+        window.updateSetting("pauseDuration", 180);
     }
 
     function addUtterance() {
-        const voice = window.appBackend.voicebanks.length ? window.appBackend.voicebanks[0] : null
+        const voice = window.appBackend.voicebanks.length ? window.appBackend.voicebanks[0] : null;
         utterances.append({
             utteranceId: "utterance-" + nextUtteranceId++,
-            content: "", reading: "", moraeJson: "[]", pointsJson: "[]",
-            voicebankId: voice ? voice.id : "", imagePath: voice ? voice.image_path || "" : "",
+            content: "",
+            reading: "",
+            moraeJson: "[]",
+            pointsJson: "[]",
+            voicebankId: voice ? voice.id : "",
+            imagePath: voice ? voice.image_path || "" : "",
             modelId: window.appBackend.models.length ? window.defaultModelId() : "",
             renderer: window.appBackend.renderers.length ? window.defaultRendererId() : "",
             tone: "C4",
             moraDuration: window.appBackend.defaultMoraDuration,
             pauseDuration: window.appBackend.defaultPauseDuration,
-            intonation: 0, applyPitch: window.appBackend.defaultApplyPitch, revision: 0
-        })
-        selectUtterance(utterances.count - 1)
-        utteranceList.positionViewAtEnd()
+            intonation: 0,
+            applyPitch: window.appBackend.defaultApplyPitch,
+            revision: 0
+        });
+        selectUtterance(utterances.count - 1);
+        utteranceList.positionViewAtEnd();
     }
 
     function removeUtterance() {
-        clearPlayback()
-        utterances.remove(selectedIndex)
+        clearPlayback();
+        utterances.remove(selectedIndex);
         if (!utterances.count) {
-            selectedIndex = 0
-            pitchEditor.points = []
-            pitchEditor.morae = []
-            return
+            selectedIndex = 0;
+            pitchEditor.points = [];
+            pitchEditor.morae = [];
+            return;
         }
-        selectedIndex = Math.min(selectedIndex, utterances.count - 1)
-        selectUtterance(selectedIndex)
+        selectedIndex = Math.min(selectedIndex, utterances.count - 1);
+        selectUtterance(selectedIndex);
     }
 
     function moveUtterance(delta) {
-        const target = selectedIndex + delta
-        if (target < 0 || target >= utterances.count) return
-        utterances.move(selectedIndex, target, 1)
-        selectedIndex = target
-        utteranceList.positionViewAtIndex(target, ListView.Contain)
+        const target = selectedIndex + delta;
+        if (target < 0 || target >= utterances.count)
+            return;
+        utterances.move(selectedIndex, target, 1);
+        selectedIndex = target;
+        utteranceList.positionViewAtIndex(target, ListView.Contain);
     }
 
     function synthesizeCurrent() {
-        const item = current()
-        const points = window.decodeSequence(item.pointsJson)
-        const morae = window.decodeSequence(item.moraeJson)
-        clearPlayback()
-        window.pendingUtteranceId = item.utteranceId
-        window.pendingRevision = item.revision
+        const item = current();
+        const points = window.decodeSequence(item.pointsJson);
+        const morae = window.decodeSequence(item.moraeJson);
+        clearPlayback();
+        window.pendingUtteranceId = item.utteranceId;
+        window.pendingRevision = item.revision;
         const request = {
             text: item.content,
             voicebank_id: item.voicebankId || voiceCombo.currentValue,
@@ -1509,27 +1600,28 @@ ApplicationWindow {
             pause_duration_ms: item.pauseDuration,
             intonation_strength: item.intonation,
             apply_pitch: item.applyPitch
-        }
+        };
         if (item.applyPitch && points.some(value => Math.abs(value) > .1)) {
-            const manualPoints = []
+            const manualPoints = [];
             for (let index = 0; index < points.length; ++index) {
-                const mora = index < morae.length ? morae[index] : null
-                if (mora && mora.pause) continue
+                const mora = index < morae.length ? morae[index] : null;
+                if (mora && mora.pause)
+                    continue;
                 manualPoints.push({
                     position: index,
                     mora: mora ? mora.mora || "" : "",
                     cents: points[index]
-                })
+                });
             }
             request.manual_pitch = {
                 version: 1,
                 reading: item.reading,
                 mode: "offset",
                 points: manualPoints
-            }
+            };
         }
-        window.appBackend.clearLogs()
-        window.showAuxiliaryWindow(synthesisLogWindow)
-        window.appBackend.synthesize(request)
+        window.appBackend.clearLogs();
+        window.showAuxiliaryWindow(synthesisLogWindow);
+        window.appBackend.synthesize(request);
     }
 }
