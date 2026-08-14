@@ -113,6 +113,16 @@ func TestPitchCurveFactorInterpolatesInCents(t *testing.T) {
 	}
 }
 
+func TestEffectiveUnitPitchFactorRequiresPitchProcessing(t *testing.T) {
+	unit := plan.Unit{PitchFactor: 1.25}
+	if got := effectiveUnitPitchFactor(unit, false); got != 1 {
+		t.Fatalf("disabled pitch processing kept unit factor %.2f", got)
+	}
+	if got := effectiveUnitPitchFactor(unit, true); got != 1.25 {
+		t.Fatalf("enabled pitch processing changed unit factor to %.2f", got)
+	}
+}
+
 func TestSmoothAndLimitPitchCurveDoesNotMutateAndLimitsSlope(t *testing.T) {
 	source := &PitchCurve{FrameMS: 10, Cents: []float64{0, 80, -80, 80, 0}}
 	result := smoothAndLimitPitchCurve(source, 20, 4)
@@ -170,7 +180,7 @@ func TestOpenUtauEnvelopeUsesNextPhoneTailTiming(t *testing.T) {
 }
 
 func TestWaveformRendererRejectsFramePitchCurve(t *testing.T) {
-	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "waveform", PitchCurve: &PitchCurve{FrameMS: 5, Cents: []float64{0}}})
+	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "waveform", ApplyPitch: true, PitchCurve: &PitchCurve{FrameMS: 5, Cents: []float64{0}}})
 	if err == nil || !strings.Contains(err.Error(), "not supported by waveform") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,7 +191,7 @@ func TestRenderRejectsNonFinitePitchCurve(t *testing.T) {
 		{FrameMS: math.NaN(), Cents: []float64{0}},
 		{FrameMS: 5, Cents: []float64{math.Inf(1)}},
 	} {
-		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "worldline", PitchCurve: curve})
+		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "worldline", ApplyPitch: true, PitchCurve: curve})
 		if err == nil {
 			t.Fatalf("accepted non-finite curve: %+v", curve)
 		}
@@ -194,7 +204,7 @@ func TestRenderRejectsUnsafePitchCurveRangeAndFrame(t *testing.T) {
 		{FrameMS: 5, Cents: []float64{4801}},
 		{FrameMS: 5, Cents: []float64{-4801}},
 	} {
-		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "waveform-openutau-pitch", PitchCurve: curve})
+		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "waveform-openutau-pitch", ApplyPitch: true, PitchCurve: curve})
 		if err == nil {
 			t.Fatalf("accepted unsafe curve: %+v", curve)
 		}
@@ -507,7 +517,7 @@ func TestDirectConsonantWeightsRestoreOnlyAperiodicFixedRegion(t *testing.T) {
 		state = state*1664525 + 1013904223
 		baseline[i] = (float64(state>>8)/float64(1<<24) - 0.5) * 0.4
 	}
-	weights := directConsonantWeights(p, 20, 1000, len(baseline), baseline, make([]float64, len(baseline)), cvRestoreNone, false)
+	weights := directConsonantWeights(p, 20, 1000, len(baseline), baseline, make([]float64, len(baseline)), cvRestoreNone, false, true)
 	if weights[20] != 0 || weights[200] != 0 {
 		t.Fatalf("direct audio leaked outside fixed region: %.2f %.2f", weights[20], weights[200])
 	}
@@ -525,8 +535,8 @@ func TestDirectConsonantWeightsCanForceCVFixedRegion(t *testing.T) {
 	for index := range baseline {
 		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
 	}
-	standard := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreNone, false)
-	forced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreFull, false)
+	standard := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreNone, false, true)
+	forced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreFull, false, true)
 	center := msToFrames(100, sampleRate)
 	if standard[center] != 0 || forced[center] != 1 {
 		t.Fatalf("standard=%f forced=%f", standard[center], forced[center])
@@ -542,7 +552,7 @@ func TestDirectConsonantWeightsBalancedCVStopsBeforeVowelTail(t *testing.T) {
 	for index := range baseline {
 		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
 	}
-	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, false)
+	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, false, true)
 	attack := msToFrames(90, sampleRate)
 	vowelTail := msToFrames(145, sampleRate)
 	if math.Abs(balanced[attack]-0.85) > 0.001 {
@@ -562,7 +572,7 @@ func TestDirectConsonantWeightsGentleCVUsesIntermediateAttackWeight(t *testing.T
 	for index := range baseline {
 		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
 	}
-	gentle := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreGentle, false)
+	gentle := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreGentle, false, true)
 	attack := msToFrames(90, sampleRate)
 	if math.Abs(gentle[attack]-0.55) > 0.001 {
 		t.Fatalf("gentle attack weight=%f, want 0.55", gentle[attack])
@@ -579,7 +589,7 @@ func TestDirectConsonantWeightsBalancedAvoidsShiftedPeriodicVowel(t *testing.T) 
 	for index := range baseline {
 		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
 	}
-	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, false)
+	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, false, true)
 	beforeBoundary := msToFrames(98, sampleRate)
 	afterTransition := msToFrames(105, sampleRate)
 	if balanced[beforeBoundary] == 0 {
@@ -600,7 +610,7 @@ func TestDirectConsonantWeightsBalancedRespectsFramePitchShift(t *testing.T) {
 	for index := range baseline {
 		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
 	}
-	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, true)
+	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, true, true)
 	if got := balanced[msToFrames(105, sampleRate)]; got != 0 {
 		t.Fatalf("frame-shifted raw vowel leaked after transition: %f", got)
 	}

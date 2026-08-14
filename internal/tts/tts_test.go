@@ -6,6 +6,7 @@ import (
 
 	"utautts/internal/frontend"
 	"utautts/internal/plan"
+	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
 )
@@ -61,6 +62,23 @@ func TestExternalPitchFactorsDoNotImplicitlyEnableWaveformPitchProcessing(t *tes
 	}
 	if !applyPitchEnabled(Config{ProsodyPitchOnly: true}) {
 		t.Fatal("ProsodyPitchOnly did not enable pitch processing")
+	}
+}
+
+func TestPitchProcessingSwitchControlsModelFrameContour(t *testing.T) {
+	model := &prosody.Model{FramePitch: &prosody.FramePitchModel{}}
+	capabilities := &plugin.Capabilities{FramePitch: true}
+	if shouldPredictFrameContour(Config{RendererCapabilities: capabilities}, model) {
+		t.Fatal("model frame contour was enabled while pitch processing was off")
+	}
+	if !shouldPredictFrameContour(Config{ApplyPitch: true, RendererCapabilities: capabilities}, model) {
+		t.Fatal("model frame contour was disabled while pitch processing was on")
+	}
+	if got := effectiveIntonationStrength(Config{IntonationStrength: 0.5}); got != 0 {
+		t.Fatalf("disabled pitch processing kept intonation strength %.2f", got)
+	}
+	if got := effectiveIntonationStrength(Config{ApplyPitch: true, IntonationStrength: 0.5}); got != 0.5 {
+		t.Fatalf("enabled pitch processing changed intonation strength to %.2f", got)
 	}
 }
 

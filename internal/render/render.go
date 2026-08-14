@@ -89,6 +89,10 @@ type effectiveTiming struct {
 }
 
 func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	if !cfg.ApplyPitch {
+		cfg.IntonationStrength = 0
+		cfg.PitchCurve = nil
+	}
 	if cfg.PitchCurve != nil {
 		if cfg.PitchCurve.FrameMS < 0.1 || math.IsNaN(cfg.PitchCurve.FrameMS) || math.IsInf(cfg.PitchCurve.FrameMS, 0) || len(cfg.PitchCurve.Cents) == 0 {
 			return nil, errors.New("pitch curve requires frame_ms >= 0.1 and at least one value")
@@ -143,6 +147,13 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	default:
 		return nil, fmt.Errorf("unknown renderer backend %q", cfg.Backend)
 	}
+}
+
+func effectiveUnitPitchFactor(unit plan.Unit, applyPitch bool) float64 {
+	if !applyPitch || unit.PitchFactor <= 0 {
+		return 1
+	}
+	return unit.PitchFactor
 }
 
 func pitchCurveHasShift(curve *PitchCurve) bool {

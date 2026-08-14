@@ -174,7 +174,8 @@ func Synthesize(cfg Config) (*Result, error) {
 	}
 	synthesisPlan.Text = cfg.Text
 	pitchCurve := cfg.PitchCurve
-	if pitchCurve == nil && loadedProsody != nil && loadedProsody.HasFrameContour() && rendererSupportsFramePitch(cfg.Renderer, cfg.RendererCapabilities) {
+	applyPitch := applyPitchEnabled(cfg)
+	if pitchCurve == nil && shouldPredictFrameContour(cfg, loadedProsody) {
 		timings := moraTimings(morae, synthesisPlan)
 		question := strings.ContainsAny(cfg.Text, "?？")
 		if contour := loadedProsody.PredictFrameContour(morae, prosodyFeatures, timings, synthesisPlan.DurationMS+cfg.ReleaseMS, question); contour != nil {
@@ -200,10 +201,10 @@ func Synthesize(cfg Config) (*Result, error) {
 		pitchCurve = mergeManualPitchCurve(pitchCurve, manualContour, manualPitch.Mode)
 		pitchCurve = render.ConstrainPitchCurve(pitchCurve, 20, 8)
 	}
-	applyPitch := applyPitchEnabled(cfg)
+	intonationStrength := effectiveIntonationStrength(cfg)
 	pcm, err := render.Render(synthesisPlan, render.Config{
 		ReleaseMS:               cfg.ReleaseMS,
-		IntonationStrength:      cfg.IntonationStrength,
+		IntonationStrength:      intonationStrength,
 		ApplyPitch:              applyPitch,
 		Backend:                 cfg.Renderer,
 		WorldlinePath:           cfg.WorldlinePath,
@@ -327,6 +328,18 @@ func rendererSupportsFramePitch(renderer string, capabilities *plugin.Capabiliti
 
 func applyPitchEnabled(cfg Config) bool {
 	return cfg.ApplyPitch || cfg.ProsodyPitchOnly
+}
+
+func shouldPredictFrameContour(cfg Config, model *prosody.Model) bool {
+	return applyPitchEnabled(cfg) && model != nil && model.HasFrameContour() &&
+		rendererSupportsFramePitch(cfg.Renderer, cfg.RendererCapabilities)
+}
+
+func effectiveIntonationStrength(cfg Config) float64 {
+	if !applyPitchEnabled(cfg) {
+		return 0
+	}
+	return cfg.IntonationStrength
 }
 
 func joinModelScoreScale(model *connection.LearnedModel) float64 {

@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -21,6 +23,14 @@ import (
 	"utautts/internal/render"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
+)
+
+const (
+	maxJSONRequestBytes   = 1 << 20
+	maxSynthesisTextRunes = 500
+	maxBatchItems         = 16
+	maxBatchWAVBytes      = 256 << 20
+	maxManualPitchPoints  = 1000
 )
 
 type Config struct {
@@ -70,12 +80,19 @@ type cachedProsodyModel struct {
 	model   *prosody.Model
 }
 
-func New(config Config) *Server {
+func New(config Config) (*Server, error) {
 	voiceDir := voicebank.ResolveDirectory(config.VoiceDir)
 	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
-	config.RendererDirectories = append(config.RendererDirectories, defaultRendererDirs...)
-	config.ModelDirectories = append(config.ModelDirectories, defaultModelDirs...)
-	catalog, _ := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
+	if len(config.RendererDirectories) == 0 {
+		config.RendererDirectories = defaultRendererDirs
+	}
+	if len(config.ModelDirectories) == 0 {
+		config.ModelDirectories = defaultModelDirs
+	}
+	catalog, err := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
+	if err != nil {
+		return nil, fmt.Errorf("discover plugins: %w", err)
+	}
 	if config.Renderer == "" {
 		config.Renderer = catalog.DefaultRenderer()
 	}
@@ -89,13 +106,13 @@ func New(config Config) *Server {
 		catalog: catalog,
 	}
 	if err := srv.loadVoiceDirectory(); err != nil {
-		log.Printf("warning: load voicebanks from %s: %v", voiceDir, err)
+		return nil, fmt.Errorf("load voicebanks from %s: %w", voiceDir, err)
 	}
 	if len(srv.voicebanks) == 0 {
 		log.Printf("warning: no voicebanks found in %s", voiceDir)
 	}
 
-	return srv
+	return srv, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -140,7 +157,7 @@ func tokenEqual(left, right string) bool {
 
 func (s *Server) loadVoiceDirectory() error {
 	summaries, err := voicebank.Discover(s.voiceDir)
-	if err != nil {
+	if err != nil && !errors.Is(err, voicebank.ErrNoOto) && !os.IsNotExist(err) {
 		s.mu.Lock()
 		s.voicebanks = map[string]Voicebank{}
 		s.mu.Unlock()
@@ -158,6 +175,7 @@ func (s *Server) loadVoiceDirectory() error {
 	s.cacheMu.Lock()
 	s.loadedVoicebanks = make(map[string]*voicebank.Bank)
 	s.cacheMu.Unlock()
+	tts.ClearCaches()
 	return nil
 }
 
@@ -252,7 +270,11 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Text string `json:"text"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Text == "" {
+	if err := decodeJSONBody(w, r, &request); err != nil {
+		writeJSON(w, jsonDecodeStatus(err), map[string]string{"error": err.Error()})
+		return
+	}
+	if request.Text == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text is required"})
 		return
 	}
@@ -305,8 +327,8 @@ func (s *Server) handleRegisterVoicebank(w http.ResponseWriter, r *http.Request)
 		Name string `json:"name"`
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+	if err := decodeJSONBody(w, r, &request); err != nil {
+		writeJSON(w, jsonDecodeStatus(err), map[string]string{"error": err.Error()})
 		return
 	}
 	path, err := pathWithin(s.voiceDir, request.Path)
@@ -368,8 +390,8 @@ type SynthesisRequest struct {
 
 func (s *Server) handleSynthesizeAudio(w http.ResponseWriter, r *http.Request) {
 	var request SynthesisRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+	if err := decodeJSONBody(w, r, &request); err != nil {
+		writeJSON(w, jsonDecodeStatus(err), map[string]string{"error": err.Error()})
 		return
 	}
 	result, engine, status, err := s.synthesize(request)
@@ -391,12 +413,21 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 			Request SynthesisRequest `json:"request"`
 		} `json:"items"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.Items) == 0 {
+	if err := decodeJSONBody(w, r, &request); err != nil {
+		writeJSON(w, jsonDecodeStatus(err), map[string]string{"error": err.Error()})
+		return
+	}
+	if len(request.Items) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "items are required"})
+		return
+	}
+	if len(request.Items) > maxBatchItems {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": fmt.Sprintf("batch supports at most %d items", maxBatchItems)})
 		return
 	}
 	var output bytes.Buffer
 	archive := zip.NewWriter(&output)
+	totalWAVBytes := 0
 	for index, item := range request.Items {
 		result, _, status, err := s.synthesize(item.Request)
 		if err != nil {
@@ -408,12 +439,24 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 		if name == "." || name == "" {
 			name = fmt.Sprintf("utterance-%d.wav", index+1)
 		}
+		wav := audio.PCMToWavBytes(result.Audio)
+		totalWAVBytes += len(wav)
+		if totalWAVBytes > maxBatchWAVBytes {
+			_ = archive.Close()
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "batch audio exceeds 256 MiB"})
+			return
+		}
 		entry, err := archive.Create(name)
 		if err != nil {
+			_ = archive.Close()
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		_, _ = entry.Write(audio.PCMToWavBytes(result.Audio))
+		if _, err := entry.Write(wav); err != nil {
+			_ = archive.Close()
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	if err := archive.Close(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -428,6 +471,18 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int, error) {
 	if request.Kana == "" && request.Text == "" {
 		return nil, "", http.StatusBadRequest, fmt.Errorf("text or kana is required")
+	}
+	if len([]rune(request.Text)) > maxSynthesisTextRunes || len([]rune(request.Kana)) > maxSynthesisTextRunes {
+		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("text and kana are limited to %d characters", maxSynthesisTextRunes)
+	}
+	if request.MoraDurationMS < 0 || request.MoraDurationMS > 1000 || request.PauseDurationMS < 0 || request.PauseDurationMS > 3000 {
+		return nil, "", http.StatusBadRequest, fmt.Errorf("duration settings are outside the supported range")
+	}
+	if request.IntonationStrength < 0 || request.IntonationStrength > 1 {
+		return nil, "", http.StatusBadRequest, fmt.Errorf("intonation_strength must be between 0 and 1")
+	}
+	if request.ManualPitch != nil && len(request.ManualPitch.Points) > maxManualPitchPoints {
+		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("manual pitch supports at most %d points", maxManualPitchPoints)
 	}
 	vb, ok := s.resolveVoicebank(request.VoicebankID)
 	if !ok {
@@ -498,8 +553,7 @@ func configuredPluginAsset(explicit string, renderer plugin.Renderer, name strin
 
 func (s *Server) pluginCatalog() *plugin.Catalog {
 	if s.catalog == nil {
-		rendererDirectories, modelDirectories := plugin.DefaultDirectories()
-		s.catalog, _ = plugin.Discover(rendererDirectories, modelDirectories, render.IsKnownRenderer)
+		return &plugin.Catalog{}
 	}
 	return s.catalog
 }
@@ -526,4 +580,28 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, destination any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONRequestBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("request must contain one JSON object")
+		}
+		return err
+	}
+	return nil
+}
+
+func jsonDecodeStatus(err error) int {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
 }

@@ -38,7 +38,10 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	engine := New(Config{VoiceDir: root})
+	engine, err := New(Config{VoiceDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, method := range []string{"health", "voicebanks", "renderers", "models"} {
 		if _, err := engine.Call(method, nil); err != nil {
 			t.Fatalf("%s: %v", method, err)
@@ -58,6 +61,16 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	}
 	if info, err := os.Stat(output); err != nil || info.Size() < 44 {
 		t.Fatalf("output info=%v err=%v", info, err)
+	}
+	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=い,0,0,0,0,0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Call("reloadVoicebanks", nil); err != nil {
+		t.Fatal(err)
+	}
+	request, _ = json.Marshal(map[string]any{"kana": "い", "voicebank_id": "bank", "mora_duration_ms": 100, "output_path": filepath.Join(root, "reloaded.wav")})
+	if _, err := engine.Call("synthesize", request); err != nil {
+		t.Fatalf("synthesis after voicebank reload: %v", err)
 	}
 }
 
@@ -82,7 +95,10 @@ func TestEngineFallsBackToOpenJTalkForEnglish(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(openJTalkHelperEnvironment, "1")
-	engine := New(Config{VoiceDir: root, OpenJTalkPath: helper, OpenJTalkDictionary: root})
+	engine, err := New(Config{VoiceDir: root, OpenJTalkPath: helper, OpenJTalkDictionary: root})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	analysisJSON, err := engine.Call("analyze", []byte(`{"text":"hello"}`))
 	if err != nil {
@@ -108,5 +124,26 @@ func TestEngineFallsBackToOpenJTalkForEnglish(t *testing.T) {
 	}
 	if info, err := os.Stat(output); err != nil || info.Size() < 44 {
 		t.Fatalf("output info=%v err=%v", info, err)
+	}
+}
+
+func TestNewReportsInvalidPlugin(t *testing.T) {
+	pluginDirectory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pluginDirectory, "plugin.json"), []byte(`{"kind":"renderer"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Config{VoiceDir: t.TempDir(), RendererDirectories: []string{pluginDirectory}}); err == nil {
+		t.Fatal("invalid renderer plugin was silently ignored")
+	}
+}
+
+func TestNewAllowsMissingVoiceDirectory(t *testing.T) {
+	engine, err := New(Config{VoiceDir: filepath.Join(t.TempDir(), "missing")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := engine.Call("voicebanks", nil)
+	if err != nil || string(result) != `{"voicebanks":[]}` {
+		t.Fatalf("voicebanks=%s err=%v", result, err)
 	}
 }

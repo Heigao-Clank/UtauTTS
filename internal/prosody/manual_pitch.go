@@ -95,7 +95,7 @@ func (file *ManualPitchFile) Curve(morae []frontend.Mora, timings []MoraTiming, 
 	centers := make([]float64, 0, len(morae))
 	centerValues := make([]float64, 0, len(morae))
 	for index, mora := range morae {
-		if mora.Pause || !set[index] {
+		if mora.Pause {
 			continue
 		}
 		centers = append(centers, timings[index].StartMS+timings[index].DurationMS/2)

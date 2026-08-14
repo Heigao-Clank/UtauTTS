@@ -2,6 +2,7 @@ package native
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,18 +40,27 @@ type Engine struct {
 	catalog    *plugin.Catalog
 }
 
-func New(config Config) *Engine {
+func New(config Config) (*Engine, error) {
 	config.VoiceDir = voicebank.ResolveDirectory(config.VoiceDir)
 	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
-	config.RendererDirectories = append(config.RendererDirectories, defaultRendererDirs...)
-	config.ModelDirectories = append(config.ModelDirectories, defaultModelDirs...)
-	catalog, _ := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
+	if len(config.RendererDirectories) == 0 {
+		config.RendererDirectories = defaultRendererDirs
+	}
+	if len(config.ModelDirectories) == 0 {
+		config.ModelDirectories = defaultModelDirs
+	}
+	catalog, err := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
+	if err != nil {
+		return nil, fmt.Errorf("discover plugins: %w", err)
+	}
 	if config.Renderer == "" {
 		config.Renderer = catalog.DefaultRenderer()
 	}
 	engine := &Engine{config: config, voicebanks: make(map[string]voicebank.Summary), catalog: catalog}
-	_ = engine.reload()
-	return engine
+	if err := engine.reload(); err != nil {
+		return nil, fmt.Errorf("load voicebanks: %w", err)
+	}
+	return engine, nil
 }
 
 func NewJSON(data []byte) (*Engine, error) {
@@ -60,7 +70,7 @@ func NewJSON(data []byte) (*Engine, error) {
 			return nil, fmt.Errorf("decode native config: %w", err)
 		}
 	}
-	return New(config), nil
+	return New(config)
 }
 
 func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
@@ -99,7 +109,7 @@ type Voicebank struct {
 
 func (e *Engine) reload() error {
 	summaries, err := voicebank.Discover(e.config.VoiceDir)
-	if err != nil {
+	if err != nil && !errors.Is(err, voicebank.ErrNoOto) && !os.IsNotExist(err) {
 		return err
 	}
 	next := make(map[string]voicebank.Summary, len(summaries))
@@ -109,6 +119,7 @@ func (e *Engine) reload() error {
 	e.mu.Lock()
 	e.voicebanks = next
 	e.mu.Unlock()
+	tts.ClearCaches()
 	return nil
 }
 
@@ -116,7 +127,15 @@ func (e *Engine) voicebankList() []map[string]any {
 	e.mu.RLock()
 	list := make([]map[string]any, 0, len(e.voicebanks))
 	for id, item := range e.voicebanks {
-		list = append(list, map[string]any{"id": id, "name": item.Name, "path": item.Path, "image_path": item.ImagePath})
+		presentation, _ := voicebank.LoadPresentation(item)
+		list = append(list, map[string]any{
+			"id":          id,
+			"name":        item.Name,
+			"path":        item.Path,
+			"image_path":  item.ImagePath,
+			"readme_path": item.ReadmePath,
+			"readme_text": presentation.ReadmeText,
+		})
 	}
 	e.mu.RUnlock()
 	sort.Slice(list, func(i, j int) bool { return list[i]["name"].(string) < list[j]["name"].(string) })

@@ -68,6 +68,16 @@ func TestModelWithoutIdentityIsNotCatalogued(t *testing.T) {
 	}
 }
 
+func TestInvalidModelIsReported(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "broken.json"), []byte(`{"version":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DiscoverModels([]string{directory}); err == nil {
+		t.Fatal("invalid model was silently ignored")
+	}
+}
+
 func TestRepositoryBundlesSelfDescribingModels(t *testing.T) {
 	_, modelDirectories := DefaultDirectories()
 	models, err := DiscoverModels(modelDirectories)

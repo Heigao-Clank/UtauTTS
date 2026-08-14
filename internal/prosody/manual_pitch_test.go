@@ -21,8 +21,21 @@ func TestManualPitchCurveInterpolatesMoraCenters(t *testing.T) {
 	if curve.FrameMS != 10 || len(curve.Cents) != 32 {
 		t.Fatalf("curve metadata = %+v", curve)
 	}
-	if math.Abs(curve.Cents[5]) > 0.01 || math.Abs(curve.Cents[15]-50) > 0.01 || math.Abs(curve.Cents[25]-100) > 0.01 {
-		t.Fatalf("curve centers = %.2f, %.2f, %.2f", curve.Cents[5], curve.Cents[15], curve.Cents[25])
+	if math.Abs(curve.Cents[5]) > 0.01 || math.Abs(curve.Cents[15]) > 0.01 || math.Abs(curve.Cents[20]-50) > 0.01 || math.Abs(curve.Cents[25]-100) > 0.01 {
+		t.Fatalf("curve values = %.2f, %.2f, %.2f, %.2f", curve.Cents[5], curve.Cents[15], curve.Cents[20], curve.Cents[25])
+	}
+}
+
+func TestManualPitchCurveKeepsUnspecifiedMoraeAtZero(t *testing.T) {
+	file := &ManualPitchFile{Version: 1, Points: []ManualPitchPoint{{Position: 1, Cents: 80}}}
+	morae := []frontend.Mora{{Text: "あ"}, {Text: "い"}, {Text: "う"}}
+	timings := []MoraTiming{{StartMS: 0, DurationMS: 100}, {StartMS: 100, DurationMS: 100}, {StartMS: 200, DurationMS: 100}}
+	curve, err := file.Curve(morae, timings, 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(curve.Cents[5]) > 0.01 || math.Abs(curve.Cents[15]-80) > 0.01 || math.Abs(curve.Cents[25]) > 0.01 {
+		t.Fatalf("sparse curve centers = %.2f, %.2f, %.2f", curve.Cents[5], curve.Cents[15], curve.Cents[25])
 	}
 }
 

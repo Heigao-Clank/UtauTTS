@@ -142,11 +142,31 @@ func Inspect(root string) (Summary, error) {
 			}
 		}
 	}
+	if imagePath == "" {
+		imagePath = findRootImage(absRoot)
+	}
 	readmePath := findRootFile(absRoot, "readme.txt")
 	if readmePath == "" {
 		readmePath = findRootFile(absRoot, "readme.md")
 	}
 	return Summary{Name: name, Path: absRoot, ImagePath: imagePath, CharacterPath: characterPath, ReadmePath: readmePath}, nil
+}
+
+func findRootImage(root string) string {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		extension := strings.ToLower(filepath.Ext(entry.Name()))
+		if extension == ".bmp" || extension == ".png" || extension == ".jpg" || extension == ".jpeg" {
+			return safePresentationFile(root, entry.Name())
+		}
+	}
+	return ""
 }
 
 func safePresentationFile(root, relative string) string {

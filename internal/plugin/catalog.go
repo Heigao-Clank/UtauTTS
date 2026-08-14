@@ -66,6 +66,9 @@ func DiscoverRenderers(directories []string, supportsBackend func(string) bool) 
 	for _, root := range uniqueDirectories(directories) {
 		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
+				if !os.IsNotExist(walkErr) {
+					problems = append(problems, fmt.Errorf("walk renderer directory %q: %w", root, walkErr))
+				}
 				return nil
 			}
 			if entry.IsDir() || !strings.EqualFold(entry.Name(), "plugin.json") {
@@ -127,6 +130,7 @@ func DiscoverModels(directories []string) ([]Model, error) {
 			}
 			loaded, err := prosody.LoadModel(path)
 			if err != nil {
+				problems = append(problems, fmt.Errorf("load model %q: %w", path, err))
 				continue
 			}
 			id := strings.TrimSpace(loaded.ID)

@@ -7,13 +7,24 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"utautts/internal/audio"
+	"utautts/internal/plugin"
 )
 
+func mustNewServer(t *testing.T, config Config) *Server {
+	t.Helper()
+	server, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return server
+}
+
 func TestProtectedHandlerRequiresBearerToken(t *testing.T) {
-	server := New(Config{AuthToken: "secret", VoiceDir: t.TempDir()})
+	server := mustNewServer(t, Config{AuthToken: "secret", VoiceDir: t.TempDir()})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/health", nil))
 	if response.Code != http.StatusUnauthorized {
@@ -30,7 +41,7 @@ func TestProtectedHandlerRequiresBearerToken(t *testing.T) {
 
 func TestUnknownPathIsNotIndex(t *testing.T) {
 	response := httptest.NewRecorder()
-	New(Config{VoiceDir: t.TempDir()}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing", nil))
+	mustNewServer(t, Config{VoiceDir: t.TempDir()}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing", nil))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", response.Code)
 	}
@@ -38,7 +49,7 @@ func TestUnknownPathIsNotIndex(t *testing.T) {
 
 func TestVoicebankRegistrationDisabledByDefault(t *testing.T) {
 	response := httptest.NewRecorder()
-	New(Config{VoiceDir: t.TempDir()}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/voicebanks", bytes.NewBufferString(`{"path":"."}`)))
+	mustNewServer(t, Config{VoiceDir: t.TempDir()}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/voicebanks", bytes.NewBufferString(`{"path":"."}`)))
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d", response.Code)
 	}
@@ -46,13 +57,67 @@ func TestVoicebankRegistrationDisabledByDefault(t *testing.T) {
 
 func TestRendererMetadataIncludesConfiguredDefault(t *testing.T) {
 	response := httptest.NewRecorder()
-	New(Config{VoiceDir: t.TempDir(), Renderer: "worldline-hybrid"}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/renderers", nil))
+	mustNewServer(t, Config{VoiceDir: t.TempDir(), Renderer: "worldline-hybrid"}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/renderers", nil))
 	var payload struct {
 		Default string `json:"default_renderer"`
 	}
 	_ = json.Unmarshal(response.Body.Bytes(), &payload)
 	if payload.Default != "worldline-hybrid" {
 		t.Fatalf("default = %q", payload.Default)
+	}
+}
+
+func TestNewReportsInvalidPlugin(t *testing.T) {
+	pluginDirectory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pluginDirectory, "plugin.json"), []byte(`{"kind":"renderer"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Config{VoiceDir: t.TempDir(), RendererDirectories: []string{pluginDirectory}}); err == nil {
+		t.Fatal("invalid renderer plugin was silently ignored")
+	}
+}
+
+func TestNewAllowsMissingVoiceDirectory(t *testing.T) {
+	server, err := New(Config{VoiceDir: filepath.Join(t.TempDir(), "missing")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(server.voicebankList()) != 0 {
+		t.Fatalf("voicebanks=%#v", server.voicebankList())
+	}
+}
+
+func TestJSONAndBatchLimits(t *testing.T) {
+	server := (&Server{voicebanks: map[string]Voicebank{}}).Handler()
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/analyze", strings.NewReader(`{"text":"あ","unknown":true}`))
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field status = %d", response.Code)
+	}
+
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/synthesize/audio",
+		strings.NewReader(`{"text":"`+strings.Repeat("あ", maxSynthesisTextRunes+1)+`"}`))
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("long synthesis status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	items := strings.Repeat(`{"request":{"kana":"あ"}},`, maxBatchItems) + `{"request":{"kana":"あ"}}`
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/synthesize/batch", strings.NewReader(`{"items":[`+items+`]}`))
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("large batch status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/analyze", strings.NewReader(strings.Repeat(" ", maxJSONRequestBytes+1)))
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("large JSON status = %d", response.Code)
 	}
 }
 
@@ -70,7 +135,7 @@ func TestSynthesizeEndpointReportsWaveformRenderer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := &Server{voicebanks: map[string]Voicebank{
+	server := &Server{renderer: "waveform", catalog: &plugin.Catalog{Renderers: []plugin.Renderer{{ID: "waveform", Backend: "waveform"}}}, voicebanks: map[string]Voicebank{
 		"test": {ID: "test", Name: "test", Path: root},
 	}}
 	body := bytes.NewBufferString(`{"kana":"あ","voicebank_id":"test","mora_duration_ms":100}`)
@@ -92,7 +157,7 @@ func TestSynthesizeEndpointRejectsUnknownText(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	server := &Server{voicebanks: map[string]Voicebank{
+	server := &Server{renderer: "waveform", catalog: &plugin.Catalog{Renderers: []plugin.Renderer{{ID: "waveform", Backend: "waveform"}}}, voicebanks: map[string]Voicebank{
 		"test": {ID: "test", Path: root},
 	}}
 	request := httptest.NewRequest(http.MethodPost, "/api/synthesize/audio", bytes.NewBufferString(`{"text":"UtauTTS","voicebank_id":"test"}`))
@@ -122,7 +187,7 @@ func TestHealthReportsConfiguredRenderer(t *testing.T) {
 }
 
 func TestAPIMetadata(t *testing.T) {
-	server := &Server{renderer: "waveform", voicebanks: map[string]Voicebank{}}
+	server := mustNewServer(t, Config{Renderer: "waveform", VoiceDir: t.TempDir()})
 	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
