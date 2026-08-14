@@ -802,6 +802,13 @@ ApplicationWindow {
     }
 
     MessageDialog {
+        id: shortcutConflictDialog
+        title: "ショートカット設定"
+        text: "同じショートカットが複数の機能に割り当てられています。別のキーを設定してください。"
+        buttons: MessageDialog.Ok
+    }
+
+    MessageDialog {
         id: aboutDialog
         title: "UtauTTSについて"
         text: "UtauTTS " + Qt.application.version + " by yh"
@@ -1295,6 +1302,7 @@ ApplicationWindow {
                                 utterances.move(from, to, 1);
                                 window.selectedIndex = to;
                                 window.draggedUtteranceIndex = to;
+                                window.projectDirty = true;
                             }
                         }
                     }
@@ -1801,6 +1809,21 @@ ApplicationWindow {
     }
 
     function saveSettings() {
+        const shortcuts = [settingsWindow.pendingSynthesizeShortcut,
+                           settingsWindow.pendingSaveProjectShortcut,
+                           settingsWindow.pendingReloadVoicebanksShortcut];
+        const usedShortcuts = [];
+        for (let index = 0; index < shortcuts.length; ++index) {
+            const shortcut = String(shortcuts[index] || "").trim();
+            if (!shortcut.length)
+                continue;
+            const normalized = window.qtShortcutSequence(shortcut).toLowerCase();
+            if (usedShortcuts.indexOf(normalized) >= 0) {
+                shortcutConflictDialog.open();
+                return;
+            }
+            usedShortcuts.push(normalized);
+        }
         if (utterances.count) {
             window.updateSetting("moraDuration", settingsWindow.pendingMoraDuration);
             window.updateSetting("pauseDuration", settingsWindow.pendingPauseDuration);
@@ -2029,15 +2052,14 @@ ApplicationWindow {
             const saved = project.utterances[index] || {};
             const voicebankId = String(saved.voicebank_id || "");
             const voice = window.voicebankById(voicebankId);
-            const cache = saved.analysis_cache || {};
-            const morae = Array.isArray(cache.morae) ? cache.morae : [];
             const points = Array.isArray(saved.pitch_points) ? saved.pitch_points : [];
             const content = String(saved.text || "");
             utterances.append({
                 utteranceId: "utterance-" + window.nextUtteranceId++,
                 content: content,
-                reading: String(cache.reading || ""),
-                moraeJson: JSON.stringify(morae),
+                // The cached reading may have been generated with another dictionary.
+                reading: "",
+                moraeJson: "[]",
                 pointsJson: JSON.stringify(points),
                 voicebankId: voicebankId,
                 imagePath: voice ? voice.image_path || "" : "",
