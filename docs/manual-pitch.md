@@ -1,6 +1,6 @@
 # 手動イントネーション
 
-手動ピッチ編集は、読みの各モーラに対する音高補正（cent）を指定する JSON 形式です。補正は v8/v9 などの学習イントネーションに加算され、OpenUTAU Classic faithful などのピッチ処理へ渡されます。
+手動ピッチ編集は、読みの各モーラに対する音高補正（cent）を指定する JSON 形式です。補正は学習イントネーションに加算され、OpenUTAU Classic faithful などのピッチ処理へ渡されます。CLI の `--prosody` にはモデルファイル名ではなく、インストール済みモデルの `id` を指定します。
 
 ```json
 {
@@ -39,7 +39,7 @@ go run ./cmd/utautts-cli `
   --voicebank "release/UtauTTS/voice/ボイスバンク" `
   --text "こんにちは" `
   --renderer openutau-classic-worldline-faithful `
-  --prosody "models/frame-intonation-v8.json" `
+  --prosody frame-intonation-v8 `
   --prosody-pitch-only `
   --manual-pitch "out/manual-pitch.json" `
   --out "out/manual-pitch.wav"

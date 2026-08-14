@@ -72,4 +72,4 @@ GUIとserverは`models/`を走査します。追加directoryはnative JSONの`mo
 
 ## 配布物
 
-release buildは`plugins/renderers/`と、`models/`に明示的にinstallされた自己記述モデルをGUI・serverの両方へコピーします。研究出力directoryからv8/v9など特定filenameを推測してコピーする処理はありません。`models/`が空ならrelease buildは失敗します。これにより、モデル追加時にQt、Go、release scriptの複数箇所を修正する必要がなくなります。
+release buildは`plugins/renderers/`と、`models/`に明示的にinstallされた自己記述モデルをGUI・serverの両方へコピーします。研究出力directoryから特定filenameを推測してコピーする処理はありません。`models/`が空ならrelease buildは失敗します。これにより、モデル追加時にQt、Go、release scriptの複数箇所を修正する必要がなくなります。
