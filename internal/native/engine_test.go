@@ -54,6 +54,19 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	if !json.Valid(analysis) {
 		t.Fatalf("analysis=%s", analysis)
 	}
+	dictionaryAnalysis, err := engine.Call("analyze", []byte(`{"text":"UtauTTS","dictionary":[{"surface":"UtauTTS","reading":"あ"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dictionaryResult struct {
+		Reading string `json:"reading"`
+	}
+	if err := json.Unmarshal(dictionaryAnalysis, &dictionaryResult); err != nil {
+		t.Fatal(err)
+	}
+	if dictionaryResult.Reading != "ア" {
+		t.Fatalf("dictionary analysis=%s", dictionaryAnalysis)
+	}
 	output := filepath.Join(root, "preview.wav")
 	request, _ := json.Marshal(map[string]any{"kana": "あ", "voicebank_id": "bank", "mora_duration_ms": 100, "output_path": output})
 	if _, err := engine.Call("synthesize", request); err != nil {

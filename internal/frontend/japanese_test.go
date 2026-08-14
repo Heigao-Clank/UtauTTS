@@ -30,3 +30,25 @@ func TestToKanaRejectsUnknownLatinToken(t *testing.T) {
 		t.Fatal("expected an unknown-token error")
 	}
 }
+
+func TestToKanaWithDictionaryOverridesSurfaceReading(t *testing.T) {
+	got, err := ToKanaWithDictionary("UtauTTSを試します。", map[string]string{
+		"UtauTTS": "うたうてぃーてぃーえす",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "ウタウテ") {
+		t.Fatalf("reading = %q", got)
+	}
+}
+
+func TestApplyDictionaryPrefersLongestSurface(t *testing.T) {
+	got := ApplyDictionary("東京都", map[string]string{
+		"東京":  "とうきょう",
+		"東京都": "とうきょうと",
+	})
+	if got != "とうきょうと" {
+		t.Fatalf("replacement = %q", got)
+	}
+}

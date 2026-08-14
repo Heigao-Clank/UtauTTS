@@ -55,6 +55,19 @@ Backend::Backend(QObject *parent)
       m_reloadVoicebanksShortcut(QSettings().value("shortcuts/reloadVoicebanks", QStringLiteral("Ctrl+O")).toString()) {
     m_defaultMoraDuration = qBound(20, m_defaultMoraDuration, 1000);
     m_defaultPauseDuration = qBound(0, m_defaultPauseDuration, 3000);
+    const QByteArray dictionaryJSON = QSettings().value("dictionary/entries").toByteArray();
+    QJsonParseError parseError;
+    const QJsonDocument dictionaryDocument = QJsonDocument::fromJson(dictionaryJSON, &parseError);
+    if (parseError.error == QJsonParseError::NoError && dictionaryDocument.isArray()) {
+        for (const QJsonValue &value : dictionaryDocument.array()) {
+            const QVariantMap entry = value.toObject().toVariantMap();
+            const QString surface = entry.value("surface").toString().trimmed();
+            const QString reading = entry.value("reading").toString().trimmed();
+            if (!surface.isEmpty() && !reading.isEmpty()) {
+                m_dictionaryEntries.append(QVariantMap{{"surface", surface}, {"reading", reading}});
+            }
+        }
+    }
 }
 Backend::~Backend() {
     m_activeCalls.waitForFinished();
@@ -119,6 +132,26 @@ void Backend::setShortcutSequences(const QString &synthesize, const QString &sav
     settings.setValue("shortcuts/reloadVoicebanks", m_reloadVoicebanksShortcut);
     settings.sync();
     emit shortcutSettingsChanged();
+}
+
+void Backend::setDictionaryEntries(const QVariantList &entries) {
+    QVariantList normalized;
+    for (const QVariant &value : entries) {
+        const QVariantMap entry = value.toMap();
+        const QString surface = entry.value("surface").toString().trimmed();
+        const QString reading = entry.value("reading").toString().trimmed();
+        if (!surface.isEmpty() && !reading.isEmpty()) {
+            normalized.append(QVariantMap{{"surface", surface}, {"reading", reading}});
+        }
+    }
+    if (m_dictionaryEntries == normalized) {
+        return;
+    }
+    m_dictionaryEntries = normalized;
+    QSettings settings;
+    settings.setValue("dictionary/entries", QJsonDocument(QJsonArray::fromVariantList(m_dictionaryEntries)).toJson(QJsonDocument::Compact));
+    settings.sync();
+    emit dictionaryChanged();
 }
 
 void Backend::appendLog(const QString &message) {
@@ -271,9 +304,10 @@ void Backend::analyze(const QString &text, const QString &requestId) {
                     m_activeCalls.clearFutures();
                 }
             });
-    const auto future = QtConcurrent::run([this, text]() {
+    const QVariantList dictionary = m_dictionaryEntries;
+    const auto future = QtConcurrent::run([this, text, dictionary]() {
         try {
-            return call("analyze", {{"text", text}});
+            return call("analyze", {{"text", text}, {"dictionary", dictionary}});
         } catch (const std::exception &exception) {
             return QVariantMap{{"_error", QString::fromUtf8(exception.what())}};
         }

@@ -21,6 +21,7 @@ type Config struct {
 	Voicebank               *voicebank.Bank
 	Text                    string
 	Reading                 string
+	Dictionary              map[string]string
 	Tone                    string
 	MoraDurationMS          float64
 	PauseDurationMS         float64
@@ -79,7 +80,8 @@ func Synthesize(cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("load prosody model: %w", err)
 		}
 		if loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
-			runtimeFeatures, err = analyzeOpenJTalkCached(cfg.Text, openjtalk.Config{
+			runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
+			runtimeFeatures, err = analyzeOpenJTalkCached(runtimeText, openjtalk.Config{
 				HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
 			})
 			if err != nil {
@@ -93,7 +95,7 @@ func Synthesize(cfg Config) (*Result, error) {
 		if runtimeFeatures != nil {
 			reading = runtimeFeatures.Reading
 		} else {
-			reading, err = frontend.ToKana(cfg.Text)
+			reading, err = frontend.ToKanaWithDictionary(cfg.Text, cfg.Dictionary)
 			if err != nil {
 				return nil, fmt.Errorf("convert text to reading: %w", err)
 			}

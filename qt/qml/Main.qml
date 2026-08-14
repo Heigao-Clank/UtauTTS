@@ -614,6 +614,194 @@ ApplicationWindow {
         }
     }
 
+    ApplicationWindow {
+        id: dictionaryWindow
+        title: "辞書設定"
+        visible: false
+        width: 760
+        height: 560
+        minimumWidth: 620
+        minimumHeight: 420
+        transientParent: window
+        modality: Qt.ApplicationModal
+        flags: Qt.Dialog
+        palette: window.palette
+        color: palette.window
+
+        ListModel {
+            id: dictionaryEntriesModel
+        }
+
+        function loadCurrent() {
+            dictionaryEntriesModel.clear();
+            const entries = window.appBackend.dictionaryEntries;
+            for (let index = 0; index < entries.length; ++index) {
+                const entry = entries[index] || {};
+                dictionaryEntriesModel.append({
+                    surface: String(entry.surface || ""),
+                    reading: String(entry.reading || "")
+                });
+            }
+        }
+
+        function addEntry() {
+            dictionaryEntriesModel.append({surface: "", reading: ""});
+            dictionaryList.positionViewAtEnd();
+        }
+
+        function saveCurrent() {
+            const entries = [];
+            for (let index = 0; index < dictionaryEntriesModel.count; ++index) {
+                const entry = dictionaryEntriesModel.get(index);
+                entries.push({
+                    surface: String(entry.surface || "").trim(),
+                    reading: String(entry.reading || "").trim()
+                });
+            }
+            window.appBackend.setDictionaryEntries(entries);
+            window.reanalyzeAll();
+            dictionaryWindow.close();
+            dictionaryWindow.visible = false;
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: "文章中の表記を、指定した読みへ置き換えます。読みはひらがなまたはカタカナで入力してください。"
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    Layout.preferredWidth: 280
+                    text: "表記"
+                    font.bold: true
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: "読み"
+                    font.bold: true
+                }
+                Item {
+                    Layout.preferredWidth: 32
+                }
+            }
+
+            ListView {
+                id: dictionaryList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 2
+                model: dictionaryEntriesModel
+                ScrollBar.vertical: ScrollBar {
+                    id: dictionaryScrollBar
+                    width: 14
+                    policy: ScrollBar.AlwaysOn
+                }
+
+                delegate: RowLayout {
+                    id: dictionaryEntryRow
+                    width: Math.max(0, dictionaryList.width - dictionaryScrollBar.width - 2)
+                    height: 36
+                    spacing: 4
+
+                    required property int index
+                    required property string surface
+                    required property string reading
+
+                    TextField {
+                        Layout.preferredWidth: 280
+                        placeholderText: "例: UtauTTS"
+                        text: dictionaryEntryRow.surface
+                        selectByMouse: true
+                        onTextEdited: dictionaryEntriesModel.setProperty(index, "surface", text)
+                    }
+
+                    TextField {
+                        Layout.fillWidth: true
+                        placeholderText: "例: うたうてぃーてぃーえす"
+                        text: dictionaryEntryRow.reading
+                        selectByMouse: true
+                        onTextEdited: dictionaryEntriesModel.setProperty(index, "reading", text)
+                    }
+
+                    ToolButton {
+                        id: dictionaryDeleteButton
+                        Layout.preferredWidth: 32
+                        Layout.minimumWidth: 32
+                        Layout.maximumWidth: 32
+                        Layout.preferredHeight: 32
+                        Layout.alignment: Qt.AlignVCenter
+                        contentItem: Canvas {
+                            id: dictionaryDeleteIcon
+                            anchors.centerIn: parent
+                            width: 22
+                            height: 22
+                            property color iconColor: dictionaryDeleteButton.palette.buttonText
+                            onIconColorChanged: requestPaint()
+                            onPaint: {
+                                const context = getContext("2d");
+                                context.clearRect(0, 0, width, height);
+                                context.strokeStyle = iconColor;
+                                context.lineWidth = 1.8;
+                                context.lineCap = "round";
+                                context.lineJoin = "round";
+                                context.beginPath();
+                                context.moveTo(width * 0.29, height * 0.31);
+                                context.lineTo(width * 0.71, height * 0.31);
+                                context.moveTo(width * 0.41, height * 0.24);
+                                context.lineTo(width * 0.59, height * 0.24);
+                                context.moveTo(width * 0.37, height * 0.31);
+                                context.lineTo(width * 0.41, height * 0.76);
+                                context.lineTo(width * 0.59, height * 0.76);
+                                context.lineTo(width * 0.63, height * 0.31);
+                                context.stroke();
+                            }
+                        }
+                        onClicked: dictionaryEntriesModel.remove(index)
+                        ToolTip.visible: hovered
+                        ToolTip.text: "削除"
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                Button {
+                    text: "項目を追加"
+                    onClicked: dictionaryWindow.addEntry()
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    text: "キャンセル"
+                    onClicked: {
+                        dictionaryWindow.close();
+                        dictionaryWindow.visible = false;
+                    }
+                }
+
+                Button {
+                    text: "保存"
+                    highlighted: true
+                    onClicked: dictionaryWindow.saveCurrent()
+                }
+            }
+        }
+    }
+
     MessageDialog {
         id: aboutDialog
         title: "UtauTTSについて"
@@ -900,6 +1088,10 @@ ApplicationWindow {
                     window.showAuxiliaryWindow(settingsWindow);
                     settingsWindow.loadCurrent();
                 }
+            }
+            MenuItem {
+                text: "辞書設定..."
+                onTriggered: window.openDictionarySettings()
             }
         }
         Menu {
@@ -1632,6 +1824,11 @@ ApplicationWindow {
         showAuxiliaryWindow(settingsWindow);
     }
 
+    function openDictionarySettings() {
+        dictionaryWindow.loadCurrent();
+        showAuxiliaryWindow(dictionaryWindow);
+    }
+
     function voicebankById(id) {
         for (let i = 0; i < window.appBackend.voicebanks.length; ++i)
             if (window.appBackend.voicebanks[i].id === id)
@@ -1776,6 +1973,19 @@ ApplicationWindow {
             utterances: savedUtterances,
             selected_index: utterances.count ? selectedIndex : 0
         };
+    }
+
+    function reanalyzeAll() {
+        window.clearPlayback();
+        for (let index = 0; index < utterances.count; ++index) {
+            const item = utterances.get(index);
+            utterances.setProperty(index, "reading", "");
+            utterances.setProperty(index, "moraeJson", "[]");
+            if (item.content.trim())
+                window.appBackend.analyze(item.content, item.utteranceId);
+        }
+        if (utterances.count)
+            window.selectUtterance(window.selectedIndex);
     }
 
     function openProjectSaveDialog() {
@@ -2098,6 +2308,8 @@ ApplicationWindow {
         const morae = window.decodeSequence(item.moraeJson);
         const request = {
             text: item.content,
+            kana: item.reading || "",
+            dictionary: window.appBackend.dictionaryEntries,
             voicebank_id: item.voicebankId || voiceCombo.currentValue,
             model_id: item.modelId,
             renderer: item.renderer,
@@ -2107,7 +2319,7 @@ ApplicationWindow {
             intonation_strength: item.intonation,
             apply_pitch: item.applyPitch
         };
-        if (item.applyPitch && points.some(value => Math.abs(value) > .1)) {
+        if (item.applyPitch && item.reading && points.some(value => Math.abs(value) > .1)) {
             const manualPoints = [];
             for (let index = 0; index < points.length; ++index) {
                 const mora = index < morae.length ? morae[index] : null;

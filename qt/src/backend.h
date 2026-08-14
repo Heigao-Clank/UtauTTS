@@ -18,6 +18,7 @@ class Backend final : public QObject {
     Q_PROPERTY(QVariantList voicebanks READ voicebanks NOTIFY metadataChanged)
     Q_PROPERTY(QVariantList models READ models NOTIFY metadataChanged)
     Q_PROPERTY(QVariantList renderers READ renderers NOTIFY metadataChanged)
+    Q_PROPERTY(QVariantList dictionaryEntries READ dictionaryEntries NOTIFY dictionaryChanged)
     Q_PROPERTY(QString defaultRenderer READ defaultRenderer NOTIFY metadataChanged)
     Q_PROPERTY(bool cudaAvailable READ cudaAvailable NOTIFY metadataChanged)
     Q_PROPERTY(QString analysisRequestId READ analysisRequestId NOTIFY analysisChanged)
@@ -42,6 +43,7 @@ public:
     QVariantList voicebanks() const { return m_voicebanks; }
     QVariantList models() const { return m_models; }
     QVariantList renderers() const { return m_renderers; }
+    QVariantList dictionaryEntries() const { return m_dictionaryEntries; }
     QString defaultRenderer() const { return m_defaultRenderer; }
     bool cudaAvailable() const { return m_cudaAvailable; }
     QString analysisRequestId() const { return m_analysisRequestId; }
@@ -73,6 +75,7 @@ public:
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
     Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);
     Q_INVOKABLE void setShortcutSequences(const QString &synthesize, const QString &saveProject, const QString &reloadVoicebanks);
+    Q_INVOKABLE void setDictionaryEntries(const QVariantList &entries);
 
 signals:
     void connectedChanged();
@@ -85,6 +88,7 @@ signals:
     void logSettingsChanged();
     void synthesisDefaultsChanged();
     void shortcutSettingsChanged();
+    void dictionaryChanged();
     void logsChanged();
 
 private:
@@ -99,7 +103,7 @@ private:
     QTemporaryDir m_previewDirectory;
     QFutureSynchronizer<QVariantMap> m_activeCalls;
     int m_activeCallCount = 0;
-    QVariantList m_voicebanks, m_models, m_renderers;
+    QVariantList m_voicebanks, m_models, m_renderers, m_dictionaryEntries;
     QString m_defaultRenderer;
     bool m_cudaAvailable = false;
     QString m_analysisRequestId, m_analysisSourceText, m_analysisJson;
