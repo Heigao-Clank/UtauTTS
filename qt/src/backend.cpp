@@ -363,6 +363,55 @@ QUrl Backend::fileInDirectory(const QUrl &directory, const QString &fileName) co
     return QUrl::fromLocalFile(QDir(directory.toLocalFile()).filePath(fileName));
 }
 
+bool Backend::saveProject(const QUrl &destination, const QVariantMap &project) {
+    if (!destination.isLocalFile()) {
+        setError(tr("プロジェクトの保存先が無効です"));
+        return false;
+    }
+    const QJsonDocument document = QJsonDocument::fromVariant(project);
+    if (!document.isObject()) {
+        setError(tr("プロジェクトのデータが無効です"));
+        return false;
+    }
+    const QByteArray data = document.toJson(QJsonDocument::Indented);
+    QSaveFile target(destination.toLocalFile());
+    if (!target.open(QIODevice::WriteOnly) || target.write(data) != data.size() || !target.commit()) {
+        target.cancelWriting();
+        setError(tr("プロジェクトを保存できませんでした"));
+        return false;
+    }
+    setError({});
+    return true;
+}
+
+QVariantMap Backend::loadProject(const QUrl &source) {
+    if (!source.isLocalFile()) {
+        setError(tr("プロジェクトファイルが無効です"));
+        return {{"_error", error()}};
+    }
+    QFile file(source.toLocalFile());
+    if (!file.open(QIODevice::ReadOnly)) {
+        setError(tr("プロジェクトファイルを開けませんでした"));
+        return {{"_error", error()}};
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        setError(tr("プロジェクトファイルの形式が正しくありません"));
+        return {{"_error", error()}};
+    }
+    const QVariantMap project = document.toVariant().toMap();
+    const QVariantList utterances = project.value("utterances").toList();
+    if (project.value("format").toString() != "utautts-project"
+            || project.value("format_version").toInt() < 1 || !project.contains("utterances")) {
+        setError(tr("対応していないプロジェクト形式です"));
+        return {{"_error", error()}};
+    }
+    Q_UNUSED(utterances)
+    setError({});
+    return project;
+}
+
 void Backend::setBusy(bool value) {
     if (m_busy == value) {
         return;

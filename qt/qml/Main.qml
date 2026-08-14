@@ -105,6 +105,21 @@ ApplicationWindow {
         onAccepted: window.startBatchExport(selectedFolder)
     }
 
+    FileDialog {
+        id: projectSaveDialog
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["UtauTTSプロジェクト (*.utautts)"]
+        defaultSuffix: "utautts"
+        onAccepted: window.saveProjectTo(selectedFile)
+    }
+
+    FileDialog {
+        id: projectOpenDialog
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["UtauTTSプロジェクト (*.utautts)"]
+        onAccepted: window.loadProjectFrom(selectedFile)
+    }
+
     ApplicationWindow {
         id: synthesisLogWindow
         title: "音声合成ログ"
@@ -598,6 +613,17 @@ ApplicationWindow {
     menuBar: MenuBar {
         Menu {
             title: "ファイル"
+            MenuItem {
+                text: "プロジェクトを開く..."
+                enabled: !window.appBackend.busy && !window.batchExportActive
+                onTriggered: projectOpenDialog.open()
+            }
+            MenuItem {
+                text: "プロジェクトを保存..."
+                enabled: !window.appBackend.busy && !window.batchExportActive
+                onTriggered: window.openProjectSaveDialog()
+            }
+            MenuSeparator {}
             MenuItem {
                 text: "WAVを保存..."
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive && window.current().content.trim().length > 0
@@ -1455,6 +1481,110 @@ ApplicationWindow {
         if (!utterances.count || window.appBackend.busy || window.batchExportActive)
             return;
         saveAllDialog.open();
+    }
+
+    function projectNumber(value, fallback, minimum, maximum, integer) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed))
+            return fallback;
+        const normalized = integer ? Math.round(parsed) : parsed;
+        return Math.max(minimum, Math.min(maximum, normalized));
+    }
+
+    function projectData() {
+        const savedUtterances = [];
+        for (let index = 0; index < utterances.count; ++index) {
+            const item = utterances.get(index);
+            savedUtterances.push({
+                text: item.content || "",
+                voicebank_id: item.voicebankId || "",
+                model_id: item.modelId || "",
+                renderer_id: item.renderer || "",
+                tone: item.tone || "C4",
+                mora_duration_ms: item.moraDuration,
+                pause_duration_ms: item.pauseDuration,
+                intonation: item.intonation,
+                apply_pitch: !!item.applyPitch,
+                pitch_points: window.decodeSequence(item.pointsJson),
+                analysis_cache: {
+                    reading: item.reading || "",
+                    morae: window.decodeSequence(item.moraeJson)
+                }
+            });
+        }
+        return {
+            format: "utautts-project",
+            format_version: 1,
+            app_version: Qt.application.version,
+            utterances: savedUtterances,
+            selected_index: utterances.count ? selectedIndex : 0
+        };
+    }
+
+    function openProjectSaveDialog() {
+        if (window.appBackend.busy || window.batchExportActive)
+            return;
+        projectSaveDialog.currentFile = window.appBackend.defaultSaveFile("untitled.utautts");
+        projectSaveDialog.open();
+    }
+
+    function saveProjectTo(destination) {
+        if (!destination || !destination.toString().length)
+            return;
+        window.appBackend.saveProject(destination, window.projectData());
+    }
+
+    function loadProjectFrom(source) {
+        if (!source || !source.toString().length || window.appBackend.busy || window.batchExportActive)
+            return;
+        const project = window.appBackend.loadProject(source);
+        if (!project || project._error !== undefined || !Array.isArray(project.utterances))
+            return;
+
+        window.clearPlayback();
+        utterances.clear();
+        window.nextUtteranceId = 1;
+        for (let index = 0; index < project.utterances.length; ++index) {
+            const saved = project.utterances[index] || {};
+            const voicebankId = String(saved.voicebank_id || "");
+            const voice = window.voicebankById(voicebankId);
+            const cache = saved.analysis_cache || {};
+            const morae = Array.isArray(cache.morae) ? cache.morae : [];
+            const points = Array.isArray(saved.pitch_points) ? saved.pitch_points : [];
+            const content = String(saved.text || "");
+            utterances.append({
+                utteranceId: "utterance-" + window.nextUtteranceId++,
+                content: content,
+                reading: String(cache.reading || ""),
+                moraeJson: JSON.stringify(morae),
+                pointsJson: JSON.stringify(points),
+                voicebankId: voicebankId,
+                imagePath: voice ? voice.image_path || "" : "",
+                modelId: String(saved.model_id || ""),
+                renderer: String(saved.renderer_id || ""),
+                tone: String(saved.tone || "C4"),
+                moraDuration: window.projectNumber(saved.mora_duration_ms, window.appBackend.defaultMoraDuration, 20, 1000, true),
+                pauseDuration: window.projectNumber(saved.pause_duration_ms, window.appBackend.defaultPauseDuration, 0, 3000, true),
+                intonation: window.projectNumber(saved.intonation, 0, 0, 1, false),
+                applyPitch: saved.apply_pitch === undefined ? window.appBackend.defaultApplyPitch : !!saved.apply_pitch,
+                revision: 0
+            });
+        }
+
+        if (!utterances.count) {
+            selectedIndex = 0;
+            pitchEditor.points = [];
+            pitchEditor.morae = [];
+            return;
+        }
+        selectedIndex = Math.max(0, Math.min(Number(project.selected_index) || 0, utterances.count - 1));
+        window.selectUtterance(selectedIndex);
+        for (let index = 0; index < utterances.count; ++index) {
+            const item = utterances.get(index);
+            if (item.content.trim())
+                window.appBackend.analyze(item.content, item.utteranceId);
+        }
+        utteranceList.positionViewAtIndex(selectedIndex, ListView.Contain);
     }
 
     function localImageUrl(path) {

@@ -59,6 +59,8 @@ public:
     Q_INVOKABLE bool savePreview(const QUrl &destination);
     Q_INVOKABLE QUrl defaultSaveFile(const QString &fileName) const;
     Q_INVOKABLE QUrl fileInDirectory(const QUrl &directory, const QString &fileName) const;
+    Q_INVOKABLE bool saveProject(const QUrl &destination, const QVariantMap &project);
+    Q_INVOKABLE QVariantMap loadProject(const QUrl &source);
     Q_INVOKABLE void setDarkMode(bool value);
     Q_INVOKABLE bool showNativeAboutDialog();
     Q_INVOKABLE void clearLogs();
