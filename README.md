@@ -3,10 +3,6 @@ UTAUボイスバンクの原音接続と、深層学習による日本語イン�
 
 UTAUボイスバンクに収録された原音を選び、自然につなぎ、日本語の文章を音声化するTTSソフトウェアです。声そのものをニューラルネットワークで生成するのではなく、ボイスバンクの声質と発音を保ちながら、原音選択・時間配置・接続・イントネーションを組み合わせます。
 
-## 現在の基準
-
-用途に応じて、次の2つの構成を使い分けます。
-
 | 用途 | 構成 | 特徴 |
 |---|---|---|
 | 明瞭度・原音確認 | `waveform` | 原音のピッチを保った決定的な波形接続。CLI／Serverの既定Renderer |
@@ -73,7 +69,7 @@ Windows x64でのリリースビルドには、Go、Qt 6.5以降（Qt Quick・Qt
 .\build.bat
 ```
 
-引数を省略するとWindows版をビルドします。`.\build.bat linux` はWSL経由、`.\build.bat both` はWindows版とLinux版を順にビルドします。ビルド時にはOpenUtau由来の依存ファイルを取得し、SHA-256を検証します。第三者ライセンスと音源の利用条件は `THIRD_PARTY_NOTICES.txt`、`licenses/`、[docs/voicebank.md](docs/voicebank.md) を確認してください。
+引数を省略するとWindows版をビルドします。`.\build.bat linux` はWSL経由、`.\build.bat both` はWindows版とLinux版を順にビルドします。ビルド時にはOpenUtau由来の依存ファイルを取得し、SHA-256を検証します。第三者ライセンスと音源の利用条件は [THIRD_PARTY_NOTICES.txt](./THIRD_PARTY_NOTICES.txt)、`licenses/`、[docs/voicebank.md](docs/voicebank.md) を確認してください。
 
 開発時のテストは次のとおりです。
 
@@ -83,4 +79,4 @@ go test ./...
 
 ## ライセンス
 
-UtauTTS本体は MIT License です。同梱ボイスバンク、OpenUtau由来ファイル等には個別の利用条件があるため、配布物の `THIRD_PARTY_NOTICES.txt` と各同梱文書を必ず確認してください。
+UtauTTS本体は [MIT License](./LICENSE) です。同梱ボイスバンク、OpenUtau由来ファイル等には個別の利用条件があるため、配布物の [THIRD_PARTY_NOTICES.txt](./THIRD_PARTY_NOTICES.txt) と各同梱文書を必ず確認してください。
