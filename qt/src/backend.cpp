@@ -5,11 +5,13 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QFutureWatcher>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QSettings>
 #include <QUuid>
 #include <QtConcurrent>
@@ -340,6 +342,27 @@ bool Backend::savePreview(const QUrl &destination) {
     setError({});
     return true;
 }
+
+QUrl Backend::defaultSaveFile(const QString &fileName) const {
+    const QFileInfo fileInfo(fileName);
+    if (fileName.isEmpty() || fileInfo.fileName() != fileName) {
+        return {};
+    }
+    QString directoryPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (directoryPath.isEmpty()) {
+        directoryPath = QDir::homePath();
+    }
+    return QUrl::fromLocalFile(QDir(directoryPath).filePath(fileName));
+}
+
+QUrl Backend::fileInDirectory(const QUrl &directory, const QString &fileName) const {
+    const QFileInfo fileInfo(fileName);
+    if (!directory.isLocalFile() || fileName.isEmpty() || fileInfo.fileName() != fileName) {
+        return {};
+    }
+    return QUrl::fromLocalFile(QDir(directory.toLocalFile()).filePath(fileName));
+}
+
 void Backend::setBusy(bool value) {
     if (m_busy == value) {
         return;

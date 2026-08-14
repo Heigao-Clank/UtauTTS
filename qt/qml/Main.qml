@@ -47,8 +47,14 @@ ApplicationWindow {
     property int audioRevision: -1
     property string pendingUtteranceId: ""
     property int pendingRevision: -1
+    property bool saveRequestPending: false
     property bool playbackRequested: false
     property string playbackError: ""
+    property bool batchExportActive: false
+    property int batchExportIndex: -1
+    property int batchExportOriginalIndex: 0
+    property int batchExportCompleted: 0
+    property url batchExportDirectory
 
     ListModel {
         id: utterances
@@ -92,6 +98,11 @@ ApplicationWindow {
         nameFilters: ["WAV音声 (*.wav)"]
         defaultSuffix: "wav"
         onAccepted: window.appBackend.savePreview(selectedFile)
+    }
+
+    FolderDialog {
+        id: saveAllDialog
+        onAccepted: window.startBatchExport(selectedFolder)
     }
 
     ApplicationWindow {
@@ -170,6 +181,7 @@ ApplicationWindow {
             pendingApplyPitch = window.appBackend.defaultApplyPitch;
             pendingDarkMode = window.appBackend.darkMode;
             pendingCloseLogOnSuccess = window.appBackend.closeLogOnSuccess;
+            themeCombo.currentIndex = pendingDarkMode ? 1 : 0;
         }
 
         RowLayout {
@@ -182,7 +194,7 @@ ApplicationWindow {
                 Layout.preferredWidth: 170
                 Layout.fillHeight: true
                 clip: true
-                model: ["タイミング", "ピッチ加工", "外観", "ログ"]
+                model: ["音声合成", "表示", "ログ"]
                 currentIndex: settingsWindow.currentPage
 
                 delegate: ItemDelegate {
@@ -219,109 +231,75 @@ ApplicationWindow {
                             width: timingSettingsPage.availableWidth
                             spacing: 14
 
-                            Label {
-                                text: "タイミング"
-                                font.pixelSize: 18
-                                font.bold: true
-                            }
-                            Label {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                text: "発音と休止の標準時間を設定します。各セリフの右ペインから個別に上書きできます。"
-                                color: window.mutedText
-                                wrapMode: Text.Wrap
-                            }
-                            GridLayout {
-                                Layout.fillWidth: true
-                                columns: 2
-                                columnSpacing: 12
-                                rowSpacing: 10
+                                spacing: 8
 
-                                Label {
-                                    text: "モーラ長"
-                                }
-                                SpinBox {
-                                    id: moraSpin
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    from: 20
-                                    to: 1000
-                                    value: settingsWindow.pendingMoraDuration
-                                    editable: true
-                                    textFromValue: value => value + " ms"
-                                    valueFromText: text => parseInt(text)
-                                    onValueModified: settingsWindow.pendingMoraDuration = value
-                                    TapHandler {
-                                        acceptedButtons: Qt.LeftButton
-                                        grabPermissions: PointerHandler.CanTakeOverFromAnything
-                                        onDoubleTapped: {
-                                            settingsWindow.pendingMoraDuration = 120;
+                                    Label {
+                                        text: "デフォルトモーラ長"
+                                        Layout.fillWidth: true
+                                    }
+                                    SpinBox {
+                                        id: moraSpin
+                                        Layout.preferredWidth: 180
+                                        Layout.alignment: Qt.AlignVCenter
+                                        from: 20
+                                        to: 1000
+                                        value: settingsWindow.pendingMoraDuration
+                                        editable: true
+                                        textFromValue: value => value + " ms"
+                                        valueFromText: text => parseInt(text)
+                                        onValueModified: settingsWindow.pendingMoraDuration = value
+                                        TapHandler {
+                                            acceptedButtons: Qt.LeftButton
+                                            grabPermissions: PointerHandler.CanTakeOverFromAnything
+                                            onDoubleTapped: {
+                                                settingsWindow.pendingMoraDuration = 120;
+                                            }
                                         }
                                     }
                                 }
-                                Label {
-                                    text: "休止長"
-                                }
-                                SpinBox {
-                                    id: pauseSpin
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    from: 0
-                                    to: 3000
-                                    value: settingsWindow.pendingPauseDuration
-                                    editable: true
-                                    textFromValue: value => value + " ms"
-                                    valueFromText: text => parseInt(text)
-                                    onValueModified: settingsWindow.pendingPauseDuration = value
-                                    TapHandler {
-                                        acceptedButtons: Qt.LeftButton
-                                        grabPermissions: PointerHandler.CanTakeOverFromAnything
-                                        onDoubleTapped: {
-                                            settingsWindow.pendingPauseDuration = 180;
+                                    Label {
+                                        text: "デフォルト休止長"
+                                        Layout.fillWidth: true
+                                    }
+                                    SpinBox {
+                                        id: pauseSpin
+                                        Layout.preferredWidth: 180
+                                        Layout.alignment: Qt.AlignVCenter
+                                        from: 0
+                                        to: 3000
+                                        value: settingsWindow.pendingPauseDuration
+                                        editable: true
+                                        textFromValue: value => value + " ms"
+                                        valueFromText: text => parseInt(text)
+                                        onValueModified: settingsWindow.pendingPauseDuration = value
+                                        TapHandler {
+                                            acceptedButtons: Qt.LeftButton
+                                            grabPermissions: PointerHandler.CanTakeOverFromAnything
+                                            onDoubleTapped: {
+                                                settingsWindow.pendingPauseDuration = 180;
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: "モーラ長は通常の発音単位、休止長は句読点で挿入する無音の基準時間です。"
-                                color: window.mutedText
-                                wrapMode: Text.Wrap
-                            }
-                        }
-                    }
-
-                    ScrollView {
-                        id: pitchSettingsPage
-                        contentWidth: availableWidth
-
-                        ColumnLayout {
-                            width: pitchSettingsPage.availableWidth
-                            spacing: 14
-
-                            Label {
-                                text: "ピッチ加工"
-                                font.pixelSize: 18
-                                font.bold: true
-                            }
-                            Switch {
-                                id: applyPitchCheck
-                                checked: settingsWindow.pendingApplyPitch
-                                contentItem: Text {
-                                    text: applyPitchCheck.checked ? "ON" : "OFF"
-                                    color: applyPitchCheck.checked ? window.accent : window.mutedText
-                                    verticalAlignment: Text.AlignVCenter
-                                    leftPadding: applyPitchCheck.indicator.width + applyPitchCheck.spacing
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label {
+                                        text: "手動ピッチ変更の許可"
+                                        Layout.fillWidth: true
+                                    }
+                                    Switch {
+                                        id: applyPitchCheck
+                                        Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                        checked: settingsWindow.pendingApplyPitch
+                                        onToggled: settingsWindow.pendingApplyPitch = checked
+                                    }
                                 }
-                                text: "予測・手動ピッチを音声へ適用"
-                                onToggled: settingsWindow.pendingApplyPitch = checked
-                            }
-                            Label {
-                                text: applyPitchCheck.checked ? "ON: ピッチベントを合成に反映します" : "OFF: ピッチベントを合成に反映しません"
-                                color: applyPitchCheck.checked ? window.accent : window.mutedText
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: "無効時は原音の声質と発音を優先します。有効時は選択したモデルと下部のピッチ編集をRendererへ渡します。"
-                                color: window.mutedText
-                                wrapMode: Text.Wrap
                             }
                         }
                     }
@@ -332,30 +310,21 @@ ApplicationWindow {
 
                         ColumnLayout {
                             width: appearanceSettingsPage.availableWidth
-                            spacing: 14
+                            spacing: 8
 
-                            Label {
-                                text: "外観"
-                                font.pixelSize: 18
-                                font.bold: true
-                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label {
                                     Layout.fillWidth: true
-                                    text: "アプリケーションのテーマ"
+                                    text: "テーマ"
                                 }
-                                Switch {
-                                    checked: settingsWindow.pendingDarkMode
-                                    text: checked ? "ダークモード" : "ライトモード"
-                                    onToggled: settingsWindow.pendingDarkMode = checked
+                                ComboBox {
+                                    id: themeCombo
+                                    Layout.preferredWidth: 180
+                                    model: ["ライト", "ダーク"]
+                                    currentIndex: settingsWindow.pendingDarkMode ? 1 : 0
+                                    onActivated: settingsWindow.pendingDarkMode = currentIndex === 1
                                 }
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: "ライトモードが初期設定です。変更は保存時に反映され、次回起動後も維持されます。"
-                                color: window.mutedText
-                                wrapMode: Text.Wrap
                             }
                         }
                     }
@@ -366,30 +335,19 @@ ApplicationWindow {
 
                         ColumnLayout {
                             width: logSettingsPage.availableWidth
-                            spacing: 14
+                            spacing: 8
 
-                            Label {
-                                text: "ログ"
-                                font.pixelSize: 18
-                                font.bold: true
-                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label {
                                     Layout.fillWidth: true
-                                    text: "音声合成に成功したときログウィンドウを閉じる"
+                                    text: "成功時にログを閉じる"
                                 }
                                 Switch {
+                                    Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
                                     checked: settingsWindow.pendingCloseLogOnSuccess
-                                    text: checked ? "ON" : "OFF"
                                     onToggled: settingsWindow.pendingCloseLogOnSuccess = checked
                                 }
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: settingsWindow.pendingCloseLogOnSuccess ? "成功時は自動的に閉じます。失敗時はログを確認できます。" : "成功してもログウィンドウを開いたままにします。"
-                                color: window.mutedText
-                                wrapMode: Text.Wrap
                             }
                         }
                     }
@@ -570,7 +528,42 @@ ApplicationWindow {
 
         function onPreviewReady() {
             const audio = window.appBackend.previewUrl;
-            const index = window.utteranceIndex(window.pendingUtteranceId);
+            const pendingId = window.pendingUtteranceId;
+            const pendingRevision = window.pendingRevision;
+            const index = window.utteranceIndex(pendingId);
+            if (window.batchExportActive) {
+                if (index < 0 || utterances.get(index).revision !== pendingRevision) {
+                    window.finishBatchExport(false);
+                    return;
+                }
+                const destination = window.appBackend.fileInDirectory(
+                            window.batchExportDirectory, window.audioFileName(utterances.get(index)));
+                window.pendingUtteranceId = "";
+                window.pendingRevision = -1;
+                if (!destination.toString().length || !window.appBackend.savePreview(destination)) {
+                    window.finishBatchExport(false);
+                    return;
+                }
+                ++window.batchExportCompleted;
+                Qt.callLater(window.synthesizeBatchItem);
+                return;
+            }
+            if (window.saveRequestPending) {
+                if (index < 0 || utterances.get(index).revision !== pendingRevision) {
+                    window.saveRequestPending = false;
+                    window.pendingUtteranceId = "";
+                    window.pendingRevision = -1;
+                    return;
+                }
+                window.saveRequestPending = false;
+                window.pendingUtteranceId = "";
+                window.pendingRevision = -1;
+                saveDialog.currentFile = window.appBackend.defaultSaveFile(window.audioFileName(utterances.get(index)));
+                if (window.appBackend.closeLogOnSuccess)
+                    synthesisLogWindow.close();
+                saveDialog.open();
+                return;
+            }
             if (index < 0 || index !== window.selectedIndex || utterances.get(index).revision !== window.pendingRevision) {
                 window.pendingUtteranceId = "";
                 window.pendingRevision = -1;
@@ -588,6 +581,16 @@ ApplicationWindow {
             player.source = audio;
             player.play();
         }
+
+        function onErrorChanged() {
+            if (window.batchExportActive && window.pendingUtteranceId.length && window.appBackend.error.length)
+                window.finishBatchExport(false);
+            else if (window.saveRequestPending && window.pendingUtteranceId.length && window.appBackend.error.length) {
+                window.saveRequestPending = false;
+                window.pendingUtteranceId = "";
+                window.pendingRevision = -1;
+            }
+        }
     }
 
     Component.onCompleted: addUtterance()
@@ -597,8 +600,13 @@ ApplicationWindow {
             title: "ファイル"
             MenuItem {
                 text: "WAVを保存..."
-                enabled: window.hasCurrentAudio()
-                onTriggered: saveDialog.open()
+                enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive && window.current().content.trim().length > 0
+                onTriggered: window.saveCurrentAudio()
+            }
+            MenuItem {
+                text: "WAVをすべて保存..."
+                enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
+                onTriggered: window.openSaveAllDialog()
             }
             MenuItem {
                 text: "音源を再読込"
@@ -734,7 +742,7 @@ ApplicationWindow {
                                 Layout.preferredHeight: 42
                                 text: card.content
                                 font.pixelSize: 16
-                                placeholderText: "読み上げる文章を入力"
+                                placeholderText: "文章を入力"
                                 selectByMouse: true
 
                                 onActiveFocusChanged: if (activeFocus)
@@ -826,14 +834,32 @@ ApplicationWindow {
                 }
 
                 RoundButton {
+                    id: addButton
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     anchors.margins: 8
                     width: 48
                     height: 48
-                    text: "+"
-                    font.pixelSize: 24
                     highlighted: true
+                    contentItem: Canvas {
+                        id: addIcon
+                        anchors.fill: parent
+                        property color iconColor: addButton.palette.buttonText
+                        onIconColorChanged: requestPaint()
+                        onPaint: {
+                            const context = getContext("2d");
+                            context.clearRect(0, 0, width, height);
+                            context.strokeStyle = iconColor;
+                            context.lineWidth = 2.4;
+                            context.lineCap = "round";
+                            context.beginPath();
+                            context.moveTo(width * 0.3, height * 0.5);
+                            context.lineTo(width * 0.7, height * 0.5);
+                            context.moveTo(width * 0.5, height * 0.3);
+                            context.lineTo(width * 0.5, height * 0.7);
+                            context.stroke();
+                        }
+                    }
                     onClicked: window.addUtterance()
                     ToolTip.visible: hovered
                     ToolTip.text: "追加"
@@ -1220,11 +1246,42 @@ ApplicationWindow {
                     spacing: 10
 
                     RoundButton {
+                        id: playbackButton
                         Layout.preferredWidth: 42
                         Layout.preferredHeight: 42
-                        text: window.appBackend.busy ? "…" : player.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
                         highlighted: true
-                        enabled: player.playbackState === MediaPlayer.PlayingState || window.hasCurrentAudio() || (!window.appBackend.busy && utterances.count && window.current().content.trim().length > 0)
+                        contentItem: Canvas {
+                            id: playbackIcon
+                            anchors.fill: parent
+                            property int iconState: window.appBackend.busy ? 0 : player.playbackState === MediaPlayer.PlayingState ? 1 : 2
+                            property color iconColor: playbackButton.palette.buttonText
+                            onIconStateChanged: requestPaint()
+                            onIconColorChanged: requestPaint()
+                            onPaint: {
+                                const context = getContext("2d");
+                                context.clearRect(0, 0, width, height);
+                                context.fillStyle = iconColor;
+                                if (iconState === 0) {
+                                    const radius = Math.max(1.5, width * 0.055);
+                                    context.beginPath();
+                                    context.arc(width * 0.35, height * 0.5, radius, 0, Math.PI * 2);
+                                    context.arc(width * 0.5, height * 0.5, radius, 0, Math.PI * 2);
+                                    context.arc(width * 0.65, height * 0.5, radius, 0, Math.PI * 2);
+                                    context.fill();
+                                } else if (iconState === 1) {
+                                    context.fillRect(width * 0.34, height * 0.3, width * 0.11, height * 0.4);
+                                    context.fillRect(width * 0.55, height * 0.3, width * 0.11, height * 0.4);
+                                } else {
+                                    context.beginPath();
+                                    context.moveTo(width * 0.39, height * 0.28);
+                                    context.lineTo(width * 0.39, height * 0.72);
+                                    context.lineTo(width * 0.7, height * 0.5);
+                                    context.closePath();
+                                    context.fill();
+                                }
+                            }
+                        }
+                        enabled: !window.batchExportActive && (player.playbackState === MediaPlayer.PlayingState || window.hasCurrentAudio() || (!window.appBackend.busy && utterances.count && window.current().content.trim().length > 0))
                         onClicked: {
                             if (player.playbackState === MediaPlayer.PlayingState)
                                 player.pause();
@@ -1363,6 +1420,41 @@ ApplicationWindow {
     function voicebankName(id) {
         const voice = voicebankById(id);
         return voice ? voice.name : "音源未選択";
+    }
+
+    function fileNamePart(value, fallback) {
+        let result = String(value === undefined || value === null ? "" : value)
+                .replace(/[<>:"\/\\|?*\x00-\x1F]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+        while (result.endsWith(".") || result.endsWith(" "))
+            result = result.slice(0, -1).trim();
+        return result || fallback;
+    }
+
+    function audioFileName(item) {
+        const voice = fileNamePart(window.voicebankName(item.voicebankId), "voicebank");
+        const text = fileNamePart(item.content, "utterance-" + item.utteranceId);
+        return voice + "_" + text + ".wav";
+    }
+
+    function saveCurrentAudio() {
+        if (!utterances.count || window.appBackend.busy || window.batchExportActive || !window.current().content.trim().length)
+            return;
+        const item = window.current();
+        window.clearPlayback();
+        window.saveRequestPending = true;
+        window.pendingUtteranceId = item.utteranceId;
+        window.pendingRevision = item.revision;
+        window.appBackend.clearLogs();
+        window.showAuxiliaryWindow(synthesisLogWindow);
+        window.appBackend.synthesize(window.buildSynthesisRequest(item));
+    }
+
+    function openSaveAllDialog() {
+        if (!utterances.count || window.appBackend.busy || window.batchExportActive)
+            return;
+        saveAllDialog.open();
     }
 
     function localImageUrl(path) {
@@ -1585,11 +1677,17 @@ ApplicationWindow {
 
     function synthesizeCurrent() {
         const item = current();
-        const points = window.decodeSequence(item.pointsJson);
-        const morae = window.decodeSequence(item.moraeJson);
         clearPlayback();
         window.pendingUtteranceId = item.utteranceId;
         window.pendingRevision = item.revision;
+        window.appBackend.clearLogs();
+        window.showAuxiliaryWindow(synthesisLogWindow);
+        window.appBackend.synthesize(window.buildSynthesisRequest(item));
+    }
+
+    function buildSynthesisRequest(item) {
+        const points = window.decodeSequence(item.pointsJson);
+        const morae = window.decodeSequence(item.moraeJson);
         const request = {
             text: item.content,
             voicebank_id: item.voicebankId || voiceCombo.currentValue,
@@ -1620,8 +1718,52 @@ ApplicationWindow {
                 points: manualPoints
             };
         }
+        return request;
+    }
+
+    function startBatchExport(directory) {
+        if (!directory || !directory.toString().length || !utterances.count || window.appBackend.busy)
+            return;
+        window.batchExportDirectory = directory;
+        window.batchExportOriginalIndex = window.selectedIndex;
+        window.batchExportIndex = 0;
+        window.batchExportCompleted = 0;
+        window.batchExportActive = true;
+        window.clearPlayback();
+        window.pendingUtteranceId = "";
+        window.pendingRevision = -1;
         window.appBackend.clearLogs();
         window.showAuxiliaryWindow(synthesisLogWindow);
-        window.appBackend.synthesize(request);
+        Qt.callLater(window.synthesizeBatchItem);
+    }
+
+    function synthesizeBatchItem() {
+        if (!window.batchExportActive)
+            return;
+        while (window.batchExportIndex < utterances.count) {
+            const index = window.batchExportIndex++;
+            const item = utterances.get(index);
+            if (!item.content || !item.content.trim())
+                continue;
+            window.selectUtterance(index);
+            const requestItem = utterances.get(index);
+            window.pendingUtteranceId = requestItem.utteranceId;
+            window.pendingRevision = requestItem.revision;
+            window.appBackend.synthesize(window.buildSynthesisRequest(requestItem));
+            return;
+        }
+        window.finishBatchExport(true);
+    }
+
+    function finishBatchExport(success) {
+        if (!window.batchExportActive)
+            return;
+        window.batchExportActive = false;
+        window.pendingUtteranceId = "";
+        window.pendingRevision = -1;
+        if (utterances.count)
+            window.selectUtterance(Math.min(window.batchExportOriginalIndex, utterances.count - 1));
+        if (success && window.appBackend.closeLogOnSuccess)
+            synthesisLogWindow.close();
     }
 }

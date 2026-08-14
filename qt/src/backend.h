@@ -57,6 +57,8 @@ public:
     Q_INVOKABLE void analyze(const QString &text, const QString &requestId);
     Q_INVOKABLE void synthesize(const QVariantMap &request);
     Q_INVOKABLE bool savePreview(const QUrl &destination);
+    Q_INVOKABLE QUrl defaultSaveFile(const QString &fileName) const;
+    Q_INVOKABLE QUrl fileInDirectory(const QUrl &directory, const QString &fileName) const;
     Q_INVOKABLE void setDarkMode(bool value);
     Q_INVOKABLE bool showNativeAboutDialog();
     Q_INVOKABLE void clearLogs();
