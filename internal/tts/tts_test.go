@@ -138,6 +138,25 @@ func TestAlignRuntimeProsodyFeaturesSkipsExtraOpenJTalkMorae(t *testing.T) {
 	}
 }
 
+func TestAlignRuntimeProsodyFeaturesAcceptsAlternatePronunciation(t *testing.T) {
+	morae := []frontend.Mora{{Text: "\u3044"}, {Text: "\u304b"}, {Text: "\u308a"}}
+	analysis := &openjtalk.Analysis{
+		Morae: []string{"\u304a", "\u3053", "\u308a"},
+		Features: []prosody.FeatureFrame{
+			{"source": 0},
+			{"source": 1},
+			{"source": 2},
+		},
+	}
+	aligned, err := alignRuntimeProsodyFeatures(morae, analysis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aligned) != 3 || aligned[0]["source"] != 0 || aligned[2]["source"] != 2 {
+		t.Fatalf("aligned features = %#v", aligned)
+	}
+}
+
 func TestValidateConfigRejectsNonFiniteValues(t *testing.T) {
 	for _, cfg := range []Config{
 		{MoraDurationMS: math.NaN()},

@@ -93,16 +93,24 @@ func Synthesize(cfg Config) (*Result, error) {
 	}
 	if loadedProsody != nil && loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
 		runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
-		runtimeFeatures, err = analyzeOpenJTalkCached(runtimeText, openjtalk.Config{
+		runtimeConfig := openjtalk.Config{
 			HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
-		})
+		}
+		runtimeFeatures, err = analyzeOpenJTalkCached(runtimeText, runtimeConfig)
 		if err != nil {
 			return nil, fmt.Errorf("analyze runtime prosody features: %w", err)
 		}
-		prosodyFeatures, err = alignRuntimeProsodyFeatures(morae, runtimeFeatures)
-		if err != nil {
-			return nil, fmt.Errorf("align runtime prosody features: %w", err)
+		alignedFeatures, alignmentErr := alignRuntimeProsodyFeatures(morae, runtimeFeatures)
+		if alignmentErr != nil {
+			fallbackFeatures, fallbackErr := analyzeOpenJTalkCached(reading, runtimeConfig)
+			if fallbackErr == nil {
+				alignedFeatures, fallbackErr = alignRuntimeProsodyFeatures(morae, fallbackFeatures)
+			}
+			if fallbackErr != nil {
+				return nil, fmt.Errorf("align runtime prosody features: %w", alignmentErr)
+			}
 		}
+		prosodyFeatures = alignedFeatures
 	}
 	var joinModel *connection.LearnedModel
 	joinCostMode := "handcrafted"
@@ -328,7 +336,12 @@ func alignRuntimeProsodyFeatures(morae []frontend.Mora, analysis *openjtalk.Anal
 	}
 	if len(analysis.Morae) == len(morae) {
 		if err := validateRuntimeMoraAlignment(morae, analysis.Morae); err != nil {
-			return nil, err
+			// Go and Open JTalk can choose different pronunciations for the
+			// same word (for example, "いかり" and "おこり"). Keep the
+			// Open JTalk features when the mora and pause positions still align.
+			if !runtimePausePatternMatches(morae, analysis.Morae) {
+				return nil, err
+			}
 		}
 		return append([]prosody.FeatureFrame(nil), analysis.Features...), nil
 	}
@@ -346,6 +359,18 @@ func alignRuntimeProsodyFeatures(morae []frontend.Mora, analysis *openjtalk.Anal
 		analyzedIndex++
 	}
 	return aligned, nil
+}
+
+func runtimePausePatternMatches(morae []frontend.Mora, analyzed []string) bool {
+	if len(morae) != len(analyzed) {
+		return false
+	}
+	for index, mora := range morae {
+		if mora.Pause != (analyzed[index] == "") {
+			return false
+		}
+	}
+	return true
 }
 
 func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.MoraTiming {
