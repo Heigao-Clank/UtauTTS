@@ -19,10 +19,6 @@ type Config struct {
 	Backend                 string
 	WorldlinePath           string
 	WorldlineBridgePath     string
-	WorldlineR2MelPath      string
-	WorldlineR2VocoderPath  string
-	OnnxDeviceID            int
-	UTAUResamplerPath       string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
 	PitchCurve              *PitchCurve
@@ -31,12 +27,9 @@ type Config struct {
 // rendererImplementations is only an executable dispatch table. Display
 // identity and declared capabilities belong to each renderer's plugin.json.
 var rendererImplementations = map[string]struct{}{
-	"waveform": {}, "waveform-gpu": {}, "waveform-long": {},
-	"worldline": {}, "worldline-v2": {},
-	"openutau-worldline-r2-cpu": {}, "openutau-worldline-r2-directml": {},
-	"openutau-classic-worldline-faithful": {}, "openutau-classic-worldline-faithful-gpu": {},
-	"utau-classic": {}, "worldline-hybrid": {}, "worldline-hybrid-cv": {},
-	"worldline-hybrid-cv-balanced": {}, "worldline-hybrid-cv-gentle": {},
+	"waveform":                                {},
+	"openutau-classic-worldline-faithful":     {},
+	"openutau-classic-worldline-faithful-gpu": {},
 }
 
 func IsKnownRenderer(id string) bool {
@@ -54,7 +47,7 @@ func CUDAAvailable() bool {
 }
 
 var boundaryBridgeRenderers = map[string]struct{}{
-	"": {}, "waveform": {}, "waveform-gpu": {}, "waveform-long": {},
+	"": {}, "waveform": {},
 }
 
 type PitchCurve struct {
@@ -121,7 +114,7 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 				return nil, fmt.Errorf("pitch curve value %d is outside the supported +/-4800 cent range", index)
 			}
 		}
-		if cfg.Backend == "" || cfg.Backend == "waveform" || cfg.Backend == "waveform-gpu" || cfg.Backend == "waveform-long" {
+		if cfg.Backend == "" || cfg.Backend == "waveform" {
 			return nil, fmt.Errorf("frame pitch curve is not supported by waveform renderer %q", cfg.Backend)
 		}
 	}
@@ -131,35 +124,10 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	switch cfg.Backend {
 	case "", "waveform":
 		return renderWaveform(synthesisPlan, cfg)
-	case "waveform-gpu":
-		if err := gpuWaveformAvailable(); err != nil {
-			return nil, err
-		}
-		return renderWaveformGPU(synthesisPlan, cfg)
-	case "waveform-long":
-		return renderWaveformLong(synthesisPlan, cfg)
-	case "worldline":
-		return renderWorldline(synthesisPlan, cfg)
-	case "worldline-v2":
-		return renderWorldlineV2(synthesisPlan, cfg)
-	case "openutau-worldline-r2-cpu":
-		return renderWorldlineR2(synthesisPlan, cfg, false)
-	case "openutau-worldline-r2-directml":
-		return renderWorldlineR2(synthesisPlan, cfg, true)
 	case "openutau-classic-worldline-faithful":
 		return renderOpenUtauClassicWorldlineFaithful(synthesisPlan, cfg)
 	case "openutau-classic-worldline-faithful-gpu":
 		return renderOpenUtauClassicWorldlineFaithfulGPU(synthesisPlan, cfg)
-	case "utau-classic":
-		return renderUTAUClassic(synthesisPlan, cfg)
-	case "worldline-hybrid":
-		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreNone)
-	case "worldline-hybrid-cv":
-		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreFull)
-	case "worldline-hybrid-cv-balanced":
-		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreBalanced)
-	case "worldline-hybrid-cv-gentle":
-		return renderWorldlineHybrid(synthesisPlan, cfg, cvRestoreGentle)
 	default:
 		return nil, fmt.Errorf("unknown renderer backend %q", cfg.Backend)
 	}

@@ -1,6 +1,0 @@
-{
-  "manifest_version": 1, "kind": "renderer", "id": "utau-classic",
-  "display_name": "UTAU Classic", "description": "外部UTAU互換resamplerを使う実験的Rendererです。",
-  "backend": "utau-classic", "version": "1", "experimental": true,
-  "capabilities": { "frame_pitch": true }
-}

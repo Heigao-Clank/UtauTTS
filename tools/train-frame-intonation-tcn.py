@@ -450,7 +450,6 @@ def load_worldline(path: str | Path | None = None, method: int = 1) -> Worldline
             here / "release" / "UtauTTS-Server" / "runtime" / "worldline.dll",
             here / "release" / "UtauTTS" / "worldline.dll",
             here / "release" / "UtauTTS-Server" / "worldline.dll",
-            here / "out" / "worldline-v2-smoke" / "bin" / "worldline-current.dll",
         ]
     )
     for candidate in candidates:

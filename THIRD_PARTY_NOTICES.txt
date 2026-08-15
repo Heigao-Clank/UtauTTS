@@ -176,56 +176,6 @@ Upstream source:
 https://github.com/openutau/OpenUtau/tree/0.1.565/cpp/worldline
 
 
-OpenUtau WORLDLINE-R2 mel conversion model
-===========================================
-
-The Windows release includes mel.onnx from OpenUtau commit
-29e0e16d1623cda79ba7c3724614d6129ba3b9d5 under the OpenUtau MIT license
-printed above. SHA-256:
-1493FFC868C6FB8B66104E2C6A2902CBF1A8C02BB09215DB014F02E9D0E82F94
-
-The PC-NSF-HiFiGAN vocoder weights are not bundled. The official weights are
-licensed CC BY-NC-SA 4.0 and must be obtained and configured separately by the
-user.
-
-Official vocoder package:
-https://github.com/openvpi/vocoders/releases/tag/pc-nsf-hifigan-44.1k-hop512-128bin-2025.02
-
-
-ONNX Runtime DirectML
-=====================
-
-Copyright (c) Microsoft Corporation. All rights reserved.
-
-The Windows release uses Microsoft.ML.OnnxRuntime.DirectML 1.23.0 and the
-resolved DirectML/managed dependencies. The exact LICENSE and
-ThirdPartyNotices files from the packages used by the build are included under
-licenses/ONNX-Runtime.
-
-Licensed under the MIT License.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-Upstream source:
-https://github.com/microsoft/onnxruntime
-
-
 WORLD
 =====
 
@@ -362,20 +312,10 @@ toolchain. The exact GCC, MinGW-w64, and winpthreads license files from the
 toolchain used by the build are included under licenses/MinGW.
 
 
-Microsoft ONNX Runtime dependencies
-====================================
+NVIDIA CUDA runtime (optional faithful GPU renderer)
+====================================================
 
-The WORLDLINE-R2 bridge uses Microsoft.ML.OnnxRuntime.DirectML and its
-transitive managed/native dependencies. The complete notices for the exact
-NuGet package versions used by the build are included under
-licenses/ONNX-Runtime. The upstream project and notices are available at:
-https://github.com/microsoft/onnxruntime
-
-
-NVIDIA CUDA runtime (optional waveform renderer)
-================================================
-
-When the optional waveform-gpu renderer is included, it is built with the
-CUDA toolkit and links the CUDA runtime statically. The exact CUDA toolkit
+When the optional faithful GPU renderer is included, its CUDA support is built
+with the CUDA toolkit and links the CUDA runtime statically. The exact CUDA toolkit
 EULA, license, and nvcc version output are included under licenses/CUDA. No
 NVIDIA GPU driver is distributed by UtauTTS.

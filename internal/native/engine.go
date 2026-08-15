@@ -25,9 +25,6 @@ type Config struct {
 	Renderer            string   `json:"renderer"`
 	WorldlinePath       string   `json:"worldline_path"`
 	WorldlineBridgePath string   `json:"worldline_bridge_path"`
-	WorldlineR2MelPath  string   `json:"worldline_r2_mel_path"`
-	WorldlineR2Vocoder  string   `json:"worldline_r2_vocoder_path"`
-	OnnxDeviceID        int      `json:"onnx_device_id"`
 	OpenJTalkPath       string   `json:"openjtalk_path"`
 	OpenJTalkDictionary string   `json:"openjtalk_dictionary"`
 	RendererDirectories []string `json:"renderer_directories,omitempty"`
@@ -281,8 +278,6 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 	}
 	worldlinePath := firstConfigured(e.config.WorldlinePath, rendererPlugin.Asset("worldline"))
 	worldlineBridgePath := firstConfigured(e.config.WorldlineBridgePath, rendererPlugin.Asset("worldline_bridge"))
-	r2MelPath := firstConfigured(e.config.WorldlineR2MelPath, rendererPlugin.Asset("worldline_r2_mel"))
-	r2VocoderPath := firstConfigured(e.config.WorldlineR2Vocoder, rendererPlugin.Asset("worldline_r2_vocoder"))
 	reading := request.Kana
 	if reading == "" && modelPath == "" {
 		resolvedReading, err := e.reading(request.Text, dictionary)
@@ -291,7 +286,7 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 		}
 		reading = resolvedReading
 	}
-	result, err := tts.Synthesize(tts.Config{VoicebankPath: summary.Path, Text: request.Text, Reading: reading, Dictionary: dictionary, Tone: request.Tone, MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS, MoraDurationsMS: request.MoraDurationsMS, ProsodyModelPath: modelPath, ManualPitch: request.ManualPitch, IntonationStrength: request.IntonationStrength, ApplyPitch: request.ApplyPitch, Renderer: rendererPlugin.Backend, RendererCapabilities: &rendererPlugin.Capabilities, WorldlinePath: worldlinePath, WorldlineBridgePath: worldlineBridgePath, WorldlineR2MelPath: r2MelPath, WorldlineR2VocoderPath: r2VocoderPath, OnnxDeviceID: e.config.OnnxDeviceID, OpenJTalkPath: e.config.OpenJTalkPath, OpenJTalkDictionaryPath: e.config.OpenJTalkDictionary})
+	result, err := tts.Synthesize(tts.Config{VoicebankPath: summary.Path, Text: request.Text, Reading: reading, Dictionary: dictionary, Tone: request.Tone, MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS, MoraDurationsMS: request.MoraDurationsMS, ProsodyModelPath: modelPath, ManualPitch: request.ManualPitch, IntonationStrength: request.IntonationStrength, ApplyPitch: request.ApplyPitch, Renderer: rendererPlugin.Backend, RendererCapabilities: &rendererPlugin.Capabilities, WorldlinePath: worldlinePath, WorldlineBridgePath: worldlineBridgePath, OpenJTalkPath: e.config.OpenJTalkPath, OpenJTalkDictionaryPath: e.config.OpenJTalkDictionary})
 	if err != nil {
 		return nil, err
 	}

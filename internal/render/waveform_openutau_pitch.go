@@ -26,7 +26,6 @@ const (
 func renderWaveformOpenUtauPitch(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWaveformOpenUtauPitchMode(synthesisPlan, cfg, false, false)
 }
-
 func renderWaveformOpenUtauPitchLocal(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWaveformOpenUtauPitchMode(synthesisPlan, cfg, true, false)
 }

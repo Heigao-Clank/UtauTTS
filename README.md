@@ -1,5 +1,10 @@
 # UtauTTS
 
+Current renderer set: `waveform`, `openutau-classic-worldline-faithful`, and
+the optional CUDA `openutau-classic-worldline-faithful-gpu`. The old
+WORLDLINE-R2, DirectML/ONNX, UTAU Classic, hybrid, and long-waveform
+experimental renderers are not included in current releases.
+
 UTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS
 
 UTAUボイスバンクに収録された原音を選び、自然につなぎ、日本語の文章を音声化するTTSソフトウェアです。声そのものをニューラルネットワークで生成するのではなく、ボイスバンクの声質と発音を保ちながら、原音選択・時間配置・接続・イントネーションを組み合わせます。
@@ -11,7 +16,7 @@ UTAUボイスバンクに収録された原音を選び、自然につなぎ、�
 | 明瞭度・原音確認 | `waveform` | 原音のピッチを保った決定的な波形接続。CLI／Serverの既定Renderer |
 | GUIの標準プロファイル | `frame-intonation-v8` + `openutau-classic-worldline-faithful` | OpenJTalkのアクセント特徴から10ms単位の相対ピッチを予測し、OpenUTAU Classicに近いtiming・5点envelope・Worldline resamplingで適用 |
 
-v8モデルは音声波形や話者の声を生成しません。必要なモデル・Renderer・runtime assetが揃わない場合は、GUIでエラーの内容を確認してから `waveform` を明瞭度の基準にしてください。`worldline`、`worldline-hybrid*`、`waveform-long`、CUDA系は比較・診断用の実験Rendererです。
+v8モデルは音声波形や話者の声を生成しません。必要なモデル・Renderer・runtime assetが揃わない場合は、GUIでエラーの内容を確認してから `waveform` を明瞭度の基準にしてください。現在のRendererは冒頭の3種類だけです。
 
 対応する音源形式は CV・VCV、複数の `oto.ini`、UTF-8・Shift_JIS、`prefix.map` です。CVVCのVC挿入は未対応です。
 

@@ -1387,6 +1387,14 @@ ApplicationWindow {
         return window.preferredRendererForModel(window.modelById(window.defaultModelId()));
     }
 
+    function normalizeRendererId(id) {
+        const rendererId = String(id || "");
+        if (rendererId && window.rendererById(rendererId))
+            return rendererId;
+        const waveform = window.rendererById("waveform");
+        return waveform ? waveform.id : window.defaultRendererId();
+    }
+
     function utteranceIndex(id) {
         for (let i = 0; i < utterances.count; ++i)
             if (utterances.get(i).utteranceId === id)
@@ -1554,12 +1562,16 @@ ApplicationWindow {
         window.clearPlayback();
         utterances.clear();
         window.nextUtteranceId = 1;
+        let migratedRenderer = false;
         for (let index = 0; index < loadedUtterances.length; ++index) {
             const saved = loadedUtterances[index] || {};
             const voicebankId = String(saved.voicebank_id || "");
             const voice = window.voicebankById(voicebankId);
             const points = window.copySequence(saved.pitch_points);
             const content = String(saved.text || "");
+            const rendererId = window.normalizeRendererId(saved.renderer_id);
+            if (String(saved.renderer_id || "") !== rendererId)
+                migratedRenderer = true;
             utterances.append({
                 utteranceId: "utterance-" + window.nextUtteranceId++,
                 content: content,
@@ -1571,7 +1583,7 @@ ApplicationWindow {
                 voicebankId: voicebankId,
                 imagePath: voice ? voice.image_path || "" : "",
                 modelId: String(saved.model_id || ""),
-                renderer: String(saved.renderer_id || ""),
+                renderer: rendererId,
                 tone: String(saved.tone || "C4"),
                 moraDuration: window.projectNumber(saved.mora_duration_ms, window.appBackend.defaultMoraDuration, 20, 1000, true),
                 pauseDuration: window.projectNumber(saved.pause_duration_ms, window.appBackend.defaultPauseDuration, 0, 3000, true),
@@ -1580,6 +1592,8 @@ ApplicationWindow {
                 revision: 0
             });
         }
+
+        window.projectDirty = migratedRenderer;
 
         if (!utterances.count) {
             selectedIndex = 0;

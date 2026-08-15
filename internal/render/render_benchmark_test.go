@@ -17,13 +17,6 @@ func BenchmarkWaveformRenderer(b *testing.B) {
 	benchmarkWaveformRenderer(b, "waveform")
 }
 
-func BenchmarkWaveformRendererGPU(b *testing.B) {
-	if err := gpuWaveformAvailable(); err != nil {
-		b.Skip(err)
-	}
-	benchmarkWaveformRenderer(b, "waveform-gpu")
-}
-
 func benchmarkWaveformRenderer(b *testing.B, backend string) {
 	const (
 		sampleRate = 44100
@@ -148,49 +141,5 @@ func TestGPUWSOLAStaysCloseToCPU(t *testing.T) {
 				t.Fatalf("GPU relative RMS error=%f, want <=0.02", relative)
 			}
 		})
-	}
-}
-
-func TestWaveformGPUStaysCloseToCPU(t *testing.T) {
-	if err := gpuWaveformAvailable(); err != nil {
-		t.Skip(err)
-	}
-	const sampleRate = 44100
-	path := filepath.Join(t.TempDir(), "source.wav")
-	data := make([]int16, sampleRate/2)
-	for frame := range data {
-		time := float64(frame) / sampleRate
-		data[frame] = int16(math.Round(9000 * (math.Sin(2*math.Pi*190*time) + 0.2*math.Sin(2*math.Pi*397*time))))
-	}
-	if err := audio.WriteWav(path, &audio.PCM{SampleRate: sampleRate, Channels: 1, Data: data}); err != nil {
-		t.Fatal(err)
-	}
-	units := make([]plan.Unit, 12)
-	for index := range units {
-		units[index] = plan.Unit{Position: index, Alias: fmt.Sprintf("u%d", index), Source: path,
-			NoteStartMS: float64(index) * 120, DurationMS: 120, ConsonantMS: 70,
-			PreutteranceMS: 45, OverlapMS: 12, PitchFactor: 1, EnergyFactor: 1}
-	}
-	cpuPlan := &plan.Plan{DurationMS: 12 * 120, Units: append([]plan.Unit(nil), units...)}
-	gpuPlan := &plan.Plan{DurationMS: 12 * 120, Units: append([]plan.Unit(nil), units...)}
-	cpu, err := Render(cpuPlan, Config{Backend: "waveform", ReleaseMS: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	gpu, err := Render(gpuPlan, Config{Backend: "waveform-gpu", ReleaseMS: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(gpu.Data) != len(cpu.Data) {
-		t.Fatalf("GPU frames=%d, want %d", len(gpu.Data), len(cpu.Data))
-	}
-	errorEnergy, signalEnergy := 0.0, 0.0
-	for index, expected := range cpu.Data {
-		delta := float64(expected) - float64(gpu.Data[index])
-		errorEnergy += delta * delta
-		signalEnergy += float64(expected) * float64(expected)
-	}
-	if relative := math.Sqrt(errorEnergy / math.Max(signalEnergy, 1)); relative > 0.02 {
-		t.Fatalf("GPU relative RMS error=%f, want <=0.02", relative)
 	}
 }

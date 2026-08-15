@@ -29,14 +29,13 @@ Rendererは`plugins/renderers/<plugin>/plugin.json`を1つ持ちます。
 
 壊れたmanifest、未対応backend、Renderer IDの重複は起動時エラーになります。有効な項目だけを表示して問題を黙って無視することはありません。モデルJSONの破損とモデルIDの重複も同様です。identityを持たない研究用JSONはモデルpluginではないため走査対象から除外されます。
 
-`default_priority`が最大のものが既定Rendererです。同値の場合は`display_name`順です。`acceleration`には`cpu`、`cuda`、`directml`のいずれかを指定でき、GUIは利用可能な実行デバイスとモデルの`recommended_renderers`を照合して初期Rendererを選びます。CLI/serverの`--renderer`はこれを明示的に上書きします。必要DLLやモデルはmanifestからの相対pathを`assets`へ記述します。
+`default_priority`が最大のものが既定Rendererです。同値の場合は`display_name`順です。`acceleration`には`cpu`または`cuda`を指定でき、GUIは利用可能な実行デバイスとモデルの`recommended_renderers`を照合して初期Rendererを選びます。CLI/serverの`--renderer`はこれを明示的に上書きします。必要DLLやモデルはmanifestからの相対pathを`assets`へ記述します。
 
 認識するasset key:
 
 - `worldline`
 - `worldline_bridge`
-- `worldline_r2_mel`
-- `worldline_r2_vocoder`
+- The bundled faithful renderers use only `worldline` and `worldline_bridge`.
 
 Qt GUI、native backend、HTTP API、CLIは同じcatalogを使用します。追加directoryはnative JSONの`renderer_directories`、CLI/serverの反復可能な`--renderer-dir`で指定できます。
 

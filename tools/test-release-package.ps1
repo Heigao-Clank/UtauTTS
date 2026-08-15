@@ -41,8 +41,6 @@ try {
         Assert-Path (Join-Path $packageRoot 'THIRD_PARTY_NOTICES.txt') 'third-party notices'
         Assert-Path (Join-Path $packageRoot 'licenses/README.txt') 'license bundle manifest'
         Assert-Path (Join-Path $packageRoot 'licenses/Go/GO-LICENSE.txt') 'Go runtime license'
-        Assert-Path (Join-Path $packageRoot 'licenses/ONNX-Runtime/Microsoft.ML.OnnxRuntime.DirectML-1.23.0-LICENSE') 'ONNX Runtime license'
-        Assert-Path (Join-Path $packageRoot 'licenses/ONNX-Runtime/Microsoft.ML.OnnxRuntime.DirectML-1.23.0-ThirdPartyNotices.txt') 'ONNX Runtime third-party notices'
         Assert-Path (Join-Path $packageRoot 'licenses/OpenJTalk/HTS_ENGINE_API_COPYING.txt') 'hts_engine_API license'
     }
 
@@ -70,20 +68,10 @@ try {
     }
 
     $serverRuntime = Join-Path $serverRoot 'runtime'
-    foreach ($asset in @(
-        'DirectML.dll',
-        'Microsoft.ML.OnnxRuntime.dll',
-        'System.Numerics.Tensors.dll',
-        'onnxruntime.dll',
-        'onnxruntime_providers_shared.dll'
-    )) {
-        Assert-Path (Join-Path $serverRuntime $asset) "Server WORLDLINE-R2 asset $asset"
-    }
-
-    $gpuManifest = Test-Path -LiteralPath (Join-Path $serverRoot 'plugins/renderers/waveform-gpu/plugin.json')
+    $gpuManifest = Test-Path -LiteralPath (Join-Path $serverRoot 'plugins/renderers/openutau-classic-faithful-gpu/plugin.json')
     $gpuBinary = Test-Path -LiteralPath (Join-Path $serverRuntime 'utautts-waveform-gpu.dll')
     if ($gpuManifest -ne $gpuBinary) {
-        throw "waveform-gpu manifest and runtime DLL disagree: manifest=$gpuManifest dll=$gpuBinary"
+        throw "faithful GPU renderer manifest and runtime DLL disagree: manifest=$gpuManifest dll=$gpuBinary"
     }
     if ($gpuBinary) {
         foreach ($packageRoot in @($guiRoot, $serverRoot)) {
@@ -93,7 +81,7 @@ try {
     }
 
     $unexpectedDebugFiles = @(Get-ChildItem -LiteralPath $guiRoot -Recurse -File |
-        Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') -or $_.Name -eq 'DirectML.Debug.dll' })
+        Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') })
     if ($unexpectedDebugFiles.Count -ne 0) {
         throw "Release package contains debug/development files: $($unexpectedDebugFiles.FullName -join ', ')"
     }

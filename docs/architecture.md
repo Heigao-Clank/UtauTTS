@@ -38,3 +38,8 @@ HTTP Serverは `cmd/utautts-server` と `internal/api` に独立しており、C
 ## 配布モデル
 
 モデルJSON自身が `id`、`display_name`、`description`、`recommended_renderers` を持ちます。v0.0.1に同梱するモデルは `frame-intonation-v8` です。GUI、CLI、Serverはモデルの互換Rendererと必要なruntime assetをcatalogから解決します。
+
+The bundled renderer catalog contains only `waveform`, this CPU faithful
+renderer, and `openutau-classic-worldline-faithful-gpu` when CUDA support is
+available. The removed WORLDLINE-R2, DirectML, UTAU Classic, and hybrid
+experimental backends are no longer part of the runtime or release package.

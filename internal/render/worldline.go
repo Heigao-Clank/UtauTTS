@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"utautts/internal/audio"
@@ -23,31 +22,10 @@ type worldlineManifest struct {
 	Engine        string                  `json:"engine,omitempty"`
 	WorldlinePath string                  `json:"worldline_path"`
 	GPUPath       string                  `json:"gpu_path,omitempty"`
-	MelModelPath  string                  `json:"mel_model_path,omitempty"`
-	VocoderPath   string                  `json:"vocoder_model_path,omitempty"`
-	OnnxDeviceID  int                     `json:"onnx_device_id,omitempty"`
 	OutputPath    string                  `json:"output_path"`
 	SampleRate    int                     `json:"sample_rate"`
 	F0Curve       []float64               `json:"f0_curve"`
 	Units         []worldlineManifestUnit `json:"units"`
-}
-
-func renderWorldlineV2(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWorldlineEngine(synthesisPlan, cfg, "v2", false)
-}
-
-func renderWorldlineR2(synthesisPlan *plan.Plan, cfg Config, directML bool) (*audio.PCM, error) {
-	if cfg.OnnxDeviceID < 0 {
-		return nil, fmt.Errorf("DirectML GPU device ID must be non-negative, got %d", cfg.OnnxDeviceID)
-	}
-	engine := "r2-cpu"
-	if directML {
-		if runtime.GOOS != "windows" {
-			return nil, errors.New("WORLDLINE-R2 DirectML is available on Windows only")
-		}
-		engine = "r2-directml"
-	}
-	return renderWorldlineEngine(synthesisPlan, cfg, engine, false)
 }
 
 func renderOpenUtauClassicWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
@@ -240,17 +218,6 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	if err != nil {
 		return nil, err
 	}
-	melModelPath, vocoderPath := "", ""
-	if strings.HasPrefix(engine, "r2-") {
-		melModelPath, err = resolveRuntimeFile(cfg.WorldlineR2MelPath, "WORLDLINE-R2 mel model")
-		if err != nil {
-			return nil, err
-		}
-		vocoderPath, err = resolveRuntimeFile(cfg.WorldlineR2VocoderPath, "WORLDLINE-R2 vocoder model")
-		if err != nil {
-			return nil, err
-		}
-	}
 	gpuPath := ""
 	if strings.HasSuffix(engine, "-gpu") {
 		if err := gpuWaveformAvailable(); err != nil {
@@ -304,9 +271,6 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		pitchFactors[i] *= effectiveUnitPitchFactor(unit, cfg.ApplyPitch)
 	}
 	frameMS := worldlineFrameMS
-	if strings.HasPrefix(engine, "r2-") {
-		frameMS = 512.0 * 1000.0 / 44100.0
-	}
 	f0Curve := worldlineF0CurveAt(synthesisPlan, pitches, pitchFactors, reference, max(2, int(math.Ceil((synthesisPlan.DurationMS+cfg.ReleaseMS)/frameMS))+2), frameMS)
 	if localSourcePitch {
 		f0Curve = worldlineLocalF0Curve(synthesisPlan, pitches, pitchFactors, reference, len(f0Curve))
@@ -315,9 +279,6 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		Engine:        engine,
 		WorldlinePath: library,
 		GPUPath:       gpuPath,
-		MelModelPath:  melModelPath,
-		VocoderPath:   vocoderPath,
-		OnnxDeviceID:  cfg.OnnxDeviceID,
 		SampleRate:    sampleRate,
 		F0Curve:       f0Curve,
 	}
@@ -540,19 +501,6 @@ func resolveWorldlineLibrary(configured string) (string, error) {
 	}
 	if _, err := os.Stat(configured); err != nil {
 		return "", fmt.Errorf("worldline library %q: %w", configured, err)
-	}
-	return configured, nil
-}
-
-func resolveRuntimeFile(configured, description string) (string, error) {
-	if configured == "" {
-		return "", fmt.Errorf("%s is not configured by the renderer plugin", description)
-	}
-	if info, err := os.Stat(configured); err != nil || info.IsDir() {
-		if err == nil {
-			err = errors.New("path is a directory")
-		}
-		return "", fmt.Errorf("%s %q: %w", description, configured, err)
 	}
 	return configured, nil
 }

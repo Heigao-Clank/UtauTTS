@@ -36,8 +36,6 @@ const (
 type Config struct {
 	VoiceDir, Renderer                            string
 	WorldlinePath, WorldlineBridgePath            string
-	WorldlineR2MelPath, WorldlineR2VocoderPath    string
-	OnnxDeviceID                                  int
 	OpenJTalkPath, OpenJTalkDictionary, AuthToken string
 	AllowVoicebankRegistration                    bool
 	RendererDirectories, ModelDirectories         []string
@@ -58,9 +56,6 @@ type Server struct {
 	renderer            string
 	worldlinePath       string
 	worldlineBridgePath string
-	worldlineR2MelPath  string
-	worldlineR2Vocoder  string
-	onnxDeviceID        int
 	openJTalkPath       string
 	openJTalkDictionary string
 	voiceDir            string
@@ -99,7 +94,6 @@ func New(config Config) (*Server, error) {
 	srv := &Server{
 		voicebanks: map[string]Voicebank{},
 		renderer:   config.Renderer, worldlinePath: config.WorldlinePath, worldlineBridgePath: config.WorldlineBridgePath, voiceDir: voiceDir,
-		worldlineR2MelPath: config.WorldlineR2MelPath, worldlineR2Vocoder: config.WorldlineR2VocoderPath, onnxDeviceID: config.OnnxDeviceID,
 		openJTalkPath: config.OpenJTalkPath, openJTalkDictionary: config.OpenJTalkDictionary,
 		loadedVoicebanks: map[string]*voicebank.Bank{},
 		authToken:        config.AuthToken, allowRegistration: config.AllowVoicebankRegistration,
@@ -559,9 +553,6 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 		RendererCapabilities:    &rendererPlugin.Capabilities,
 		WorldlinePath:           configuredPluginAsset(s.worldlinePath, rendererPlugin, "worldline"),
 		WorldlineBridgePath:     configuredPluginAsset(s.worldlineBridgePath, rendererPlugin, "worldline_bridge"),
-		WorldlineR2MelPath:      configuredPluginAsset(s.worldlineR2MelPath, rendererPlugin, "worldline_r2_mel"),
-		WorldlineR2VocoderPath:  configuredPluginAsset(s.worldlineR2Vocoder, rendererPlugin, "worldline_r2_vocoder"),
-		OnnxDeviceID:            s.onnxDeviceID,
 		OpenJTalkPath:           s.openJTalkPath,
 		OpenJTalkDictionaryPath: s.openJTalkDictionary,
 	})

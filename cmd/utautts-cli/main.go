@@ -42,10 +42,6 @@ func main() {
 		renderer                string
 		worldlinePath           string
 		worldlineBridgePath     string
-		worldlineR2MelPath      string
-		worldlineR2VocoderPath  string
-		onnxDeviceID            int
-		utauResamplerPath       string
 		boundaryBridgeMS        float64
 		boundaryBridgeThreshold float64
 		selectionMode           string
@@ -80,10 +76,6 @@ func main() {
 	flag.StringVar(&renderer, "renderer", "", "renderer plugin ID (default: highest manifest priority)")
 	flag.StringVar(&worldlinePath, "worldline", "", "path to OpenUtau worldline library (default: next to executable)")
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
-	flag.StringVar(&worldlineR2MelPath, "worldline-r2-mel", "", "path to OpenUtau WORLDLINE-R2 mel.onnx")
-	flag.StringVar(&worldlineR2VocoderPath, "worldline-r2-vocoder", "", "path to the external PC-NSF-HiFiGAN ONNX model")
-	flag.IntVar(&onnxDeviceID, "onnx-device", 0, "DirectML GPU device ID")
-	flag.StringVar(&utauResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler.exe")
 	flag.Float64Var(&boundaryBridgeMS, "boundary-bridge-ms", 0, "maximum width for phase-aligned waveform boundary repair candidates (0 disables)")
 	flag.Float64Var(&boundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair when handcrafted join score is at or below this value")
 	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
@@ -119,8 +111,6 @@ func main() {
 	}
 	worldlinePath = preferExplicit(worldlinePath, rendererPlugin.Asset("worldline"))
 	worldlineBridgePath = preferExplicit(worldlineBridgePath, rendererPlugin.Asset("worldline_bridge"))
-	worldlineR2MelPath = preferExplicit(worldlineR2MelPath, rendererPlugin.Asset("worldline_r2_mel"))
-	worldlineR2VocoderPath = preferExplicit(worldlineR2VocoderPath, rendererPlugin.Asset("worldline_r2_vocoder"))
 
 	if voicebankPath == "" {
 		voicebankPath = otoPath
@@ -159,10 +149,6 @@ func main() {
 		RendererCapabilities:    &rendererPlugin.Capabilities,
 		WorldlinePath:           worldlinePath,
 		WorldlineBridgePath:     worldlineBridgePath,
-		WorldlineR2MelPath:      worldlineR2MelPath,
-		WorldlineR2VocoderPath:  worldlineR2VocoderPath,
-		OnnxDeviceID:            onnxDeviceID,
-		UTAUResamplerPath:       utauResamplerPath,
 		BoundaryBridgeMS:        boundaryBridgeMS,
 		BoundaryBridgeThreshold: boundaryBridgeThreshold,
 		SelectionMode:           voicebank.SelectionMode(selectionMode),

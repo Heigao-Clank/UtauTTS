@@ -42,10 +42,6 @@ type Config struct {
 	RendererCapabilities    *plugin.Capabilities
 	WorldlinePath           string
 	WorldlineBridgePath     string
-	WorldlineR2MelPath      string
-	WorldlineR2VocoderPath  string
-	OnnxDeviceID            int
-	UTAUResamplerPath       string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
 	PitchCurve              *render.PitchCurve
@@ -224,10 +220,6 @@ func Synthesize(cfg Config) (*Result, error) {
 		Backend:                 cfg.Renderer,
 		WorldlinePath:           cfg.WorldlinePath,
 		WorldlineBridgePath:     cfg.WorldlineBridgePath,
-		WorldlineR2MelPath:      cfg.WorldlineR2MelPath,
-		WorldlineR2VocoderPath:  cfg.WorldlineR2VocoderPath,
-		OnnxDeviceID:            cfg.OnnxDeviceID,
-		UTAUResamplerPath:       cfg.UTAUResamplerPath,
 		BoundaryBridgeMS:        cfg.BoundaryBridgeMS,
 		BoundaryBridgeThreshold: cfg.BoundaryBridgeThreshold,
 		PitchCurve:              pitchCurve,

@@ -57,12 +57,12 @@ func TestVoicebankRegistrationDisabledByDefault(t *testing.T) {
 
 func TestRendererMetadataIncludesConfiguredDefault(t *testing.T) {
 	response := httptest.NewRecorder()
-	mustNewServer(t, Config{VoiceDir: t.TempDir(), Renderer: "worldline-hybrid"}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/renderers", nil))
+	mustNewServer(t, Config{VoiceDir: t.TempDir(), Renderer: "waveform"}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/renderers", nil))
 	var payload struct {
 		Default string `json:"default_renderer"`
 	}
 	_ = json.Unmarshal(response.Body.Bytes(), &payload)
-	if payload.Default != "worldline-hybrid" {
+	if payload.Default != "waveform" {
 		t.Fatalf("default = %q", payload.Default)
 	}
 }
@@ -186,7 +186,7 @@ func TestSynthesizeEndpointRejectsUnknownText(t *testing.T) {
 }
 
 func TestHealthReportsConfiguredRenderer(t *testing.T) {
-	server := &Server{renderer: "worldline-hybrid"}
+	server := &Server{renderer: "waveform"}
 	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
@@ -198,7 +198,7 @@ func TestHealthReportsConfiguredRenderer(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["status"] != "ok" || payload["engine"] != "worldline-hybrid" {
+	if payload["status"] != "ok" || payload["engine"] != "waveform" {
 		t.Fatalf("unexpected response: %#v", payload)
 	}
 }

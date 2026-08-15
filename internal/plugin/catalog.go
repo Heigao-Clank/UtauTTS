@@ -262,7 +262,7 @@ func validateRenderer(renderer Renderer, supportsBackend func(string) bool) erro
 	if renderer.Kind != "renderer" || renderer.ID == "" || renderer.DisplayName == "" || renderer.Backend == "" {
 		return errors.New("kind=renderer, id, display_name, and backend are required")
 	}
-	if renderer.Acceleration != "" && renderer.Acceleration != "cpu" && renderer.Acceleration != "cuda" && renderer.Acceleration != "directml" {
+	if renderer.Acceleration != "" && renderer.Acceleration != "cpu" && renderer.Acceleration != "cuda" {
 		return fmt.Errorf("unsupported acceleration %q", renderer.Acceleration)
 	}
 	if supportsBackend != nil && !supportsBackend(renderer.Backend) {

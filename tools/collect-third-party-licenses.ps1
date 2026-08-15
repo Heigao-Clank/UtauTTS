@@ -80,48 +80,6 @@ function Copy-GoLicenses {
     }
 }
 
-function Copy-OnnxLicenses {
-    $assetsPath = Join-Path $root 'tools/worldline-bridge/obj/project.assets.json'
-    if (-not (Test-Path -LiteralPath $assetsPath -PathType Leaf)) {
-        throw "WORLDLINE-R2 assets file was not found: $assetsPath"
-    }
-    $assets = Get-Content -LiteralPath $assetsPath -Raw | ConvertFrom-Json
-    $packageRoot = if (-not [string]::IsNullOrWhiteSpace($env:NUGET_PACKAGES)) {
-        [IO.Path]::GetFullPath($env:NUGET_PACKAGES)
-    } else {
-        Join-Path $env:USERPROFILE '.nuget/packages'
-    }
-    $packageIds = @(
-        'Microsoft.AI.DirectML',
-        'Microsoft.ML.OnnxRuntime.DirectML',
-        'Microsoft.ML.OnnxRuntime.Managed',
-        'System.Memory',
-        'System.Numerics.Tensors'
-    )
-    $destinationRoot = Join-Path $licenseRoot 'ONNX-Runtime'
-    foreach ($packageId in $packageIds) {
-        $library = $assets.libraries.PSObject.Properties |
-            Where-Object { $_.Name -like "$packageId/*" -or $_.Name -like "$($packageId.ToLowerInvariant())/*" } |
-            Select-Object -First 1
-        if ($null -eq $library) {
-            throw "The published WORLDLINE-R2 dependency is missing from project.assets.json: $packageId"
-        }
-        $libraryParts = $library.Name.Split('/', 2)
-        $resolvedId = $libraryParts[0]
-        $version = $libraryParts[1]
-        $sourceDirectory = Join-Path (Join-Path $packageRoot $resolvedId.ToLowerInvariant()) $version
-        $noticeFiles = @(Get-ChildItem -LiteralPath $sourceDirectory -File -ErrorAction Stop |
-            Where-Object { $_.Name -match '(?i)(license|copying|third.?party|notice)' })
-        if ($noticeFiles.Count -eq 0) {
-            throw "No license or notice files were found in NuGet package $resolvedId/$version"
-        }
-        foreach ($noticeFile in $noticeFiles) {
-            $destinationName = "$resolvedId-$version-$($noticeFile.Name)"
-            Copy-Required $noticeFile.FullName (Join-Path $destinationRoot $destinationName)
-        }
-    }
-}
-
 function Copy-OpenJTalkLicenses {
     $source = Join-Path $root 'licenses/openjtalk'
     if (-not (Test-Path -LiteralPath $source -PathType Container)) {
@@ -280,7 +238,7 @@ function Copy-CudaLicense {
 CUDA renderer build provenance
 =============================
 
-The optional waveform renderer was built with nvcc at:
+The optional faithful GPU renderer's CUDA support was built with nvcc at:
 $nvcc
 
 nvcc version output:
@@ -295,7 +253,6 @@ GPU driver is distributed by this package.
 
 New-Item -ItemType Directory -Force -Path $licenseRoot | Out-Null
 Copy-GoLicenses
-Copy-OnnxLicenses
 Copy-OpenJTalkLicenses
 Copy-ProsodyDataProvenance
 

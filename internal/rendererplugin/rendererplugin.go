@@ -30,8 +30,6 @@ func Apply(renderer plugin.Renderer, config *tts.Config) {
 	config.RendererCapabilities = &renderer.Capabilities
 	config.WorldlinePath = preferExplicit(config.WorldlinePath, renderer.Asset("worldline"))
 	config.WorldlineBridgePath = preferExplicit(config.WorldlineBridgePath, renderer.Asset("worldline_bridge"))
-	config.WorldlineR2MelPath = preferExplicit(config.WorldlineR2MelPath, renderer.Asset("worldline_r2_mel"))
-	config.WorldlineR2VocoderPath = preferExplicit(config.WorldlineR2VocoderPath, renderer.Asset("worldline_r2_vocoder"))
 }
 
 func preferExplicit(explicit, manifestValue string) string {

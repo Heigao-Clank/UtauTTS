@@ -106,34 +106,18 @@ try {
         $env:NUGET_PACKAGES = $previousNugetPackages
     }
     & (Join-Path $PSScriptRoot 'fetch-worldline.ps1') -OutputPath (Join-Path $guiRuntimePath 'worldline.dll')
-    & (Join-Path $PSScriptRoot 'fetch-worldline-r2-mel.ps1') -OutputPath (Join-Path $guiRuntimePath 'worldline-r2-mel.onnx')
 
     if ($cudaAvailable) {
-        Write-Host '=== Build optional CUDA waveform renderer ==='
+        Write-Host '=== Build optional CUDA renderer support ==='
         & (Join-Path $PSScriptRoot 'build-waveform-gpu.ps1') -OutputDirectory $guiRuntimePath
-        if ($LASTEXITCODE -ne 0) { throw "CUDA waveform renderer build failed with exit code $LASTEXITCODE" }
+        if ($LASTEXITCODE -ne 0) { throw "CUDA renderer support build failed with exit code $LASTEXITCODE" }
         Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'utautts-waveform-gpu.dll') -Destination $serverRuntimePath -Force
     } else {
-        Write-Warning 'CUDA Toolkit was not found; waveform-gpu will not be included'
+        Write-Warning 'CUDA Toolkit was not found; faithful GPU renderer will not be included'
     }
 
     Get-ChildItem -LiteralPath $guiRuntimePath -Filter 'utautts-worldline-bridge*' | Copy-Item -Destination $serverRuntimePath
-    $worldlineR2RuntimeAssets = @(
-        'DirectML.dll',
-        'Microsoft.ML.OnnxRuntime.dll',
-        'System.Numerics.Tensors.dll',
-        'onnxruntime.dll',
-        'onnxruntime_providers_shared.dll'
-    )
-    foreach ($asset in $worldlineR2RuntimeAssets) {
-        $source = Join-Path $guiRuntimePath $asset
-        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-            throw "WORLDLINE-R2 runtime asset was not published: $asset"
-        }
-        Copy-Item -LiteralPath $source -Destination $serverRuntimePath -Force
-    }
     Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline.dll') -Destination $serverRuntimePath
-    Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline-r2-mel.onnx') -Destination $serverRuntimePath
 
     $openJTalkHelper = Join-Path $root 'tools/openjtalk-feature-bridge/bin/utautts-openjtalk-features.exe'
     $openJTalkDictionary = Join-Path $root '.tmp-openjtalk/pyopenjtalk/open_jtalk_dic_utf_8-1.11'
@@ -165,9 +149,9 @@ try {
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $serverPluginsPath -Recurse
     if (-not $cudaAvailable) {
         foreach ($pluginsPath in @($guiPluginsPath, $serverPluginsPath)) {
-            $waveformGPUManifest = Join-Path $pluginsPath 'renderers/waveform-gpu'
-            if (Test-Path -LiteralPath $waveformGPUManifest) {
-                Remove-Item -LiteralPath $waveformGPUManifest -Recurse -Force
+            $faithfulGPUManifest = Join-Path $pluginsPath 'renderers/openutau-classic-faithful-gpu'
+            if (Test-Path -LiteralPath $faithfulGPUManifest) {
+                Remove-Item -LiteralPath $faithfulGPUManifest -Recurse -Force
             }
         }
     }
@@ -194,7 +178,7 @@ try {
 
     foreach ($packagePath in @($guiPath, $serverPath)) {
         Get-ChildItem -LiteralPath $packagePath -Recurse -File |
-            Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') -or $_.Name -eq 'DirectML.Debug.dll' } |
+            Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') } |
             Remove-Item -Force
     }
     $qmlToolingPath = Join-Path $guiPath 'app/qmltooling'

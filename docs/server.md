@@ -46,3 +46,6 @@ Content-Type: application/json
 JSON本文は1 MiB、1発話の`text`と`kana`はそれぞれ500文字までです。batchは16発話、展開前WAV合計256 MiBまでに制限されます。未知のJSON fieldは入力ミスとして拒否されます。
 
 `POST /api/voicebanks`による音源パス登録は既定で無効です。必要な場合だけ`--allow-voicebank-registration`を指定でき、登録先は`--voice-dir`以下に制限されます。外部から接続可能なアドレスで待ち受ける場合は`--auth-token`を指定してください。QtデスクトップGUIはHTTPサーバーを使用しません。
+The server exposes the same three renderer choices as the GUI: `waveform`,
+`openutau-classic-worldline-faithful`, and the optional CUDA
+`openutau-classic-worldline-faithful-gpu`.

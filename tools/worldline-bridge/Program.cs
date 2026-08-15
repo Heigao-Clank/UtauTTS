@@ -5,12 +5,9 @@ using System.Text.Json.Serialization;
 namespace UtauTTS.WorldlineBridge;
 
 internal sealed class Manifest {
-	[JsonPropertyName("engine")] public string Engine { get; set; } = "";
+    [JsonPropertyName("engine")] public string Engine { get; set; } = "";
     [JsonPropertyName("worldline_path")] public string WorldlinePath { get; set; } = "";
     [JsonPropertyName("gpu_path")] public string GpuPath { get; set; } = "";
-    [JsonPropertyName("mel_model_path")] public string MelModelPath { get; set; } = "";
-    [JsonPropertyName("vocoder_model_path")] public string VocoderModelPath { get; set; } = "";
-    [JsonPropertyName("onnx_device_id")] public int OnnxDeviceId { get; set; }
     [JsonPropertyName("output_path")] public string OutputPath { get; set; } = "";
     [JsonPropertyName("sample_rate")] public int SampleRate { get; set; }
     [JsonPropertyName("f0_curve")] public double[] F0Curve { get; set; } = [];
@@ -70,17 +67,6 @@ internal struct SynthRequest {
     public int flag_Mv;
 }
 
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate IntPtr PhraseNew();
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void PhraseDelete(IntPtr phrase);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void PhraseAdd(
-    IntPtr phrase, IntPtr request, double positionMs, double skipMs, double lengthMs,
-    double fadeInMs, double fadeOutMs, IntPtr logCallback);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate void PhraseSetCurves(
-    IntPtr phrase, IntPtr f0, IntPtr gender, IntPtr tension, IntPtr breathiness,
-    IntPtr voicing, int length, IntPtr logCallback);
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int PhraseSynth(
-    IntPtr phrase, out IntPtr output, IntPtr logCallback);
-
 internal static class Program {
     public static int Main(string[] args) {
         try {
@@ -101,106 +87,15 @@ internal static class Program {
         }
 		var library = NativeLibrary.Load(Path.GetFullPath(manifest.WorldlinePath));
 		try {
-			if (string.Equals(manifest.Engine, "classic-worldline-convergence", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(manifest.Engine, "classic-worldline-faithful", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(manifest.Engine, "classic-worldline-faithful-gpu", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(manifest.Engine, "classic-worldline-faithful-phase", StringComparison.OrdinalIgnoreCase)) {
+			if (string.Equals(manifest.Engine, "classic-worldline-faithful", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(manifest.Engine, "classic-worldline-faithful-gpu", StringComparison.OrdinalIgnoreCase)) {
 				ClassicWorldline.Render(library, manifest);
 				return;
 			}
-			if (string.Equals(manifest.Engine, "v2", StringComparison.OrdinalIgnoreCase)) {
-				WorldlineV2.Render(library, manifest);
-				return;
-			}
-			if (string.Equals(manifest.Engine, "r2-cpu", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(manifest.Engine, "r2-directml", StringComparison.OrdinalIgnoreCase)) {
-				WorldlineR2.Render(library, manifest,
-					string.Equals(manifest.Engine, "r2-directml", StringComparison.OrdinalIgnoreCase));
-				return;
-			}
-			if (!string.Equals(manifest.Engine, "phrase-synth", StringComparison.OrdinalIgnoreCase)) {
-				throw new InvalidDataException($"unknown engine: {manifest.Engine}");
-			}
-            var create = Load<PhraseNew>(library, "PhraseSynthNew");
-            var delete = Load<PhraseDelete>(library, "PhraseSynthDelete");
-            var add = Load<PhraseAdd>(library, "PhraseSynthAddRequest");
-            var setCurves = Load<PhraseSetCurves>(library, "PhraseSynthSetCurves");
-            var synth = Load<PhraseSynth>(library, "PhraseSynthSynth");
-            var phrase = create();
-            if (phrase == IntPtr.Zero) throw new InvalidOperationException("PhraseSynthNew returned null");
-            try {
-                foreach (var unit in manifest.Units) AddUnit(phrase, add, unit, manifest.SampleRate);
-                using var curves = new PinnedCurves(manifest.F0Curve);
-                setCurves(phrase, curves.F0, curves.Gender, curves.Tension,
-                    curves.Breathiness, curves.Voicing, manifest.F0Curve.Length, IntPtr.Zero);
-                var length = synth(phrase, out var output, IntPtr.Zero);
-                if (length <= 0 || output == IntPtr.Zero) throw new InvalidOperationException("PhraseSynthSynth returned no audio");
-                try {
-                    var samples = new float[length];
-                    Marshal.Copy(output, samples, 0, length);
-                    WritePCM16(manifest.OutputPath, manifest.SampleRate, samples);
-                } finally {
-                    Marshal.FreeCoTaskMem(output);
-                }
-            } finally {
-                delete(phrase);
-            }
+			throw new InvalidDataException($"unknown engine: {manifest.Engine}");
         } finally {
             NativeLibrary.Free(library);
         }
-    }
-
-    private static void AddUnit(IntPtr phrase, PhraseAdd add, Unit unit, int expectedSampleRate) {
-        var (sampleRate, samples) = ReadPCM16(unit.Source);
-        if (sampleRate != expectedSampleRate) {
-            throw new InvalidDataException($"{unit.Source} is {sampleRate} Hz; expected {expectedSampleRate} Hz");
-        }
-        var pitchBend = new int[Math.Max(2, (int)Math.Ceiling(unit.RequiredLengthMs / 10.0))];
-        var frq = string.IsNullOrWhiteSpace(unit.FrqPath) ? null : File.ReadAllBytes(unit.FrqPath);
-        var samplePin = GCHandle.Alloc(samples, GCHandleType.Pinned);
-        var pitchPin = GCHandle.Alloc(pitchBend, GCHandleType.Pinned);
-        GCHandle? frqPin = frq == null ? null : GCHandle.Alloc(frq, GCHandleType.Pinned);
-        var requestMemory = Marshal.AllocHGlobal(Marshal.SizeOf<SynthRequest>());
-        try {
-            var request = new SynthRequest {
-                sample_fs = sampleRate, sample_length = samples.Length,
-                sample = samplePin.AddrOfPinnedObject(),
-                frq_length = frq?.Length ?? 0, frq = frqPin?.AddrOfPinnedObject() ?? IntPtr.Zero,
-                tone = unit.Tone,
-                con_vel = unit.ConsonantVelocity, offset = unit.OffsetMs,
-                required_length = unit.RequiredLengthMs, consonant = unit.ConsonantMs,
-                cut_off = unit.CutoffMs, volume = 100, tempo = 120,
-                pitch_bend_length = pitchBend.Length, pitch_bend = pitchPin.AddrOfPinnedObject(),
-                flag_P = 86, flag_Mv = 100,
-            };
-            Marshal.StructureToPtr(request, requestMemory, false);
-            add(phrase, requestMemory, unit.PositionMs, unit.SkipMs, unit.LengthMs,
-                unit.FadeInMs, unit.FadeOutMs, IntPtr.Zero);
-        } finally {
-            Marshal.FreeHGlobal(requestMemory);
-            pitchPin.Free();
-            samplePin.Free();
-            if (frqPin.HasValue) frqPin.Value.Free();
-        }
-    }
-
-    private static T Load<T>(IntPtr library, string name) where T : Delegate =>
-        Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library, name));
-
-    private sealed class PinnedCurves : IDisposable {
-        private readonly GCHandle[] handles;
-        public IntPtr F0 => handles[0].AddrOfPinnedObject();
-        public IntPtr Gender => handles[1].AddrOfPinnedObject();
-        public IntPtr Tension => handles[2].AddrOfPinnedObject();
-        public IntPtr Breathiness => handles[3].AddrOfPinnedObject();
-        public IntPtr Voicing => handles[4].AddrOfPinnedObject();
-        public PinnedCurves(double[] f0) {
-            var length = f0.Length;
-            handles = new[] { f0, Fill(length, 0.5), Fill(length, 0.5), Fill(length, 0.5), Fill(length, 1) }
-                .Select(values => GCHandle.Alloc(values, GCHandleType.Pinned)).ToArray();
-        }
-        public void Dispose() { foreach (var handle in handles) handle.Free(); }
-        private static double[] Fill(int length, double value) => Enumerable.Repeat(value, length).ToArray();
     }
 
 	internal static (int sampleRate, double[] samples) ReadPCM16(string path) {

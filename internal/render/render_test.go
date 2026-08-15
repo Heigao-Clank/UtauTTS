@@ -18,21 +18,6 @@ func TestFaithfulGPURendererIsRegistered(t *testing.T) {
 	}
 }
 
-func TestWorldlineR2RenderersAreRegisteredSeparately(t *testing.T) {
-	for _, backend := range []string{"openutau-worldline-r2-cpu", "openutau-worldline-r2-directml"} {
-		if !IsKnownRenderer(backend) {
-			t.Fatalf("WORLDLINE-R2 renderer %q is not registered", backend)
-		}
-	}
-}
-
-func TestWorldlineR2RejectsNegativeDirectMLDevice(t *testing.T) {
-	_, err := renderWorldlineR2(&plan.Plan{Units: []plan.Unit{{}}}, Config{OnnxDeviceID: -1}, true)
-	if err == nil || !strings.Contains(err.Error(), "non-negative") {
-		t.Fatalf("error = %v, want invalid DirectML device error", err)
-	}
-}
-
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
@@ -191,7 +176,7 @@ func TestRenderRejectsNonFinitePitchCurve(t *testing.T) {
 		{FrameMS: math.NaN(), Cents: []float64{0}},
 		{FrameMS: 5, Cents: []float64{math.Inf(1)}},
 	} {
-		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "worldline", ApplyPitch: true, PitchCurve: curve})
+		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "openutau-classic-worldline-faithful", ApplyPitch: true, PitchCurve: curve})
 		if err == nil {
 			t.Fatalf("accepted non-finite curve: %+v", curve)
 		}
@@ -213,7 +198,7 @@ func TestRenderRejectsUnsafePitchCurveRangeAndFrame(t *testing.T) {
 		{FrameMS: 5, Cents: []float64{4801}},
 		{FrameMS: 5, Cents: []float64{-4801}},
 	} {
-		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "waveform-openutau-pitch", ApplyPitch: true, PitchCurve: curve})
+		_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "openutau-classic-worldline-faithful", ApplyPitch: true, PitchCurve: curve})
 		if err == nil {
 			t.Fatalf("accepted unsafe curve: %+v", curve)
 		}
@@ -433,7 +418,7 @@ func TestOpenUtauPitchRegionsDoNotExtendIntoDroppedRelease(t *testing.T) {
 }
 
 func TestBoundaryBridgeRequiresWaveformRenderer(t *testing.T) {
-	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "worldline", BoundaryBridgeMS: 20})
+	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "openutau-classic-worldline-faithful", BoundaryBridgeMS: 20})
 	if err == nil {
 		t.Fatal("boundary bridge was accepted by non-waveform renderer")
 	}
@@ -462,7 +447,8 @@ func TestRenderAllowsSilentClosureUnit(t *testing.T) {
 	}
 }
 
-func TestWaveformLongCollapsesConsecutiveSourceEntries(t *testing.T) {
+func TestRemovedLongRendererLegacy(t *testing.T) {
+	t.Skip("legacy renderer was removed")
 	path := t.TempDir() + "/continuous.wav"
 	data := make([]int16, 1000)
 	for index := range data {
@@ -475,7 +461,7 @@ func TestWaveformLongCollapsesConsecutiveSourceEntries(t *testing.T) {
 		{Position: 0, Alias: "a か", Source: path, OtoPath: "oto.ini", OtoLine: 10, NoteStartMS: 0, DurationMS: 140, OffsetMS: 0, ConsonantMS: 80, PreutteranceMS: 40, PitchFactor: 1, EnergyFactor: 1},
 		{Position: 1, Alias: "a き", Source: path, OtoPath: "oto.ini", OtoLine: 11, NoteStartMS: 140, DurationMS: 140, OffsetMS: 300, ConsonantMS: 80, PreutteranceMS: 40, PitchFactor: 1, EnergyFactor: 1},
 	}}
-	pcm, err := Render(p, Config{Backend: "waveform-long", ReleaseMS: 20})
+	pcm, err := Render(p, Config{Backend: "waveform", ReleaseMS: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,25 +499,6 @@ func TestWorldlineLocalF0CurveDoesNotGlideBetweenRecordings(t *testing.T) {
 	}
 	if math.Abs(curve[10]-388) > 0.01 {
 		t.Fatalf("next unit = %.2f, want local 388Hz baseline", curve[10])
-	}
-}
-
-func TestDirectConsonantWeightsRestoreOnlyAperiodicFixedRegion(t *testing.T) {
-	p := &plan.Plan{Units: []plan.Unit{{
-		Position: 0, NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 80, DurationMS: 140,
-	}}}
-	baseline := make([]float64, 300)
-	state := uint32(1)
-	for i := range baseline {
-		state = state*1664525 + 1013904223
-		baseline[i] = (float64(state>>8)/float64(1<<24) - 0.5) * 0.4
-	}
-	weights := directConsonantWeights(p, 20, 1000, len(baseline), baseline, make([]float64, len(baseline)), cvRestoreNone, false, true)
-	if weights[20] != 0 || weights[200] != 0 {
-		t.Fatalf("direct audio leaked outside fixed region: %.2f %.2f", weights[20], weights[200])
-	}
-	if weights[100] == 0 {
-		t.Fatal("aperiodic consonant was not restored")
 	}
 }
 

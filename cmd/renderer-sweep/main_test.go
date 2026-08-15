@@ -10,15 +10,6 @@ import (
 	"utautts/internal/tts"
 )
 
-func TestProvenanceWarningsExposeRendererMismatch(t *testing.T) {
-	project := &openutau.ProjectAudit{Tracks: []openutau.TrackRendererInfo{{Renderer: "CLASSIC", Resampler: "worldline", Wavtool: "convergence"}}}
-	warnings := provenanceWarnings(tts.Config{Renderer: "utau-classic", UTAUResamplerPath: `C:\UTAU\resampler.exe`}, project)
-	joined := strings.Join(warnings, "\n")
-	if !strings.Contains(joined, "does not match OpenUtau resampler") || !strings.Contains(joined, "selected renderer manifest") {
-		t.Fatalf("unexpected warnings: %v", warnings)
-	}
-}
-
 func TestProvenanceRecognizesFaithfulOpenUtauPath(t *testing.T) {
 	project := &openutau.ProjectAudit{Tracks: []openutau.TrackRendererInfo{{Renderer: "CLASSIC", Resampler: "worldline", Wavtool: "convergence"}}}
 	warnings := provenanceWarnings(tts.Config{Renderer: "openutau-classic-worldline-faithful"}, project)

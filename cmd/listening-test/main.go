@@ -174,7 +174,6 @@ func main() {
 	flag.Float64Var(&cfg.IntonationStrength, "intonation-strength", 0, "source-pitch stabilization and phrase contour strength (0..1)")
 	flag.StringVar(&cfg.WorldlinePath, "worldline", "", "path to worldline library")
 	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")
-	flag.StringVar(&cfg.UTAUResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler.exe")
 	flag.Parse()
 	renderers, discoveryErr := rendererplugin.Discover(rendererDirectories)
 	if discoveryErr != nil {

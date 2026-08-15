@@ -1,5 +1,0 @@
-{
-  "manifest_version": 1, "kind": "renderer", "id": "worldline-hybrid-cv",
-  "display_name": "WORLD hybrid CV", "description": "CV子音区間を原波形から復元する研究用Rendererです。",
-  "backend": "worldline-hybrid-cv", "version": "1", "experimental": true
-}

@@ -68,7 +68,6 @@ func renderWorldlineHybrid(synthesisPlan *plan.Plan, cfg Config, restoreCV cvRes
 	}
 	return &audio.PCM{SampleRate: waveformPCM.SampleRate, Channels: 1, Data: result}, nil
 }
-
 func directConsonantWeights(synthesisPlan *plan.Plan, releaseMS float64, sampleRate, length int,
 	baseline, synthesized []float64, restoreCV cvRestoreMode, framePitchShift, applyPitch bool) []float64 {
 	weights := make([]float64, length)

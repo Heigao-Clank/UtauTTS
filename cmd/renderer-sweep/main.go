@@ -46,7 +46,6 @@ type sweepManifest struct {
 	TargetRenderer    string                 `json:"target_renderer"`
 	ReferenceRenderer string                 `json:"reference_renderer"`
 	Mixing            string                 `json:"mixing"`
-	UTAUResampler     *fileIdentity          `json:"utau_resampler,omitempty"`
 	OpenUtauProject   *openutau.ProjectAudit `json:"openutau_project,omitempty"`
 	Warnings          []string               `json:"warnings,omitempty"`
 	FlatExact         bool                   `json:"flat_exact"`
@@ -71,7 +70,6 @@ func main() {
 	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
 	flag.StringVar(&cfg.WorldlinePath, "worldline", "", "path to worldline library")
 	flag.StringVar(&cfg.WorldlineBridgePath, "worldline-bridge", "", "path to worldline bridge")
-	flag.StringVar(&cfg.UTAUResamplerPath, "utau-resampler", "", "path to UTAU-compatible resampler")
 	flag.StringVar(&openUtauProject, "openutau-project", "", "optional .ustx provenance source")
 	flag.StringVar(&outputDirectory, "out", "", "output directory")
 	flag.Parse()
@@ -127,13 +125,6 @@ func main() {
 		Voicebank: cfg.VoicebankPath, Tone: cfg.Tone,
 		TargetRenderer: targetRenderer.ID, ReferenceRenderer: referenceRenderer.ID,
 		Mixing: "UtauTTS internal overlap/envelope mixer",
-	}
-	if cfg.UTAUResamplerPath != "" {
-		identity, identityErr := identifyFile(cfg.UTAUResamplerPath)
-		if identityErr != nil {
-			log.Fatal(identityErr)
-		}
-		manifest.UTAUResampler = identity
 	}
 	if openUtauProject != "" {
 		manifest.OpenUtauProject, err = openutau.InspectProject(openUtauProject)
@@ -220,16 +211,14 @@ func provenanceWarnings(cfg tts.Config, project *openutau.ProjectAudit) []string
 	}
 	track := project.Tracks[0]
 	var warnings []string
-	classicRenderer := cfg.Renderer == "utau-classic" || strings.HasPrefix(cfg.Renderer, "openutau-classic-worldline-faithful")
+	classicRenderer := strings.HasPrefix(cfg.Renderer, "openutau-classic-worldline-faithful")
 	if classicRenderer && track.Renderer != "" && !strings.EqualFold(track.Renderer, "CLASSIC") {
-		warnings = append(warnings, fmt.Sprintf("target renderer utau-classic does not match OpenUtau renderer %s", track.Renderer))
+		warnings = append(warnings, fmt.Sprintf("target faithful renderer does not match OpenUtau renderer %s", track.Renderer))
 	}
 	if track.Resampler != "" {
 		configured := ""
 		if strings.HasPrefix(cfg.Renderer, "openutau-classic-worldline-faithful") {
 			configured = "worldline"
-		} else if cfg.UTAUResamplerPath != "" {
-			configured = strings.TrimSuffix(filepath.Base(cfg.UTAUResamplerPath), filepath.Ext(cfg.UTAUResamplerPath))
 		}
 		if configured == "" || !strings.EqualFold(configured, track.Resampler) {
 			warnings = append(warnings, fmt.Sprintf("configured resampler %q does not match OpenUtau resampler %q", configured, track.Resampler))

@@ -1,6 +1,0 @@
-{
-  "manifest_version": 1, "kind": "renderer", "id": "waveform-gpu",
-  "display_name": "Waveform CUDA", "description": "WSOLAとmixをCUDAで処理する実験的Rendererです。",
-  "backend": "waveform-gpu", "version": "1", "experimental": true,
-  "capabilities": { "boundary_bridge": true }
-}

@@ -1,6 +1,0 @@
-{
-  "manifest_version": 1, "kind": "renderer", "id": "waveform-long",
-  "display_name": "Waveform long", "description": "同一録音の連続原音をまとめる診断用Rendererです。",
-  "backend": "waveform-long", "version": "1", "experimental": true,
-  "capabilities": { "boundary_bridge": true }
-}
