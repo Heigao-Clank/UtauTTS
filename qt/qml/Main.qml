@@ -61,6 +61,9 @@ ApplicationWindow {
     property string dragExportTarget: ""
     property bool dragExportSelectedOnly: false
     property bool dragExportReady: false
+    property bool playbackQueueActive: false
+    property var playbackQueue: []
+    property int playbackQueueIndex: -1
     property bool projectDirty: false
     property bool metadataInitialized: false
     property bool closeAfterProjectSave: false
@@ -113,6 +116,9 @@ ApplicationWindow {
             if (window.playbackRequested && (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)) {
                 window.playbackRequested = false;
                 play();
+            } else if (window.playbackQueueActive && mediaStatus === MediaPlayer.EndOfMedia) {
+                ++window.playbackQueueIndex;
+                window.playNextPlaybackItem();
             }
         }
         onErrorOccurred: (error, errorString) => {
@@ -375,6 +381,22 @@ ApplicationWindow {
                 saveDialog.open();
                 return;
             }
+            if (window.playbackQueueActive) {
+                if (index < 0 || index !== window.selectedIndex || utterances.get(index).revision !== window.pendingRevision) {
+                    window.stopPlaybackQueue();
+                    return;
+                }
+                window.audioUtteranceId = window.pendingUtteranceId;
+                window.audioRevision = window.pendingRevision;
+                window.pendingUtteranceId = "";
+                window.pendingRevision = -1;
+                window.playbackError = "";
+                window.playbackRequested = true;
+                player.stop();
+                player.source = audio;
+                player.play();
+                return;
+            }
             if (index < 0 || index !== window.selectedIndex || utterances.get(index).revision !== window.pendingRevision) {
                 window.pendingUtteranceId = "";
                 window.pendingRevision = -1;
@@ -396,6 +418,8 @@ ApplicationWindow {
         function onErrorChanged() {
             if (window.batchExportActive && window.pendingUtteranceId.length && window.appBackend.error.length)
                 window.finishBatchExport(false);
+            else if (window.playbackQueueActive && window.pendingUtteranceId.length && window.appBackend.error.length)
+                window.stopPlaybackQueue();
             else if (window.saveRequestPending && window.pendingUtteranceId.length && window.appBackend.error.length) {
                 window.saveRequestPending = false;
                 window.pendingUtteranceId = "";
@@ -461,6 +485,34 @@ ApplicationWindow {
             MenuItem {
                 text: "終了"
                 onTriggered: Qt.quit()
+            }
+        }
+        Menu {
+            title: "再生"
+            MenuItem {
+                text: "選択中のテキストを再生"
+                enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
+                         && !window.playbackQueueActive && window.current().content.trim().length > 0
+                onTriggered: window.synthesizeCurrent()
+            }
+            MenuItem {
+                text: "全テキストを再生"
+                enabled: !window.appBackend.busy && !window.batchExportActive && !window.playbackQueueActive
+                         && window.hasPlayableTextFrom(0)
+                onTriggered: window.startPlaybackQueue(0)
+            }
+            MenuItem {
+                text: "選択中のテキストより先全てを再生"
+                enabled: !window.appBackend.busy && !window.batchExportActive && !window.playbackQueueActive
+                         && window.hasPlayableTextFrom(window.selectedIndex)
+                onTriggered: window.startPlaybackQueue(window.selectedIndex)
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "もう一度再生"
+                enabled: !window.appBackend.busy && !window.batchExportActive && !window.playbackQueueActive
+                         && window.hasCachedAudio()
+                onTriggered: window.replayCachedAudio()
             }
         }
         Menu {
@@ -677,6 +729,7 @@ ApplicationWindow {
                                 const to = card.index;
                                 if (from < 0 || to < 0 || from === to)
                                     return;
+                                window.clearPlayback();
                                 utterances.move(from, to, 1);
                                 window.selectedIndex = to;
                                 window.draggedUtteranceIndex = to;
@@ -1591,7 +1644,36 @@ ApplicationWindow {
         return item.utteranceId === window.audioUtteranceId && item.revision === window.audioRevision;
     }
 
-    function clearPlayback() {
+    function hasCachedAudio() {
+        if (!window.audioUtteranceId || !player.source.toString().length)
+            return false;
+        const index = window.utteranceIndex(window.audioUtteranceId);
+        return index >= 0 && utterances.get(index).revision === window.audioRevision;
+    }
+
+    function stopPlaybackQueue() {
+        window.playbackQueueActive = false;
+        window.playbackQueue = [];
+        window.playbackQueueIndex = -1;
+        window.pendingUtteranceId = "";
+        window.pendingRevision = -1;
+    }
+
+    function replayCachedAudio() {
+        if (!window.hasCachedAudio())
+            return;
+        window.stopPlaybackQueue();
+        window.playbackRequested = false;
+        window.playbackError = "";
+        player.stop();
+        if (player.duration > 0)
+            player.position = 0;
+        player.play();
+    }
+
+    function clearPlayback(stopQueue) {
+        if (stopQueue !== false)
+            window.stopPlaybackQueue();
         window.playbackRequested = false;
         window.playbackError = "";
         player.stop();
@@ -1645,12 +1727,16 @@ ApplicationWindow {
         }
     }
 
-    function selectUtterance(index) {
+    function selectUtterance(index, preservePlaybackQueue) {
         if (index < 0 || index >= utterances.count)
             return;
         const changed = index !== selectedIndex;
-        if (changed)
-            clearPlayback();
+        if (changed) {
+            if (preservePlaybackQueue === true)
+                clearPlayback(false);
+            else
+                clearPlayback();
+        }
         selectedIndex = index;
         const item = current();
         toneField.text = item.tone;
@@ -1755,10 +1841,72 @@ ApplicationWindow {
         const target = selectedIndex + delta;
         if (target < 0 || target >= utterances.count)
             return;
+        window.clearPlayback();
         utterances.move(selectedIndex, target, 1);
         window.projectDirty = true;
         selectedIndex = target;
         utteranceList.positionViewAtIndex(target, ListView.Contain);
+    }
+
+    function hasPlayableTextFrom(startIndex) {
+        const first = Math.max(0, Number(startIndex) || 0);
+        for (let index = first; index < utterances.count; ++index) {
+            if (utterances.get(index).content.trim().length)
+                return true;
+        }
+        return false;
+    }
+
+    function startPlaybackQueue(startIndex) {
+        if (window.appBackend.busy || window.batchExportActive || window.playbackQueueActive)
+            return;
+        const first = Math.max(0, Number(startIndex) || 0);
+        const queue = [];
+        for (let index = first; index < utterances.count; ++index) {
+            if (utterances.get(index).content.trim().length)
+                queue.push(index);
+        }
+        if (!queue.length)
+            return;
+
+        window.stopPlaybackQueue();
+        window.clearPlayback(false);
+        window.playbackQueue = queue;
+        window.playbackQueueIndex = 0;
+        window.playbackQueueActive = true;
+        window.appBackend.clearLogs();
+        window.showAuxiliaryWindow(synthesisLogWindow);
+        window.playNextPlaybackItem();
+    }
+
+    function playNextPlaybackItem() {
+        if (!window.playbackQueueActive)
+            return;
+        if (window.playbackQueueIndex >= window.playbackQueue.length) {
+            window.finishPlaybackQueue();
+            return;
+        }
+
+        const index = Number(window.playbackQueue[window.playbackQueueIndex]);
+        if (index < 0 || index >= utterances.count || !utterances.get(index).content.trim().length) {
+            ++window.playbackQueueIndex;
+            Qt.callLater(window.playNextPlaybackItem);
+            return;
+        }
+
+        window.selectUtterance(index, true);
+        window.clearPlayback(false);
+        const item = utterances.get(index);
+        window.pendingUtteranceId = item.utteranceId;
+        window.pendingRevision = item.revision;
+        window.appBackend.synthesize(window.buildSynthesisRequest(item));
+    }
+
+    function finishPlaybackQueue() {
+        const closeLog = window.appBackend.closeLogOnSuccess;
+        window.stopPlaybackQueue();
+        if (closeLog)
+            synthesisLogWindow.close();
     }
 
     function synthesizeCurrent() {
