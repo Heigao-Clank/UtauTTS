@@ -94,6 +94,12 @@ func Synthesize(cfg Config) (*Result, error) {
 	}
 	if loadedProsody != nil && loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
 		runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
+		if strings.TrimSpace(runtimeText) == "" {
+			// Kana-only requests do not have a surface text. Open JTalk can
+			// still analyze the supplied reading, and passing an empty string
+			// here would otherwise fail before synthesis starts.
+			runtimeText = reading
+		}
 		runtimeConfig := openjtalk.Config{
 			HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
 		}
@@ -299,34 +305,163 @@ func pitchCurveCentsAt(curve *render.PitchCurve, timeMS float64) float64 {
 	return curve.Cents[left]*(1-progress) + curve.Cents[left+1]*progress
 }
 
-func validateRuntimeMoraAlignment(morae []frontend.Mora, analyzed []string) error {
-	if len(morae) != len(analyzed) {
-		return fmt.Errorf("Open JTalk returned %d morae, Go frontend returned %d", len(analyzed), len(morae))
+func alignRuntimeProsodyFeatures(morae []frontend.Mora, analysis *openjtalk.Analysis) ([]prosody.FeatureFrame, error) {
+	if analysis == nil {
+		return nil, fmt.Errorf("Open JTalk analysis is nil")
 	}
-	for index, mora := range morae {
-		want := analyzed[index]
-		if mora.Pause {
-			want = ""
-			if analyzed[index] != "" {
-				return fmt.Errorf("frame %d: Open JTalk mora %q does not match pause", index, analyzed[index])
-			}
+	if len(analysis.Morae) != len(analysis.Features) {
+		return nil, fmt.Errorf("Open JTalk returned %d morae and %d feature frames", len(analysis.Morae), len(analysis.Features))
+	}
+	if len(morae) == 0 {
+		return nil, nil
+	}
+	if len(analysis.Morae) == 0 {
+		return make([]prosody.FeatureFrame, len(morae)), nil
+	}
+
+	indices := alignRuntimeMoraIndices(morae, analysis.Morae)
+	aligned := make([]prosody.FeatureFrame, len(morae))
+	for index, analyzedIndex := range indices {
+		if analyzedIndex >= 0 {
+			aligned[index] = cloneFeatureFrame(analysis.Features[analyzedIndex])
 			continue
 		}
-		if !runtimeMoraMatches(mora, want) {
-			return fmt.Errorf("frame %d: Open JTalk mora %q does not match reading mora %q", index, want, mora.Text)
+		if morae[index].Pause {
+			aligned[index] = prosody.FeatureFrame{}
+			continue
 		}
+		aligned[index] = cloneFeatureFrame(nearestRuntimeFeature(indices, analysis.Features, index))
 	}
-	return nil
+	return aligned, nil
 }
 
-func runtimeMoraMatches(mora frontend.Mora, analyzed string) bool {
+type runtimeMoraAlignmentCell struct {
+	cost float64
+	op   byte
+}
+
+const (
+	runtimeAlignmentSkipCost   = 1.1
+	runtimeAlignmentChangeCost = 1.8
+)
+
+func alignRuntimeMoraIndices(morae []frontend.Mora, analyzed []string) []int {
+	rows := len(morae) + 1
+	columns := len(analyzed) + 1
+	cells := make([][]runtimeMoraAlignmentCell, rows)
+	for row := range cells {
+		cells[row] = make([]runtimeMoraAlignmentCell, columns)
+		for column := range cells[row] {
+			cells[row][column].cost = math.Inf(1)
+		}
+	}
+	cells[0][0] = runtimeMoraAlignmentCell{}
+	for row := 1; row < rows; row++ {
+		cells[row][0] = runtimeMoraAlignmentCell{
+			cost: cells[row-1][0].cost + runtimeAlignmentSkipCost,
+			op:   'g',
+		}
+	}
+	for column := 1; column < columns; column++ {
+		cells[0][column] = runtimeMoraAlignmentCell{
+			cost: cells[0][column-1].cost + runtimeAlignmentSkipCost,
+			op:   'o',
+		}
+	}
+	for row := 1; row < rows; row++ {
+		for column := 1; column < columns; column++ {
+			best := runtimeMoraAlignmentCell{
+				cost: cells[row-1][column-1].cost + runtimeMoraCost(morae[row-1], analyzed[column-1]),
+				op:   'm',
+			}
+			best = chooseRuntimeAlignment(best, runtimeMoraAlignmentCell{
+				cost: cells[row-1][column].cost + runtimeAlignmentSkipCost,
+				op:   'g',
+			})
+			best = chooseRuntimeAlignment(best, runtimeMoraAlignmentCell{
+				cost: cells[row][column-1].cost + runtimeAlignmentSkipCost,
+				op:   'o',
+			})
+			cells[row][column] = best
+		}
+	}
+
+	indices := make([]int, len(morae))
+	for index := range indices {
+		indices[index] = -1
+	}
+	row, column := len(morae), len(analyzed)
+	for row > 0 || column > 0 {
+		if row == 0 {
+			column--
+			continue
+		}
+		if column == 0 {
+			row--
+			continue
+		}
+		switch cells[row][column].op {
+		case 'm':
+			indices[row-1] = column - 1
+			row--
+			column--
+		case 'g':
+			row--
+		case 'o':
+			column--
+		default:
+			row--
+			column--
+		}
+	}
+	return indices
+}
+
+func chooseRuntimeAlignment(current, candidate runtimeMoraAlignmentCell) runtimeMoraAlignmentCell {
+	if candidate.cost < current.cost-1e-9 {
+		return candidate
+	}
+	if math.Abs(candidate.cost-current.cost) <= 1e-9 && runtimeAlignmentPriority(candidate.op) > runtimeAlignmentPriority(current.op) {
+		return candidate
+	}
+	return current
+}
+
+func runtimeAlignmentPriority(operation byte) int {
+	switch operation {
+	case 'm':
+		return 3
+	case 'o':
+		return 2
+	case 'g':
+		return 1
+	default:
+		return 0
+	}
+}
+
+func runtimeMoraCost(mora frontend.Mora, analyzed string) float64 {
+	if mora.Pause || analyzed == "" {
+		if mora.Pause && analyzed == "" {
+			return 0
+		}
+		return runtimeAlignmentChangeCost + runtimeAlignmentSkipCost
+	}
 	if mora.Text == analyzed {
-		return true
+		return 0
 	}
-	if analyzed != "ー" || mora.Pause {
-		return false
+	if analyzed == "ー" && isRuntimeVowel(mora.Vowel) {
+		return 0.25
 	}
-	switch mora.Vowel {
+	analyzedVowel := runtimeAnalyzedMoraVowel(analyzed)
+	if analyzedVowel != "" && analyzedVowel == mora.Vowel {
+		return 0.6
+	}
+	return runtimeAlignmentChangeCost
+}
+
+func isRuntimeVowel(vowel string) bool {
+	switch vowel {
 	case "a", "i", "u", "e", "o":
 		return true
 	default:
@@ -334,47 +469,37 @@ func runtimeMoraMatches(mora frontend.Mora, analyzed string) bool {
 	}
 }
 
-func alignRuntimeProsodyFeatures(morae []frontend.Mora, analysis *openjtalk.Analysis) ([]prosody.FeatureFrame, error) {
-	if len(analysis.Morae) != len(analysis.Features) {
-		return nil, fmt.Errorf("Open JTalk returned %d morae and %d feature frames", len(analysis.Morae), len(analysis.Features))
+func runtimeAnalyzedMoraVowel(analyzed string) string {
+	parsed, err := frontend.ParseKana(analyzed)
+	if err != nil || len(parsed) != 1 || parsed[0].Pause {
+		return ""
 	}
-	if len(analysis.Morae) < len(morae) {
-		return nil, fmt.Errorf("Open JTalk returned %d morae, Go frontend returned %d", len(analysis.Morae), len(morae))
-	}
-	if len(analysis.Morae) == len(morae) {
-		if err := validateRuntimeMoraAlignment(morae, analysis.Morae); err != nil {
-			if !runtimePausePatternMatches(morae, analysis.Morae) {
-				return nil, err
-			}
-		}
-		return append([]prosody.FeatureFrame(nil), analysis.Features...), nil
-	}
-
-	aligned := make([]prosody.FeatureFrame, len(morae))
-	analyzedIndex := 0
-	for index, mora := range morae {
-		for analyzedIndex < len(analysis.Morae) && !runtimeMoraMatches(mora, analysis.Morae[analyzedIndex]) {
-			analyzedIndex++
-		}
-		if analyzedIndex >= len(analysis.Morae) {
-			return nil, fmt.Errorf("frame %d: Open JTalk mora sequence cannot be aligned with reading mora %q", index, mora.Text)
-		}
-		aligned[index] = analysis.Features[analyzedIndex]
-		analyzedIndex++
-	}
-	return aligned, nil
+	return parsed[0].Vowel
 }
 
-func runtimePausePatternMatches(morae []frontend.Mora, analyzed []string) bool {
-	if len(morae) != len(analyzed) {
-		return false
-	}
-	for index, mora := range morae {
-		if mora.Pause != (analyzed[index] == "") {
-			return false
+func nearestRuntimeFeature(indices []int, features []prosody.FeatureFrame, target int) prosody.FeatureFrame {
+	for distance := 1; distance < len(indices)+1; distance++ {
+		left := target - distance
+		if left >= 0 && indices[left] >= 0 {
+			return features[indices[left]]
+		}
+		right := target + distance
+		if right < len(indices) && indices[right] >= 0 {
+			return features[indices[right]]
 		}
 	}
-	return true
+	return prosody.FeatureFrame{}
+}
+
+func cloneFeatureFrame(frame prosody.FeatureFrame) prosody.FeatureFrame {
+	if len(frame) == 0 {
+		return prosody.FeatureFrame{}
+	}
+	result := make(prosody.FeatureFrame, len(frame))
+	for name, value := range frame {
+		result[name] = value
+	}
+	return result
 }
 
 func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.MoraTiming {

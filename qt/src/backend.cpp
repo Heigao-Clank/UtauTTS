@@ -215,8 +215,17 @@ void Backend::initialize() {
     config.insert("renderer_directories", QJsonArray{root.filePath("plugins/renderers")});
     config.insert("model_directories", QJsonArray{root.filePath("models")});
     const QString runtime = root.filePath("runtime");
-    config.insert("openjtalk_path", QDir(runtime).filePath("utautts-openjtalk-features.exe"));
-    config.insert("openjtalk_dictionary", QDir(runtime).filePath("open_jtalk_dic_utf_8-1.11"));
+    const QString openJTalkPath = QDir(runtime).filePath("utautts-openjtalk-features.exe");
+    const QString openJTalkDictionary = QDir(runtime).filePath("open_jtalk_dic_utf_8-1.11");
+    // Leave these unset when running from a development tree. The Go backend
+    // can then search its normal fallback locations instead of treating a
+    // missing runtime copy as an explicit, unrecoverable path.
+    if (QFileInfo(openJTalkPath).isFile()) {
+        config.insert("openjtalk_path", openJTalkPath);
+    }
+    if (QFileInfo(openJTalkDictionary).isDir()) {
+        config.insert("openjtalk_dictionary", openJTalkDictionary);
+    }
     QByteArray encoded = QJsonDocument(config).toJson(QJsonDocument::Compact);
     m_handle = UtauTTSCreate(encoded.data());
     if (!m_handle) {

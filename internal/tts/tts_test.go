@@ -89,32 +89,58 @@ func TestFaithfulGPUSupportsFramePitch(t *testing.T) {
 	}
 }
 
-func TestValidateRuntimeMoraAlignment(t *testing.T) {
-	morae := []frontend.Mora{{Text: "きょ"}, {Text: "う"}, {Pause: true}, {Text: "は"}}
-	if err := validateRuntimeMoraAlignment(morae, []string{"きょ", "う", "", "は"}); err != nil {
+func TestAlignRuntimeProsodyFeaturesAcceptsAlternatePronunciations(t *testing.T) {
+	morae := []frontend.Mora{
+		{Text: "\u3044", Vowel: "i"},
+		{Text: "\u304b", Vowel: "a"},
+		{Text: "\u308a", Vowel: "i"},
+	}
+	analysis := &openjtalk.Analysis{
+		Morae: []string{"\u304a", "\u3053", "\u308a"},
+		Features: []prosody.FeatureFrame{
+			{"source": 0},
+			{"source": 1},
+			{"source": 2},
+		},
+	}
+	aligned, err := alignRuntimeProsodyFeatures(morae, analysis)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRuntimeMoraAlignment(morae, []string{"きょ", "お", "", "は"}); err == nil {
-		t.Fatal("mismatched Open JTalk mora was accepted")
-	}
-	if err := validateRuntimeMoraAlignment(morae, []string{"きょ", "う", "は"}); err == nil {
-		t.Fatal("mismatched Open JTalk frame count was accepted")
+	for index, source := range []float64{0, 1, 2} {
+		if aligned[index]["source"] != source {
+			t.Fatalf("aligned[%d] = %#v, want source %.0f", index, aligned[index], source)
+		}
 	}
 }
 
-func TestValidateRuntimeMoraAlignmentAcceptsOpenJTalkLongVowelNotation(t *testing.T) {
-	morae := []frontend.Mora{
-		{Text: "\u305b", Vowel: "e"},
-		{Text: "\u3044", Vowel: "i"},
-		{Text: "\u3044", Vowel: "i"},
+func TestAlignRuntimeProsodyFeaturesAcceptsLongVowelNotation(t *testing.T) {
+	morae := []frontend.Mora{{Text: "\u305b", Vowel: "e"}, {Text: "\u3044", Vowel: "i"}, {Text: "\u3044", Vowel: "i"}}
+	analysis := &openjtalk.Analysis{
+		Morae:    []string{"\u305b", "\u30fc", "\u3044"},
+		Features: []prosody.FeatureFrame{{"source": 0}, {"source": 1}, {"source": 2}},
 	}
-	if err := validateRuntimeMoraAlignment(morae, []string{"\u305b", "\u30fc", "\u3044"}); err != nil {
+	aligned, err := alignRuntimeProsodyFeatures(morae, analysis)
+	if err != nil {
 		t.Fatalf("long vowel notation was rejected: %v", err)
 	}
+	if aligned[1]["source"] != 1 {
+		t.Fatalf("aligned long vowel feature = %#v", aligned[1])
+	}
+}
 
-	nonVowelMora := []frontend.Mora{{Text: "\u3093", Vowel: "n"}}
-	if err := validateRuntimeMoraAlignment(nonVowelMora, []string{"\u30fc"}); err == nil {
-		t.Fatal("long vowel notation was accepted for a non-vowel mora")
+func TestAlignRuntimeProsodyFeaturesFillsMissingGoMora(t *testing.T) {
+	morae := []frontend.Mora{{Text: "こ"}, {Text: "れ"}, {Text: "い"}}
+	analysis := &openjtalk.Analysis{
+		Morae:    []string{"こ", "れ"},
+		Features: []prosody.FeatureFrame{{"source": 0}, {"source": 1}},
+	}
+	aligned, err := alignRuntimeProsodyFeatures(morae, analysis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aligned) != len(morae) || aligned[2]["source"] != 1 {
+		t.Fatalf("aligned features = %#v", aligned)
 	}
 }
 

@@ -3,6 +3,7 @@ package openjtalk
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,10 +54,19 @@ func Analyze(text string, cfg Config) (*Analysis, error) {
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
 		message := strings.TrimSpace(stderr.String())
-		if message != "" {
-			return nil, fmt.Errorf("Open JTalk frontend failed: %w: %s", err, message)
+		details := []string{
+			fmt.Sprintf("helper=%q", helper),
+			fmt.Sprintf("dictionary=%q", dictionary),
+			fmt.Sprintf("text=%q", previewText(text)),
 		}
-		return nil, fmt.Errorf("Open JTalk frontend failed: %w", err)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			details = append(details, fmt.Sprintf("exit_code=%d", exitErr.ExitCode()))
+		}
+		if message == "" {
+			message = "helper returned no stderr"
+		}
+		return nil, fmt.Errorf("Open JTalk frontend failed (%s): %w: %s", strings.Join(details, ", "), err, message)
 	}
 	var result Analysis
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -117,6 +127,15 @@ func resolveFile(explicit, description string, relatives []string) (string, erro
 		}
 	}
 	return "", fmt.Errorf("%s not found", description)
+}
+
+func previewText(text string) string {
+	const maxRunes = 120
+	runes := []rune(text)
+	if len(runes) <= maxRunes {
+		return text
+	}
+	return string(runes[:maxRunes]) + "…"
 }
 
 func searchRoots() []string {
