@@ -79,34 +79,28 @@ func Synthesize(cfg Config) (*Result, error) {
 		if err != nil {
 			return nil, fmt.Errorf("load prosody model: %w", err)
 		}
-		if loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
-			runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
-			runtimeFeatures, err = analyzeOpenJTalkCached(runtimeText, openjtalk.Config{
-				HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("analyze runtime prosody features: %w", err)
-			}
-			prosodyFeatures = runtimeFeatures.Features
-		}
 	}
 	reading := cfg.Reading
 	if reading == "" {
-		if runtimeFeatures != nil {
-			reading = runtimeFeatures.Reading
-		} else {
-			reading, err = frontend.ToKanaWithDictionary(cfg.Text, cfg.Dictionary)
-			if err != nil {
-				return nil, fmt.Errorf("convert text to reading: %w", err)
-			}
+		reading, err = frontend.ToKanaWithDictionary(cfg.Text, cfg.Dictionary)
+		if err != nil {
+			return nil, fmt.Errorf("convert text to reading: %w", err)
 		}
 	}
 	morae, err := frontend.ParseKana(reading)
 	if err != nil {
 		return nil, fmt.Errorf("parse reading: %w", err)
 	}
-	if runtimeFeatures != nil {
-		if err := validateRuntimeMoraAlignment(morae, runtimeFeatures.Morae); err != nil {
+	if loadedProsody != nil && loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
+		runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
+		runtimeFeatures, err = analyzeOpenJTalkCached(runtimeText, openjtalk.Config{
+			HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("analyze runtime prosody features: %w", err)
+		}
+		prosodyFeatures, err = alignRuntimeProsodyFeatures(morae, runtimeFeatures)
+		if err != nil {
 			return nil, fmt.Errorf("align runtime prosody features: %w", err)
 		}
 	}
@@ -323,6 +317,35 @@ func runtimeMoraMatches(mora frontend.Mora, analyzed string) bool {
 	default:
 		return false
 	}
+}
+
+func alignRuntimeProsodyFeatures(morae []frontend.Mora, analysis *openjtalk.Analysis) ([]prosody.FeatureFrame, error) {
+	if len(analysis.Morae) != len(analysis.Features) {
+		return nil, fmt.Errorf("Open JTalk returned %d morae and %d feature frames", len(analysis.Morae), len(analysis.Features))
+	}
+	if len(analysis.Morae) < len(morae) {
+		return nil, fmt.Errorf("Open JTalk returned %d morae, Go frontend returned %d", len(analysis.Morae), len(morae))
+	}
+	if len(analysis.Morae) == len(morae) {
+		if err := validateRuntimeMoraAlignment(morae, analysis.Morae); err != nil {
+			return nil, err
+		}
+		return append([]prosody.FeatureFrame(nil), analysis.Features...), nil
+	}
+
+	aligned := make([]prosody.FeatureFrame, len(morae))
+	analyzedIndex := 0
+	for index, mora := range morae {
+		for analyzedIndex < len(analysis.Morae) && !runtimeMoraMatches(mora, analysis.Morae[analyzedIndex]) {
+			analyzedIndex++
+		}
+		if analyzedIndex >= len(analysis.Morae) {
+			return nil, fmt.Errorf("frame %d: Open JTalk mora sequence cannot be aligned with reading mora %q", index, mora.Text)
+		}
+		aligned[index] = analysis.Features[analyzedIndex]
+		analyzedIndex++
+	}
+	return aligned, nil
 }
 
 func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.MoraTiming {

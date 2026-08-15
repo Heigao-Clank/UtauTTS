@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"utautts/internal/frontend"
+	"utautts/internal/openjtalk"
 	"utautts/internal/plan"
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
@@ -114,6 +115,26 @@ func TestValidateRuntimeMoraAlignmentAcceptsOpenJTalkLongVowelNotation(t *testin
 	nonVowelMora := []frontend.Mora{{Text: "\u3093", Vowel: "n"}}
 	if err := validateRuntimeMoraAlignment(nonVowelMora, []string{"\u30fc"}); err == nil {
 		t.Fatal("long vowel notation was accepted for a non-vowel mora")
+	}
+}
+
+func TestAlignRuntimeProsodyFeaturesSkipsExtraOpenJTalkMorae(t *testing.T) {
+	morae := []frontend.Mora{{Text: "\u3053"}, {Text: "\u3044"}}
+	analysis := &openjtalk.Analysis{
+		Morae: []string{"\u3053", "\u304f", "\u3089", "\u3044"},
+		Features: []prosody.FeatureFrame{
+			{"source": 0},
+			{"source": 1},
+			{"source": 2},
+			{"source": 3},
+		},
+	}
+	aligned, err := alignRuntimeProsodyFeatures(morae, analysis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aligned) != 2 || aligned[0]["source"] != 0 || aligned[1]["source"] != 3 {
+		t.Fatalf("aligned features = %#v", aligned)
 	}
 }
 
