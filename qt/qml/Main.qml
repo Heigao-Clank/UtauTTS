@@ -1148,6 +1148,7 @@ ApplicationWindow {
                     clip: true
                     spacing: 4
                     boundsBehavior: Flickable.StopAtBounds
+                    bottomMargin: 64
                     ScrollBar.vertical: ScrollBar {
                         id: utteranceScrollBar
                         policy: ScrollBar.AlwaysOn
