@@ -809,6 +809,12 @@ ApplicationWindow {
     }
 
     MessageDialog {
+        id: projectLoadErrorDialog
+        title: "プロジェクトを開けません"
+        buttons: MessageDialog.Ok
+    }
+
+    MessageDialog {
         id: aboutDialog
         title: "UtauTTSについて"
         text: "UtauTTS " + Qt.application.version + "\n\nDeveloped by yh（@2237yh）\nTesting by アアアアアアア（@a7_riri）"
@@ -2042,23 +2048,32 @@ ApplicationWindow {
         if (!source || !source.toString().length || window.appBackend.busy || window.batchExportActive)
             return;
         const project = window.appBackend.loadProject(source);
-        if (!project || project._error !== undefined || !Array.isArray(project.utterances))
+        if (!project || project._error !== undefined) {
+            projectLoadErrorDialog.text = project && project._error !== undefined
+                    ? String(project._error) : "プロジェクトファイルを読み込めませんでした";
+            projectLoadErrorDialog.open();
             return;
+        }
+        if (project.utterances === undefined || project.utterances === null) {
+            projectLoadErrorDialog.text = "プロジェクトファイルに発話データがありません";
+            projectLoadErrorDialog.open();
+            return;
+        }
+        const loadedUtterances = window.copySequence(project.utterances);
 
         window.projectDirty = false;
         window.clearPlayback();
         utterances.clear();
         window.nextUtteranceId = 1;
-        for (let index = 0; index < project.utterances.length; ++index) {
-            const saved = project.utterances[index] || {};
+        for (let index = 0; index < loadedUtterances.length; ++index) {
+            const saved = loadedUtterances[index] || {};
             const voicebankId = String(saved.voicebank_id || "");
             const voice = window.voicebankById(voicebankId);
-            const points = Array.isArray(saved.pitch_points) ? saved.pitch_points : [];
+            const points = window.copySequence(saved.pitch_points);
             const content = String(saved.text || "");
             utterances.append({
                 utteranceId: "utterance-" + window.nextUtteranceId++,
                 content: content,
-                // The cached reading may have been generated with another dictionary.
                 reading: "",
                 moraeJson: "[]",
                 pointsJson: JSON.stringify(points),
