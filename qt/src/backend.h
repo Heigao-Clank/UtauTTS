@@ -65,6 +65,7 @@ public:
     Q_INVOKABLE void analyze(const QString &text, const QString &requestId);
     Q_INVOKABLE void synthesize(const QVariantMap &request);
     Q_INVOKABLE bool savePreview(const QUrl &destination);
+    Q_INVOKABLE bool startFileDrag(const QVariantList &files);
     Q_INVOKABLE QUrl defaultSaveFile(const QString &fileName) const;
     Q_INVOKABLE QUrl fileInDirectory(const QUrl &directory, const QString &fileName) const;
     Q_INVOKABLE bool saveProject(const QUrl &destination, const QVariantMap &project);

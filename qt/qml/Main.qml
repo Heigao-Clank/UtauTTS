@@ -54,7 +54,13 @@ ApplicationWindow {
     property int batchExportIndex: -1
     property int batchExportOriginalIndex: 0
     property int batchExportCompleted: 0
+    property string batchExportMode: ""
+    property var batchExportQueue: []
     property url batchExportDirectory
+    property var dragExportFiles: []
+    property string dragExportTarget: ""
+    property bool dragExportSelectedOnly: false
+    property bool dragExportReady: false
     property bool projectDirty: false
     property bool metadataInitialized: false
     property bool closeAfterProjectSave: false
@@ -126,6 +132,171 @@ ApplicationWindow {
     FolderDialog {
         id: saveAllDialog
         onAccepted: window.startBatchExport(selectedFolder)
+    }
+
+    FolderDialog {
+        id: dragSaveDialog
+        onAccepted: window.openDragTargetSelectionWindow(selectedFolder)
+    }
+
+    Window {
+        id: dragTargetSelectionWindow
+        title: "ドロップ先の編集ソフト"
+        visible: false
+        width: 720
+        height: 320
+        minimumWidth: 580
+        minimumHeight: 280
+        modality: Qt.NonModal
+        flags: Qt.Window
+        palette: window.palette
+        color: palette.window
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: "編集ソフトを選択してください。"
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                Label {
+                    text: "ドロップ先"
+                }
+
+                ComboBox {
+                    id: dragTargetCombo
+                    Layout.fillWidth: true
+                    model: ["AviUtl", "AviUtl2", "YMM4"]
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: "保存先: " + window.batchExportDirectory.toString()
+                elide: Text.ElideMiddle
+                color: window.mutedText
+            }
+
+            Item {
+                Layout.fillHeight: true
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: "キャンセル"
+                    onClicked: dragTargetSelectionWindow.close()
+                }
+
+                Button {
+                    text: "次へ"
+                    highlighted: true
+                    onClicked: {
+                        dragTargetSelectionWindow.close();
+                        window.startDragExport(dragTargetCombo.currentText);
+                    }
+                }
+            }
+        }
+    }
+
+    Window {
+        id: dragTargetWindow
+        title: "音声をドラッグ"
+        visible: false
+        width: 720
+        height: 420
+        minimumWidth: 580
+        minimumHeight: 360
+        modality: Qt.NonModal
+        flags: Qt.Window
+        palette: window.palette
+        color: palette.window
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: "下の領域をドラッグして、タイムライン上で離してください。"
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                id: dragSourceArea
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 130
+                radius: 8
+                color: palette.alternateBase
+                border.width: 2
+                border.color: window.accent
+
+                Label {
+                    anchors.centerIn: parent
+                    text: window.dragExportTarget + "のタイムラインへドロップ"
+                    horizontalAlignment: Text.AlignHCenter
+                    color: palette.text
+                }
+
+                MouseArea {
+                    id: dragSourceMouseArea
+                    anchors.fill: parent
+                    enabled: window.dragExportReady && !window.appBackend.busy
+                    property point pressPosition: Qt.point(0, 0)
+                    property bool pressActive: false
+
+                    onPressed: mouse => {
+                        pressPosition = Qt.point(mouse.x, mouse.y);
+                        pressActive = true;
+                    }
+                    onPositionChanged: mouse => {
+                        if (!pressActive)
+                            return;
+                        const dx = mouse.x - pressPosition.x;
+                        const dy = mouse.y - pressPosition.y;
+                        if (Math.sqrt(dx * dx + dy * dy) < 8)
+                            return;
+                        pressActive = false;
+                        if (!window.appBackend.startFileDrag(window.dragExportFiles))
+                            window.showAuxiliaryWindow(synthesisLogWindow);
+                    }
+                    onReleased: pressActive = false
+                    onCanceled: pressActive = false
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: "保存先: " + window.batchExportDirectory.toString()
+                elide: Text.ElideMiddle
+                color: window.mutedText
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: "閉じる"
+                    onClicked: dragTargetWindow.close()
+                }
+            }
+        }
     }
 
     FileDialog {
@@ -997,8 +1168,11 @@ ApplicationWindow {
                     window.finishBatchExport(false);
                     return;
                 }
+                const fileName = window.batchExportMode === "drag"
+                        ? window.dragAudioFileName(utterances.get(index), index)
+                        : window.audioFileName(utterances.get(index));
                 const destination = window.appBackend.fileInDirectory(
-                            window.batchExportDirectory, window.audioFileName(utterances.get(index)));
+                            window.batchExportDirectory, fileName);
                 window.pendingUtteranceId = "";
                 window.pendingRevision = -1;
                 if (!destination.toString().length || !window.appBackend.savePreview(destination)) {
@@ -1006,6 +1180,8 @@ ApplicationWindow {
                     return;
                 }
                 ++window.batchExportCompleted;
+                if (window.batchExportMode === "drag")
+                    window.dragExportFiles.push(destination);
                 Qt.callLater(window.synthesizeBatchItem);
                 return;
             }
@@ -1090,6 +1266,17 @@ ApplicationWindow {
                 text: "WAVをすべて保存..."
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openSaveAllDialog()
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "選択中の音声をドラッグ..."
+                enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive && window.current().content.trim().length > 0
+                onTriggered: window.openDragExportDialog(true)
+            }
+            MenuItem {
+                text: "全テキストの音声をドラッグ..."
+                enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
+                onTriggered: window.openDragExportDialog(false)
             }
             MenuItem {
                 text: "音源を再読込"
@@ -1966,6 +2153,11 @@ ApplicationWindow {
         return voice + "_" + text + ".wav";
     }
 
+    function dragAudioFileName(item, index) {
+        const number = ("000" + String(index + 1)).slice(-3);
+        return number + "_" + window.audioFileName(item);
+    }
+
     function saveCurrentAudio() {
         if (!utterances.count || window.appBackend.busy || window.batchExportActive || !window.current().content.trim().length)
             return;
@@ -1983,6 +2175,25 @@ ApplicationWindow {
         if (!utterances.count || window.appBackend.busy || window.batchExportActive)
             return;
         saveAllDialog.open();
+    }
+
+    function openDragExportDialog(selectedOnly) {
+        if (!utterances.count || window.appBackend.busy || window.batchExportActive)
+            return;
+        if (selectedOnly && !window.current().content.trim().length)
+            return;
+        window.dragExportSelectedOnly = selectedOnly;
+        dragSaveDialog.open();
+    }
+
+    function openDragTargetSelectionWindow(directory) {
+        if (!directory || !directory.toString().length)
+            return;
+        window.batchExportDirectory = directory;
+        window.dragExportReady = false;
+        window.dragExportFiles = [];
+        dragTargetCombo.currentIndex = 0;
+        window.showAuxiliaryWindow(dragTargetSelectionWindow);
     }
 
     function projectNumber(value, fallback, minimum, maximum, integer) {
@@ -2430,13 +2641,30 @@ ApplicationWindow {
         return request;
     }
 
-    function startBatchExport(directory) {
-        if (!directory || !directory.toString().length || !utterances.count || window.appBackend.busy)
+    function buildExportQueue(selectedOnly) {
+        const queue = [];
+        if (selectedOnly) {
+            if (utterances.count && window.current().content.trim().length)
+                queue.push(window.selectedIndex);
+            return queue;
+        }
+        for (let index = 0; index < utterances.count; ++index) {
+            if (utterances.get(index).content && utterances.get(index).content.trim().length)
+                queue.push(index);
+        }
+        return queue;
+    }
+
+    function beginBatchExport(directory, mode, queue) {
+        if (!directory || !directory.toString().length || !queue.length || window.appBackend.busy)
             return;
         window.batchExportDirectory = directory;
+        window.batchExportMode = mode;
+        window.batchExportQueue = queue;
         window.batchExportOriginalIndex = window.selectedIndex;
         window.batchExportIndex = 0;
         window.batchExportCompleted = 0;
+        window.dragExportFiles = [];
         window.batchExportActive = true;
         window.clearPlayback();
         window.pendingUtteranceId = "";
@@ -2446,14 +2674,25 @@ ApplicationWindow {
         Qt.callLater(window.synthesizeBatchItem);
     }
 
+    function startBatchExport(directory) {
+        window.beginBatchExport(directory, "save", window.buildExportQueue(false));
+    }
+
+    function startDragExport(target) {
+        const queue = window.buildExportQueue(window.dragExportSelectedOnly);
+        if (!target || !queue.length)
+            return;
+        window.dragExportTarget = target;
+        window.dragExportReady = false;
+        window.beginBatchExport(window.batchExportDirectory, "drag", queue);
+    }
+
     function synthesizeBatchItem() {
         if (!window.batchExportActive)
             return;
-        while (window.batchExportIndex < utterances.count) {
-            const index = window.batchExportIndex++;
+        while (window.batchExportIndex < window.batchExportQueue.length) {
+            const index = window.batchExportQueue[window.batchExportIndex++];
             const item = utterances.get(index);
-            if (!item.content || !item.content.trim())
-                continue;
             window.selectUtterance(index);
             const requestItem = utterances.get(index);
             window.pendingUtteranceId = requestItem.utteranceId;
@@ -2467,12 +2706,24 @@ ApplicationWindow {
     function finishBatchExport(success) {
         if (!window.batchExportActive)
             return;
+        const wasDragExport = window.batchExportMode === "drag";
+        const dragExportSucceeded = success && wasDragExport;
+        const files = window.dragExportFiles.slice();
         window.batchExportActive = false;
+        window.batchExportMode = "";
+        window.batchExportQueue = [];
         window.pendingUtteranceId = "";
         window.pendingRevision = -1;
         if (utterances.count)
             window.selectUtterance(Math.min(window.batchExportOriginalIndex, utterances.count - 1));
-        if (success && window.appBackend.closeLogOnSuccess)
+        if (success && (window.appBackend.closeLogOnSuccess || wasDragExport))
             synthesisLogWindow.close();
+        if (dragExportSucceeded && files.length) {
+            window.dragExportFiles = files;
+            window.dragExportReady = true;
+            window.showAuxiliaryWindow(dragTargetWindow);
+        } else if (!success && wasDragExport) {
+            window.dragExportReady = false;
+        }
     }
 }

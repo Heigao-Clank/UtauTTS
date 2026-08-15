@@ -4,8 +4,10 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QDrag>
 #include <QFile>
 #include <QFileInfo>
+#include <QMimeData>
 #include <QFutureWatcher>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -398,6 +400,31 @@ bool Backend::savePreview(const QUrl &destination) {
         setError(tr("WAVを保存できませんでした"));
         return false;
     }
+    setError({});
+    return true;
+}
+
+bool Backend::startFileDrag(const QVariantList &files) {
+    QList<QUrl> urls;
+    urls.reserve(files.size());
+    for (const QVariant &value : files) {
+        const QUrl url = value.canConvert<QUrl>() ? value.toUrl() : QUrl(value.toString());
+        if (!url.isLocalFile() || url.toLocalFile().isEmpty() || !QFileInfo::exists(url.toLocalFile())) {
+            setError(tr("ドラッグするWAVファイルが見つかりません"));
+            return false;
+        }
+        urls.append(QUrl::fromLocalFile(QFileInfo(url.toLocalFile()).absoluteFilePath()));
+    }
+    if (urls.isEmpty()) {
+        setError(tr("ドラッグするWAVファイルがありません"));
+        return false;
+    }
+
+    auto *mimeData = new QMimeData;
+    mimeData->setUrls(urls);
+    auto *drag = new QDrag(this);
+    drag->setMimeData(mimeData);
+    drag->exec(Qt::CopyAction);
     setError({});
     return true;
 }
