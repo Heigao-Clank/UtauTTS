@@ -964,16 +964,26 @@ ApplicationWindow {
             const analysis = JSON.parse(window.appBackend.analysisJson);
             const old = utterances.get(index);
             const oldPoints = window.decodeSequence(old.pointsJson);
+            const oldDurations = window.decodeSequence(old.moraDurationsJson);
+            const oldPositions = window.decodeSequence(old.moraPositionsJson);
             const morae = window.copySequence(analysis.morae);
             const values = [];
+            const durations = [];
+            const positions = oldPositions.length === morae.length ? oldPositions.slice() : [];
             for (let i = 0; i < morae.length; ++i)
                 values.push(i < oldPoints.length ? oldPoints[i] : 0);
+            for (let i = 0; i < morae.length; ++i)
+                durations.push(i < oldDurations.length ? oldDurations[i] : 0);
             utterances.setProperty(index, "reading", analysis.reading);
             utterances.setProperty(index, "moraeJson", JSON.stringify(morae));
             utterances.setProperty(index, "pointsJson", JSON.stringify(values));
+            utterances.setProperty(index, "moraDurationsJson", JSON.stringify(durations));
+            utterances.setProperty(index, "moraPositionsJson", JSON.stringify(positions));
             if (index === window.selectedIndex) {
                 pitchEditor.points = values.slice();
                 pitchEditor.morae = morae.slice();
+                pitchEditor.moraDurations = durations.slice();
+                pitchEditor.moraPositions = positions.slice();
             }
         }
 
@@ -1677,7 +1687,11 @@ ApplicationWindow {
                     axisColor: window.palette.mid
                     gridColor: window.palette.alternateBase
                     labelColor: window.palette.text
+                    defaultMoraDuration: window.appBackend.defaultMoraDuration
+                    defaultPauseDuration: window.appBackend.defaultPauseDuration
                     onPointsEdited: points => window.updatePitchPoints(points)
+                    onMoraDurationsEdited: durations => window.updateMoraDurations(durations)
+                    onMoraPositionsEdited: positions => window.updateMoraPositions(positions)
                 }
                 Item {
                     id: pitchHorizontalScrollBar
@@ -1994,6 +2008,8 @@ ApplicationWindow {
                 intonation: item.intonation,
                 apply_pitch: !!item.applyPitch,
                 pitch_points: window.decodeSequence(item.pointsJson),
+                mora_durations_ms: window.decodeSequence(item.moraDurationsJson),
+                mora_positions_ms: window.decodeSequence(item.moraPositionsJson),
                 analysis_cache: {
                     reading: item.reading || "",
                     morae: window.decodeSequence(item.moraeJson)
@@ -2077,6 +2093,8 @@ ApplicationWindow {
                 reading: "",
                 moraeJson: "[]",
                 pointsJson: JSON.stringify(points),
+                moraDurationsJson: JSON.stringify(window.copySequence(saved.mora_durations_ms)),
+                moraPositionsJson: JSON.stringify(window.copySequence(saved.mora_positions_ms)),
                 voicebankId: voicebankId,
                 imagePath: voice ? voice.image_path || "" : "",
                 modelId: String(saved.model_id || ""),
@@ -2094,6 +2112,8 @@ ApplicationWindow {
             selectedIndex = 0;
             pitchEditor.points = [];
             pitchEditor.morae = [];
+            pitchEditor.moraDurations = [];
+            pitchEditor.moraPositions = [];
             return;
         }
         selectedIndex = Math.max(0, Math.min(Number(project.selected_index) || 0, utterances.count - 1));
@@ -2122,6 +2142,10 @@ ApplicationWindow {
         if (item[name] === value)
             return;
         utterances.setProperty(selectedIndex, name, value);
+        if (name === "moraDuration")
+            pitchEditor.defaultMoraDuration = value;
+        else if (name === "pauseDuration")
+            pitchEditor.defaultPauseDuration = value;
         markUtteranceDirty(selectedIndex);
     }
 
@@ -2132,6 +2156,8 @@ ApplicationWindow {
         utterances.setProperty(index, "reading", "");
         utterances.setProperty(index, "moraeJson", "[]");
         utterances.setProperty(index, "pointsJson", "[]");
+        utterances.setProperty(index, "moraDurationsJson", "[]");
+        utterances.setProperty(index, "moraPositionsJson", "[]");
         markUtteranceDirty(index);
         selectUtterance(index);
         analyzeTimer.restart();
@@ -2145,6 +2171,20 @@ ApplicationWindow {
             utterances.setProperty(selectedIndex, "applyPitch", true);
             settingsWindow.pendingApplyPitch = true;
         }
+        markUtteranceDirty(selectedIndex);
+    }
+
+    function updateMoraDurations(durations) {
+        if (!utterances.count)
+            return;
+        utterances.setProperty(selectedIndex, "moraDurationsJson", JSON.stringify(durations));
+        markUtteranceDirty(selectedIndex);
+    }
+
+    function updateMoraPositions(positions) {
+        if (!utterances.count)
+            return;
+        utterances.setProperty(selectedIndex, "moraPositionsJson", JSON.stringify(positions));
         markUtteranceDirty(selectedIndex);
     }
 
@@ -2237,6 +2277,10 @@ ApplicationWindow {
         intonationInput.value = Math.round(item.intonation * 100);
         pitchEditor.points = window.decodeSequence(item.pointsJson);
         pitchEditor.morae = window.decodeSequence(item.moraeJson);
+        pitchEditor.defaultMoraDuration = item.moraDuration;
+        pitchEditor.defaultPauseDuration = item.pauseDuration;
+        pitchEditor.moraDurations = window.decodeSequence(item.moraDurationsJson);
+        pitchEditor.moraPositions = window.decodeSequence(item.moraPositionsJson);
         selectCombo(voiceCombo, item.voicebankId);
         selectCombo(modelCombo, item.modelId);
         selectCombo(rendererCombo, item.renderer);
@@ -2289,6 +2333,8 @@ ApplicationWindow {
             reading: "",
             moraeJson: "[]",
             pointsJson: "[]",
+            moraDurationsJson: "[]",
+            moraPositionsJson: "[]",
             voicebankId: voice ? voice.id : "",
             imagePath: voice ? voice.image_path || "" : "",
             modelId: window.appBackend.models.length ? window.defaultModelId() : "",
@@ -2358,6 +2404,7 @@ ApplicationWindow {
             tone: item.tone,
             mora_duration_ms: item.moraDuration,
             pause_duration_ms: item.pauseDuration,
+            mora_durations_ms: window.decodeSequence(item.moraDurationsJson),
             intonation_strength: item.intonation,
             apply_pitch: item.applyPitch
         };

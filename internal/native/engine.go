@@ -204,6 +204,7 @@ func (e *Engine) reading(text string, dictionary map[string]string) (string, err
 type synthesizeRequest struct {
 	Text, Kana, VoicebankID, Tone, ModelID, Renderer, OutputPath string
 	MoraDurationMS, PauseDurationMS, IntonationStrength          float64
+	MoraDurationsMS                                              []float64
 	ApplyPitch                                                   bool
 	ManualPitch                                                  *prosody.ManualPitchFile
 	Dictionary                                                   []dictionaryEntry
@@ -220,6 +221,7 @@ func (r *synthesizeRequest) UnmarshalJSON(data []byte) error {
 		OutputPath         string                   `json:"output_path"`
 		MoraDurationMS     float64                  `json:"mora_duration_ms"`
 		PauseDurationMS    float64                  `json:"pause_duration_ms"`
+		MoraDurationsMS    []float64                `json:"mora_durations_ms"`
 		IntonationStrength float64                  `json:"intonation_strength"`
 		ApplyPitch         bool                     `json:"apply_pitch"`
 		ManualPitch        *prosody.ManualPitchFile `json:"manual_pitch"`
@@ -229,7 +231,7 @@ func (r *synthesizeRequest) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	*r = synthesizeRequest{Text: value.Text, Kana: value.Kana, VoicebankID: value.VoicebankID, Tone: value.Tone, ModelID: value.ModelID, Renderer: value.Renderer, OutputPath: value.OutputPath, MoraDurationMS: value.MoraDurationMS, PauseDurationMS: value.PauseDurationMS, IntonationStrength: value.IntonationStrength, ApplyPitch: value.ApplyPitch, ManualPitch: value.ManualPitch, Dictionary: value.Dictionary}
+	*r = synthesizeRequest{Text: value.Text, Kana: value.Kana, VoicebankID: value.VoicebankID, Tone: value.Tone, ModelID: value.ModelID, Renderer: value.Renderer, OutputPath: value.OutputPath, MoraDurationMS: value.MoraDurationMS, PauseDurationMS: value.PauseDurationMS, MoraDurationsMS: value.MoraDurationsMS, IntonationStrength: value.IntonationStrength, ApplyPitch: value.ApplyPitch, ManualPitch: value.ManualPitch, Dictionary: value.Dictionary}
 	return nil
 }
 
@@ -289,7 +291,7 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 		}
 		reading = resolvedReading
 	}
-	result, err := tts.Synthesize(tts.Config{VoicebankPath: summary.Path, Text: request.Text, Reading: reading, Dictionary: dictionary, Tone: request.Tone, MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS, ProsodyModelPath: modelPath, ManualPitch: request.ManualPitch, IntonationStrength: request.IntonationStrength, ApplyPitch: request.ApplyPitch, Renderer: rendererPlugin.Backend, RendererCapabilities: &rendererPlugin.Capabilities, WorldlinePath: worldlinePath, WorldlineBridgePath: worldlineBridgePath, WorldlineR2MelPath: r2MelPath, WorldlineR2VocoderPath: r2VocoderPath, OnnxDeviceID: e.config.OnnxDeviceID, OpenJTalkPath: e.config.OpenJTalkPath, OpenJTalkDictionaryPath: e.config.OpenJTalkDictionary})
+	result, err := tts.Synthesize(tts.Config{VoicebankPath: summary.Path, Text: request.Text, Reading: reading, Dictionary: dictionary, Tone: request.Tone, MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS, MoraDurationsMS: request.MoraDurationsMS, ProsodyModelPath: modelPath, ManualPitch: request.ManualPitch, IntonationStrength: request.IntonationStrength, ApplyPitch: request.ApplyPitch, Renderer: rendererPlugin.Backend, RendererCapabilities: &rendererPlugin.Capabilities, WorldlinePath: worldlinePath, WorldlineBridgePath: worldlineBridgePath, WorldlineR2MelPath: r2MelPath, WorldlineR2VocoderPath: r2VocoderPath, OnnxDeviceID: e.config.OnnxDeviceID, OpenJTalkPath: e.config.OpenJTalkPath, OpenJTalkDictionaryPath: e.config.OpenJTalkDictionary})
 	if err != nil {
 		return nil, err
 	}

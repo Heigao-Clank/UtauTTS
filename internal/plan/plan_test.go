@@ -45,3 +45,28 @@ func TestBuildPlacesMoraeAndPause(t *testing.T) {
 		t.Fatalf("selection score audit = %#v", unit)
 	}
 }
+
+func TestBuildUsesPerMoraDurationOverride(t *testing.T) {
+	morae, err := frontend.ParseKana("あい")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bank := &voicebank.Bank{Root: "bank"}
+	selections := []voicebank.Selection{
+		{Position: 0, Mora: morae[0], Alias: "あ", Entry: oto.Entry{Filename: "a.wav"}},
+		{Position: 1, Mora: morae[1], Alias: "い", Entry: oto.Entry{Filename: "i.wav"}},
+	}
+	got, err := Build(bank, "あい", morae, selections, Config{
+		MoraDurationMS: 100, PauseDurationMS: 180,
+		MoraDurationsMS: []float64{250, 0},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Units) != 2 || got.Units[0].DurationMS != 250 || got.Units[1].DurationMS != 100 {
+		t.Fatalf("units = %+v", got.Units)
+	}
+	if got.Units[1].NoteStartMS != 250 || got.DurationMS != 350 {
+		t.Fatalf("timing = %+v duration=%v", got.Units, got.DurationMS)
+	}
+}

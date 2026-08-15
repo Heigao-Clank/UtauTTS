@@ -387,6 +387,7 @@ type SynthesisRequest struct {
 	Tone               string                   `json:"tone"`
 	MoraDurationMS     float64                  `json:"mora_duration_ms"`
 	PauseDurationMS    float64                  `json:"pause_duration_ms"`
+	MoraDurationsMS    []float64                `json:"mora_durations_ms"`
 	IntonationStrength float64                  `json:"intonation_strength"`
 	ApplyPitch         bool                     `json:"apply_pitch"`
 	ManualPitch        *prosody.ManualPitchFile `json:"manual_pitch"`
@@ -495,6 +496,14 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 	if request.MoraDurationMS < 0 || request.MoraDurationMS > 1000 || request.PauseDurationMS < 0 || request.PauseDurationMS > 3000 {
 		return nil, "", http.StatusBadRequest, fmt.Errorf("duration settings are outside the supported range")
 	}
+	if len(request.MoraDurationsMS) > maxSynthesisTextRunes {
+		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("mora duration settings contain too many values")
+	}
+	for _, duration := range request.MoraDurationsMS {
+		if duration < 0 || duration > 1000 {
+			return nil, "", http.StatusBadRequest, fmt.Errorf("mora duration settings are outside the supported range")
+		}
+	}
 	if request.IntonationStrength < 0 || request.IntonationStrength > 1 {
 		return nil, "", http.StatusBadRequest, fmt.Errorf("intonation_strength must be between 0 and 1")
 	}
@@ -540,6 +549,7 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 		Tone:                    request.Tone,
 		MoraDurationMS:          request.MoraDurationMS,
 		PauseDurationMS:         request.PauseDurationMS,
+		MoraDurationsMS:         request.MoraDurationsMS,
 		ProsodyModelPath:        modelPath,
 		ProsodyModel:            model,
 		ManualPitch:             request.ManualPitch,

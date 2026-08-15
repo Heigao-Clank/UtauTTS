@@ -14,6 +14,7 @@ const Version = 9
 type Config struct {
 	MoraDurationMS   float64
 	PauseDurationMS  float64
+	MoraDurationsMS  []float64
 	Predictions      []prosody.Prediction
 	SelectionMode    voicebank.SelectionMode
 	JoinCostMode     string
@@ -117,6 +118,11 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 	if cfg.PauseDurationMS <= 0 {
 		cfg.PauseDurationMS = 180
 	}
+	for index, duration := range cfg.MoraDurationsMS {
+		if math.IsNaN(duration) || math.IsInf(duration, 0) {
+			return nil, fmt.Errorf("mora duration at position %d must be finite, got %v", index, duration)
+		}
+	}
 	byPosition := make(map[int]voicebank.Selection, len(selections))
 	for _, selection := range selections {
 		byPosition[selection.Position] = selection
@@ -162,11 +168,14 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 		if !ok {
 			return nil, fmt.Errorf("selection missing for mora %q at position %d", mora.Text, position)
 		}
-		duration := durationFor(mora, cfg.MoraDurationMS)
-		if prediction.DurationMS > 0 {
-			duration = prediction.DurationMS
-		} else if prediction.DurationFactor > 0 {
-			duration *= prediction.DurationFactor
+		duration, manuallySet := configuredMoraDuration(mora, position, cfg)
+		if !manuallySet {
+			duration = durationFor(mora, cfg.MoraDurationMS)
+			if prediction.DurationMS > 0 {
+				duration = prediction.DurationMS
+			} else if prediction.DurationFactor > 0 {
+				duration *= prediction.DurationFactor
+			}
 		}
 		entry := selection.Entry
 		result.Units = append(result.Units, Unit{
@@ -196,6 +205,17 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 	}
 	result.DurationMS = cursor
 	return result, nil
+}
+
+func configuredMoraDuration(mora frontend.Mora, position int, cfg Config) (float64, bool) {
+	if mora.Pause || position < 0 || position >= len(cfg.MoraDurationsMS) {
+		return 0, false
+	}
+	duration := cfg.MoraDurationsMS[position]
+	if duration <= 0 {
+		return 0, false
+	}
+	return duration, true
 }
 
 func durationFor(mora frontend.Mora, base float64) float64 {

@@ -25,6 +25,7 @@ type Config struct {
 	Tone                    string
 	MoraDurationMS          float64
 	PauseDurationMS         float64
+	MoraDurationsMS         []float64
 	ReleaseMS               float64
 	ProsodyModelPath        string
 	ProsodyModel            *prosody.Model
@@ -170,6 +171,7 @@ func Synthesize(cfg Config) (*Result, error) {
 	synthesisPlan, err := plan.Build(bank, reading, morae, selections, plan.Config{
 		MoraDurationMS:   cfg.MoraDurationMS,
 		PauseDurationMS:  cfg.PauseDurationMS,
+		MoraDurationsMS:  cfg.MoraDurationsMS,
 		Predictions:      predictions,
 		SelectionMode:    cfg.SelectionMode,
 		JoinCostMode:     joinCostMode,
@@ -248,6 +250,11 @@ func validateConfig(cfg Config) error {
 	for index, factor := range cfg.PitchFactors {
 		if math.IsNaN(factor) || math.IsInf(factor, 0) {
 			return fmt.Errorf("pitch factors: value %d must be finite, got %v", index, factor)
+		}
+	}
+	for index, duration := range cfg.MoraDurationsMS {
+		if math.IsNaN(duration) || math.IsInf(duration, 0) {
+			return fmt.Errorf("mora durations: value %d must be finite, got %v", index, duration)
 		}
 	}
 	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > 1 {
@@ -336,9 +343,6 @@ func alignRuntimeProsodyFeatures(morae []frontend.Mora, analysis *openjtalk.Anal
 	}
 	if len(analysis.Morae) == len(morae) {
 		if err := validateRuntimeMoraAlignment(morae, analysis.Morae); err != nil {
-			// Go and Open JTalk can choose different pronunciations for the
-			// same word (for example, "いかり" and "おこり"). Keep the
-			// Open JTalk features when the mora and pause positions still align.
 			if !runtimePausePatternMatches(morae, analysis.Morae) {
 				return nil, err
 			}
