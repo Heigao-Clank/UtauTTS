@@ -1,6 +1,7 @@
 #include "backend.h"
 #include <QFile>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QUrl>
@@ -54,6 +55,14 @@ int main(int argc, char *argv[]) {
     app.setApplicationDisplayName(UTAUTTS_APP_NAME);
     app.setApplicationVersion(UTAUTTS_VERSION);
     app.setOrganizationName(UTAUTTS_APP_ORGANIZATION);
+
+    QIcon appIcon;
+    appIcon.addFile(QStringLiteral(":/icons/icon16.png"));
+    appIcon.addFile(QStringLiteral(":/icons/icon32.png"));
+    appIcon.addFile(QStringLiteral(":/icons/icon64.png"));
+    appIcon.addFile(QStringLiteral(":/icons/icon128.png"));
+    appIcon.addFile(QStringLiteral(":/icons/icon512.png"));
+    app.setWindowIcon(appIcon);
 
     Backend backend;
     QQmlApplicationEngine engine;

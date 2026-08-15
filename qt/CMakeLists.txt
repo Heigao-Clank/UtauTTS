@@ -46,6 +46,36 @@ qt_add_qml_module(utautts
 )
 
 set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon16.png"
+    PROPERTIES QT_RESOURCE_ALIAS "icon16.png"
+)
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon32.png"
+    PROPERTIES QT_RESOURCE_ALIAS "icon32.png"
+)
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon64.png"
+    PROPERTIES QT_RESOURCE_ALIAS "icon64.png"
+)
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon128.png"
+    PROPERTIES QT_RESOURCE_ALIAS "icon128.png"
+)
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon512.png"
+    PROPERTIES QT_RESOURCE_ALIAS "icon512.png"
+)
+qt_add_resources(utautts "appicon"
+    PREFIX "/icons"
+    FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon16.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon32.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon64.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon128.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/icon512.png"
+)
+
+set_source_files_properties(
     "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE"
     PROPERTIES QT_RESOURCE_ALIAS "LICENSE"
 )
