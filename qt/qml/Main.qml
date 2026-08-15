@@ -98,7 +98,8 @@ ApplicationWindow {
     Shortcut {
         sequence: window.qtShortcutSequence(window.appBackend.removeUtteranceShortcut)
         enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
-                 && !window.playbackQueueActive && utterances.count > 0
+                 && !window.playbackQueueActive
+                 && utterances.count > 0
         onActivated: window.removeUtterance()
     }
 
@@ -603,6 +604,7 @@ ApplicationWindow {
                         required property string content
                         required property string voicebankId
                         required property string imagePath
+                        property alias textEditor: utteranceEditor
 
                         width: Math.max(0, utteranceList.width - 14 - 2)
                         height: 46
@@ -663,8 +665,23 @@ ApplicationWindow {
                                 placeholderText: "文章を入力"
                                 selectByMouse: true
 
-                                onActiveFocusChanged: if (activeFocus)
-                                    window.selectUtterance(card.index)
+                                onActiveFocusChanged: {
+                                    if (activeFocus)
+                                        window.selectUtterance(card.index);
+                                }
+                                Keys.priority: Keys.BeforeItem
+                                Keys.onPressed: event => {
+                                    if (event.key === Qt.Key_Delete
+                                            && event.modifiers === Qt.NoModifier
+                                            && window.qtShortcutSequence(window.appBackend.removeUtteranceShortcut).toLowerCase() === "delete"
+                                            && !settingsWindow.visible
+                                            && !window.appBackend.busy
+                                            && !window.batchExportActive
+                                            && !window.playbackQueueActive) {
+                                        event.accepted = true;
+                                        window.removeUtterance();
+                                    }
+                                }
                                 onTextChanged: {
                                     if (card.index >= utterances.count || utterances.get(card.index).content === text)
                                         return;
@@ -1837,8 +1854,16 @@ ApplicationWindow {
         });
         if (markDirty !== false)
             window.projectDirty = true;
-        selectUtterance(utterances.count - 1);
+        const newIndex = utterances.count - 1;
+        selectUtterance(newIndex);
         utteranceList.positionViewAtEnd();
+        Qt.callLater(() => {
+            const newCard = utteranceList.itemAtIndex(newIndex);
+            if (!newCard || !newCard.textEditor)
+                return;
+            newCard.textEditor.forceActiveFocus();
+            newCard.textEditor.selectAll();
+        });
     }
 
     function removeUtterance() {
