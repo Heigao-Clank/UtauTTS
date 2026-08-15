@@ -41,6 +41,7 @@ try {
         Assert-Path (Join-Path $packageRoot 'THIRD_PARTY_NOTICES.txt') 'third-party notices'
         Assert-Path (Join-Path $packageRoot 'licenses/README.txt') 'license bundle manifest'
         Assert-Path (Join-Path $packageRoot 'licenses/Go/GO-LICENSE.txt') 'Go runtime license'
+        Assert-Path (Join-Path $packageRoot 'licenses/Go/github_com_ikawaha_kagome-dict-v1.1.7-LICENSE.txt') 'kagome-dict license'
         Assert-Path (Join-Path $packageRoot 'licenses/OpenJTalk/HTS_ENGINE_API_COPYING.txt') 'hts_engine_API license'
     }
 

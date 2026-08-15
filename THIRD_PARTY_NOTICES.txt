@@ -66,8 +66,8 @@ Upstream sources:
 https://github.com/ikawaha/kagome
 https://github.com/ikawaha/kagome-dict
 
-The exact module license files for Kagome v2.11.0 and kagome-dict/ipa v1.2.6
-are included under licenses/Go in the release package.
+The exact module license files for Kagome v2.11.0, kagome-dict v1.1.7, and
+kagome-dict/ipa v1.2.6 are included under licenses/Go in the release package.
 
 
 pyopenjtalk frontend bridge

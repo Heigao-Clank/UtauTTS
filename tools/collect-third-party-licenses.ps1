@@ -61,6 +61,7 @@ function Copy-GoLicenses {
     $modules = @(
         'golang.org/x/text',
         'github.com/ikawaha/kagome/v2',
+        'github.com/ikawaha/kagome-dict',
         'github.com/ikawaha/kagome-dict/ipa'
     )
     foreach ($module in $modules) {
