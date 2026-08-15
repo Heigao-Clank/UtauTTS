@@ -184,8 +184,7 @@ void Backend::clearLogs() {
 bool Backend::showNativeAboutDialog() {
 #ifdef Q_OS_WIN
     const QString title = tr("UtauTTSについて");
-    const QString text = QStringLiteral("UtauTTS %1 by yh\n\nUTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS")
-                             .arg(QCoreApplication::applicationVersion());
+    const QString text = QStringLiteral("UtauTTS %1 \n\nDeveloped by yh（@2237yh）\nTesting by アアアアアアア（@a7_riri）\n\nUTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS").arg(QCoreApplication::applicationVersion());
     MessageBoxW(GetActiveWindow(),
                 reinterpret_cast<LPCWSTR>(text.utf16()),
                 reinterpret_cast<LPCWSTR>(title.utf16()),

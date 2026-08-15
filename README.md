@@ -82,6 +82,10 @@ Windows x64でのリリースビルドには、Go、Qt 6.5以降（Qt Quick・Qt
 go test ./...
 ```
 
+## Special Thanks
+
+- Testing by [アアアアアアア（@a7_riri）](https://x.com/a7_riri)
+
 ## ライセンス
 
 UtauTTS本体は [MIT License](./LICENSE) です。同梱ボイスバンク、OpenUtau由来ファイル等には個別の利用条件があるため、配布物の [THIRD_PARTY_NOTICES.txt](./THIRD_PARTY_NOTICES.txt) と各同梱文書を必ず確認してください。
