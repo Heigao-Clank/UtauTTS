@@ -88,6 +88,20 @@ ApplicationWindow {
         onActivated: window.appBackend.reloadVoicebanks()
     }
 
+    Shortcut {
+        sequence: window.qtShortcutSequence(window.appBackend.addUtteranceShortcut)
+        enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
+                 && !window.playbackQueueActive
+        onActivated: window.addUtterance()
+    }
+
+    Shortcut {
+        sequence: window.qtShortcutSequence(window.appBackend.removeUtteranceShortcut)
+        enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
+                 && !window.playbackQueueActive && utterances.count > 0
+        onActivated: window.removeUtterance()
+    }
+
     ListModel {
         id: utterances
     }
@@ -1246,7 +1260,9 @@ ApplicationWindow {
     function saveSettings() {
         const shortcuts = [settingsWindow.pendingSynthesizeShortcut,
                            settingsWindow.pendingSaveProjectShortcut,
-                           settingsWindow.pendingReloadVoicebanksShortcut];
+                           settingsWindow.pendingReloadVoicebanksShortcut,
+                           settingsWindow.pendingAddUtteranceShortcut,
+                           settingsWindow.pendingRemoveUtteranceShortcut];
         const usedShortcuts = [];
         for (let index = 0; index < shortcuts.length; ++index) {
             const shortcut = String(shortcuts[index] || "").trim();
@@ -1270,7 +1286,9 @@ ApplicationWindow {
         window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
         window.appBackend.setShortcutSequences(settingsWindow.pendingSynthesizeShortcut,
                                                settingsWindow.pendingSaveProjectShortcut,
-                                               settingsWindow.pendingReloadVoicebanksShortcut);
+                                               settingsWindow.pendingReloadVoicebanksShortcut,
+                                               settingsWindow.pendingAddUtteranceShortcut,
+                                               settingsWindow.pendingRemoveUtteranceShortcut);
         settingsWindow.close();
         settingsWindow.visible = false;
     }

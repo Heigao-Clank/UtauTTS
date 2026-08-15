@@ -33,6 +33,8 @@ class Backend final : public QObject {
     Q_PROPERTY(QString synthesizeShortcut READ synthesizeShortcut NOTIFY shortcutSettingsChanged)
     Q_PROPERTY(QString saveProjectShortcut READ saveProjectShortcut NOTIFY shortcutSettingsChanged)
     Q_PROPERTY(QString reloadVoicebanksShortcut READ reloadVoicebanksShortcut NOTIFY shortcutSettingsChanged)
+    Q_PROPERTY(QString addUtteranceShortcut READ addUtteranceShortcut NOTIFY shortcutSettingsChanged)
+    Q_PROPERTY(QString removeUtteranceShortcut READ removeUtteranceShortcut NOTIFY shortcutSettingsChanged)
     Q_PROPERTY(QStringList logLines READ logLines NOTIFY logsChanged)
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -58,6 +60,8 @@ public:
     QString synthesizeShortcut() const { return m_synthesizeShortcut; }
     QString saveProjectShortcut() const { return m_saveProjectShortcut; }
     QString reloadVoicebanksShortcut() const { return m_reloadVoicebanksShortcut; }
+    QString addUtteranceShortcut() const { return m_addUtteranceShortcut; }
+    QString removeUtteranceShortcut() const { return m_removeUtteranceShortcut; }
     QStringList logLines() const { return m_logLines; }
 
     Q_INVOKABLE void initialize();
@@ -75,7 +79,11 @@ public:
     Q_INVOKABLE void clearLogs();
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
     Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);
-    Q_INVOKABLE void setShortcutSequences(const QString &synthesize, const QString &saveProject, const QString &reloadVoicebanks);
+    Q_INVOKABLE void setShortcutSequences(const QString &synthesize,
+                                          const QString &saveProject,
+                                          const QString &reloadVoicebanks,
+                                          const QString &addUtterance,
+                                          const QString &removeUtterance);
     Q_INVOKABLE void setDictionaryEntries(const QVariantList &entries);
 
 signals:
@@ -117,6 +125,8 @@ private:
     QString m_synthesizeShortcut;
     QString m_saveProjectShortcut;
     QString m_reloadVoicebanksShortcut;
+    QString m_addUtteranceShortcut;
+    QString m_removeUtteranceShortcut;
     QStringList m_logLines;
     QHash<QString, quint64> m_analysisGenerations;
     quint64 m_nextAnalysisGeneration = 0;

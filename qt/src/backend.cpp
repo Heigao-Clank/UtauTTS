@@ -60,7 +60,9 @@ Backend::Backend(QObject *parent)
       m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()),
       m_synthesizeShortcut(QSettings().value("shortcuts/synthesize", QStringLiteral("Ctrl+Enter")).toString()),
       m_saveProjectShortcut(QSettings().value("shortcuts/saveProject", QStringLiteral("Ctrl+S")).toString()),
-      m_reloadVoicebanksShortcut(QSettings().value("shortcuts/reloadVoicebanks", QStringLiteral("Ctrl+O")).toString()) {
+      m_reloadVoicebanksShortcut(QSettings().value("shortcuts/reloadVoicebanks", QStringLiteral("Ctrl+O")).toString()),
+      m_addUtteranceShortcut(QSettings().value("shortcuts/addUtterance", QStringLiteral("Ctrl+D")).toString()),
+      m_removeUtteranceShortcut(QSettings().value("shortcuts/removeUtterance", QStringLiteral("Delete")).toString()) {
     m_defaultMoraDuration = qBound(20, m_defaultMoraDuration, 1000);
     m_defaultPauseDuration = qBound(0, m_defaultPauseDuration, 3000);
     const QByteArray dictionaryJSON = QSettings().value("dictionary/entries").toByteArray();
@@ -125,19 +127,29 @@ void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration, bool app
     emit synthesisDefaultsChanged();
 }
 
-void Backend::setShortcutSequences(const QString &synthesize, const QString &saveProject, const QString &reloadVoicebanks) {
+void Backend::setShortcutSequences(const QString &synthesize,
+                                   const QString &saveProject,
+                                   const QString &reloadVoicebanks,
+                                   const QString &addUtterance,
+                                   const QString &removeUtterance) {
     if (m_synthesizeShortcut == synthesize
             && m_saveProjectShortcut == saveProject
-            && m_reloadVoicebanksShortcut == reloadVoicebanks) {
+            && m_reloadVoicebanksShortcut == reloadVoicebanks
+            && m_addUtteranceShortcut == addUtterance
+            && m_removeUtteranceShortcut == removeUtterance) {
         return;
     }
     m_synthesizeShortcut = synthesize.trimmed();
     m_saveProjectShortcut = saveProject.trimmed();
     m_reloadVoicebanksShortcut = reloadVoicebanks.trimmed();
+    m_addUtteranceShortcut = addUtterance.trimmed();
+    m_removeUtteranceShortcut = removeUtterance.trimmed();
     QSettings settings;
     settings.setValue("shortcuts/synthesize", m_synthesizeShortcut);
     settings.setValue("shortcuts/saveProject", m_saveProjectShortcut);
     settings.setValue("shortcuts/reloadVoicebanks", m_reloadVoicebanksShortcut);
+    settings.setValue("shortcuts/addUtterance", m_addUtteranceShortcut);
+    settings.setValue("shortcuts/removeUtterance", m_removeUtteranceShortcut);
     settings.sync();
     emit shortcutSettingsChanged();
 }

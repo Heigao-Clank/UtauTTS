@@ -32,6 +32,8 @@ ApplicationWindow {
     property string pendingSynthesizeShortcut: "Ctrl+Enter"
     property string pendingSaveProjectShortcut: "Ctrl+S"
     property string pendingReloadVoicebanksShortcut: "Ctrl+O"
+    property string pendingAddUtteranceShortcut: "Ctrl+D"
+    property string pendingRemoveUtteranceShortcut: "Delete"
 
     function loadCurrent() {
         pendingMoraDuration = root.backend.defaultMoraDuration;
@@ -42,6 +44,8 @@ ApplicationWindow {
         pendingSynthesizeShortcut = root.backend.synthesizeShortcut;
         pendingSaveProjectShortcut = root.backend.saveProjectShortcut;
         pendingReloadVoicebanksShortcut = root.backend.reloadVoicebanksShortcut;
+        pendingAddUtteranceShortcut = root.backend.addUtteranceShortcut;
+        pendingRemoveUtteranceShortcut = root.backend.removeUtteranceShortcut;
         themeCombo.currentIndex = pendingDarkMode ? 1 : 0;
     }
 
@@ -350,6 +354,62 @@ ApplicationWindow {
                                     const sequence = root.shortcutFromEvent(event);
                                     if (sequence.length) {
                                         root.pendingReloadVoicebanksShortcut = sequence;
+                                        event.accepted = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: "テキスト追加"
+                            }
+                            TextField {
+                                id: addUtteranceShortcutField
+                                Layout.preferredWidth: 180
+                                text: root.pendingAddUtteranceShortcut
+                                readOnly: true
+                                selectByMouse: false
+                                onActiveFocusChanged: if (activeFocus) selectAll()
+                                Keys.onPressed: event => {
+                                    if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+                                        root.pendingAddUtteranceShortcut = "";
+                                        event.accepted = true;
+                                        return;
+                                    }
+                                    const sequence = root.shortcutFromEvent(event);
+                                    if (sequence.length) {
+                                        root.pendingAddUtteranceShortcut = sequence;
+                                        event.accepted = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: "テキスト削除"
+                            }
+                            TextField {
+                                id: removeUtteranceShortcutField
+                                Layout.preferredWidth: 180
+                                text: root.pendingRemoveUtteranceShortcut
+                                readOnly: true
+                                selectByMouse: false
+                                onActiveFocusChanged: if (activeFocus) selectAll()
+                                Keys.onPressed: event => {
+                                    if (event.key === Qt.Key_Backspace) {
+                                        root.pendingRemoveUtteranceShortcut = "";
+                                        event.accepted = true;
+                                        return;
+                                    }
+                                    const sequence = root.shortcutFromEvent(event);
+                                    if (sequence.length) {
+                                        root.pendingRemoveUtteranceShortcut = sequence;
                                         event.accepted = true;
                                     }
                                 }
