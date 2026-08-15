@@ -101,6 +101,22 @@ func TestValidateRuntimeMoraAlignment(t *testing.T) {
 	}
 }
 
+func TestValidateRuntimeMoraAlignmentAcceptsOpenJTalkLongVowelNotation(t *testing.T) {
+	morae := []frontend.Mora{
+		{Text: "\u305b", Vowel: "e"},
+		{Text: "\u3044", Vowel: "i"},
+		{Text: "\u3044", Vowel: "i"},
+	}
+	if err := validateRuntimeMoraAlignment(morae, []string{"\u305b", "\u30fc", "\u3044"}); err != nil {
+		t.Fatalf("long vowel notation was rejected: %v", err)
+	}
+
+	nonVowelMora := []frontend.Mora{{Text: "\u3093", Vowel: "n"}}
+	if err := validateRuntimeMoraAlignment(nonVowelMora, []string{"\u30fc"}); err == nil {
+		t.Fatal("long vowel notation was accepted for a non-vowel mora")
+	}
+}
+
 func TestValidateConfigRejectsNonFiniteValues(t *testing.T) {
 	for _, cfg := range []Config{
 		{MoraDurationMS: math.NaN()},

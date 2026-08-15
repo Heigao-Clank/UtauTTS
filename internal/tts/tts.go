@@ -303,11 +303,26 @@ func validateRuntimeMoraAlignment(morae []frontend.Mora, analyzed []string) erro
 			}
 			continue
 		}
-		if mora.Text != want {
+		if !runtimeMoraMatches(mora, want) {
 			return fmt.Errorf("frame %d: Open JTalk mora %q does not match reading mora %q", index, want, mora.Text)
 		}
 	}
 	return nil
+}
+
+func runtimeMoraMatches(mora frontend.Mora, analyzed string) bool {
+	if mora.Text == analyzed {
+		return true
+	}
+	if analyzed != "ー" || mora.Pause {
+		return false
+	}
+	switch mora.Vowel {
+	case "a", "i", "u", "e", "o":
+		return true
+	default:
+		return false
+	}
 }
 
 func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.MoraTiming {
