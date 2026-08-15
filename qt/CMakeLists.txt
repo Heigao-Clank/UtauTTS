@@ -36,6 +36,13 @@ qt_add_qml_module(utautts
     QML_FILES
         qml/Main.qml
         qml/PitchEditor.qml
+        qml/DragTargetSelectionWindow.qml
+        qml/DragSourceWindow.qml
+        qml/SynthesisLogWindow.qml
+        qml/SettingsWindow.qml
+        qml/DictionaryWindow.qml
+        qml/LicenseWindow.qml
+        qml/VoicebankDetailsWindow.qml
 )
 
 set_source_files_properties(
