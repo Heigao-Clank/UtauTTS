@@ -43,7 +43,6 @@ Window {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 130
-            radius: 8
             color: palette.alternateBase
             border.width: 2
             border.color: root.accent

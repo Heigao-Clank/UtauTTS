@@ -443,12 +443,12 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem {
-                text: "選択中の音声をドラッグ..."
+                text: "選択中の音声をドラッグ＆ドロップ..."
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive && window.current().content.trim().length > 0
                 onTriggered: window.openDragExportDialog(true)
             }
             MenuItem {
-                text: "全テキストの音声をドラッグ..."
+                text: "全テキストの音声をドラッグ＆ドロップ..."
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openDragExportDialog(false)
             }
