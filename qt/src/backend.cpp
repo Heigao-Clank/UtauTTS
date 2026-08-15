@@ -23,16 +23,22 @@
 #endif
 
 namespace {
+bool hasResourceLayout(const QDir &root) {
+    return root.exists("plugins/renderers") || root.exists("models") || root.exists("voice");
+}
+
 QDir resourceRoot() {
     QDir application(QCoreApplication::applicationDirPath());
     if (application.dirName().compare("app", Qt::CaseInsensitive) == 0) {
         application.cdUp();
+    }
+    if (hasResourceLayout(application)) {
         return application;
     }
 
     QDir candidate(QDir::current());
     for (int depth = 0; depth < 8; ++depth) {
-        if (candidate.exists("plugins/renderers") || candidate.exists("models") || candidate.exists("voice")) {
+        if (hasResourceLayout(candidate)) {
             return candidate;
         }
         if (!candidate.cdUp()) {
