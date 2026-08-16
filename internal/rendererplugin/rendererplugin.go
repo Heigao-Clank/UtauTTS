@@ -1,3 +1,6 @@
+// Package rendererplugin resolves renderer plugins for the diagnostic and
+// evaluation command-line tools. Production entry points use the equivalent
+// helpers in the plugin and tts packages directly.
 package rendererplugin
 
 import (
@@ -9,8 +12,11 @@ import (
 )
 
 func Discover(extraDirectories []string) ([]plugin.Renderer, error) {
-	defaults, _ := plugin.DefaultDirectories()
-	return plugin.DiscoverRenderers(append(extraDirectories, defaults...), render.IsKnownRenderer)
+	catalog, err := plugin.DiscoverWithDefaults(extraDirectories, nil, render.IsKnownRenderer)
+	if err != nil {
+		return nil, err
+	}
+	return catalog.Renderers, nil
 }
 
 func Resolve(renderers []plugin.Renderer, id string) (plugin.Renderer, error) {
@@ -26,15 +32,5 @@ func Resolve(renderers []plugin.Renderer, id string) (plugin.Renderer, error) {
 }
 
 func Apply(renderer plugin.Renderer, config *tts.Config) {
-	config.Renderer = renderer.Backend
-	config.RendererCapabilities = &renderer.Capabilities
-	config.WorldlinePath = preferExplicit(config.WorldlinePath, renderer.Asset("worldline"))
-	config.WorldlineBridgePath = preferExplicit(config.WorldlineBridgePath, renderer.Asset("worldline_bridge"))
-}
-
-func preferExplicit(explicit, manifestValue string) string {
-	if explicit != "" {
-		return explicit
-	}
-	return manifestValue
+	tts.ApplyResolvedRenderer(config, renderer, config.WorldlinePath, config.WorldlineBridgePath)
 }

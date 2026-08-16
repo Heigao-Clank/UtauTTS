@@ -60,6 +60,16 @@ func Discover(rendererDirectories, modelDirectories []string, supportsBackend fu
 	return &Catalog{Renderers: renderers, Models: models}, errors.Join(rendererErr, modelErr)
 }
 
+// DiscoverWithDefaults builds a catalog, always including the packaged default
+// renderer and model directories alongside any explicitly configured ones.
+// Explicit directories are searched first; duplicate directories are dropped.
+func DiscoverWithDefaults(rendererDirectories, modelDirectories []string, supportsBackend func(string) bool) (*Catalog, error) {
+	defaultRendererDirs, defaultModelDirs := DefaultDirectories()
+	rendererDirectories = append(rendererDirectories, defaultRendererDirs...)
+	modelDirectories = append(modelDirectories, defaultModelDirs...)
+	return Discover(rendererDirectories, modelDirectories, supportsBackend)
+}
+
 func DiscoverRenderers(directories []string, supportsBackend func(string) bool) ([]Renderer, error) {
 	seen := map[string]string{}
 	var result []Renderer
