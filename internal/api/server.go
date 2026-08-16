@@ -14,13 +14,14 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 
 	"utautts/internal/audio"
 	"utautts/internal/frontend"
+	"utautts/internal/openjtalk"
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
+	"utautts/internal/synth"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -59,32 +60,25 @@ type Server struct {
 	openJTalkPath       string
 	openJTalkDictionary string
 	voiceDir            string
-	cacheMu             sync.Mutex
-	loadedVoicebanks    map[string]*voicebank.Bank
-	modelMu             sync.Mutex
-	loadedProsody       cachedProsodyModel
 	authToken           string
 	allowRegistration   bool
 	catalog             *plugin.Catalog
 }
 
-type cachedProsodyModel struct {
-	path    string
-	modTime time.Time
-	size    int64
-	model   *prosody.Model
+// apiVoicebankResolver adapts the server's voicebank listing to the shared
+// synthesis service. An empty ID selects the default (first by ID) voicebank.
+type apiVoicebankResolver struct {
+	server *Server
+}
+
+func (r apiVoicebankResolver) Resolve(id string) (string, bool) {
+	voicebank, ok := r.server.resolveVoicebank(id)
+	return voicebank.Path, ok
 }
 
 func New(config Config) (*Server, error) {
 	voiceDir := voicebank.ResolveDirectory(config.VoiceDir)
-	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
-	if len(config.RendererDirectories) == 0 {
-		config.RendererDirectories = defaultRendererDirs
-	}
-	if len(config.ModelDirectories) == 0 {
-		config.ModelDirectories = defaultModelDirs
-	}
-	catalog, err := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
+	catalog, err := plugin.DiscoverWithDefaults(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
 	if err != nil {
 		return nil, fmt.Errorf("discover plugins: %w", err)
 	}
@@ -95,8 +89,7 @@ func New(config Config) (*Server, error) {
 		voicebanks: map[string]Voicebank{},
 		renderer:   config.Renderer, worldlinePath: config.WorldlinePath, worldlineBridgePath: config.WorldlineBridgePath, voiceDir: voiceDir,
 		openJTalkPath: config.OpenJTalkPath, openJTalkDictionary: config.OpenJTalkDictionary,
-		loadedVoicebanks: map[string]*voicebank.Bank{},
-		authToken:        config.AuthToken, allowRegistration: config.AllowVoicebankRegistration,
+		authToken: config.AuthToken, allowRegistration: config.AllowVoicebankRegistration,
 		catalog: catalog,
 	}
 	if err := srv.loadVoiceDirectory(); err != nil {
@@ -172,53 +165,8 @@ func (s *Server) loadVoiceDirectory() error {
 	s.mu.Lock()
 	s.voicebanks = next
 	s.mu.Unlock()
-	s.cacheMu.Lock()
-	s.loadedVoicebanks = make(map[string]*voicebank.Bank)
-	s.cacheMu.Unlock()
 	tts.ClearCaches()
 	return nil
-}
-
-func (s *Server) cachedVoicebank(path string) (*voicebank.Bank, error) {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
-	}
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
-	if s.loadedVoicebanks == nil {
-		s.loadedVoicebanks = make(map[string]*voicebank.Bank)
-	}
-	if bank := s.loadedVoicebanks[absPath]; bank != nil {
-		return bank, nil
-	}
-	bank, err := voicebank.Load(absPath)
-	if err != nil {
-		return nil, err
-	}
-	s.loadedVoicebanks[absPath] = bank
-	return bank, nil
-}
-
-func (s *Server) cachedProsodyModelAt(path string) (*prosody.Model, error) {
-	if path == "" {
-		return nil, nil
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	s.modelMu.Lock()
-	defer s.modelMu.Unlock()
-	if cached := s.loadedProsody; cached.model != nil && cached.path == path && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
-		return cached.model, nil
-	}
-	model, err := prosody.LoadModel(path)
-	if err != nil {
-		return nil, err
-	}
-	s.loadedProsody = cachedProsodyModel{path: path, size: info.Size(), modTime: info.ModTime(), model: model}
-	return model, nil
 }
 
 func inspectVoicebank(path string) (Voicebank, error) {
@@ -248,20 +196,6 @@ func (s *Server) handleModels(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"models": s.pluginCatalog().Models})
 }
 
-func (s *Server) resolveProsodyModelPath(id string) (string, error) {
-	if id == "none" {
-		return "", nil
-	}
-	if id == "" {
-		return "", nil
-	}
-	model, found := s.pluginCatalog().Model(id)
-	if !found {
-		return "", fmt.Errorf("prosody model not found")
-	}
-	return model.Path, nil
-}
-
 func (s *Server) handleRenderers(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"default_renderer": s.renderer, "renderers": s.pluginCatalog().Renderers})
 }
@@ -278,7 +212,9 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text is required"})
 		return
 	}
-	reading, err := frontend.ToKana(request.Text)
+	reading, err := tts.ConvertToReading(request.Text, nil, openjtalk.Config{
+		HelperPath: s.openJTalkPath, DictionaryPath: s.openJTalkDictionary,
+	})
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
@@ -504,69 +440,27 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 	if request.ManualPitch != nil && len(request.ManualPitch.Points) > maxManualPitchPoints {
 		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("manual pitch supports at most %d points", maxManualPitchPoints)
 	}
-	vb, ok := s.resolveVoicebank(request.VoicebankID)
-	if !ok {
-		return nil, "", http.StatusBadRequest, fmt.Errorf("voicebank not found")
-	}
-	bank, err := s.cachedVoicebank(vb.Path)
-	if err != nil {
-		return nil, "", http.StatusUnprocessableEntity, fmt.Errorf("load voicebank: %v", err)
-	}
-	modelPath, err := s.resolveProsodyModelPath(request.ModelID)
-	if err != nil {
-		return nil, "", http.StatusBadRequest, err
-	}
-	model, err := s.cachedProsodyModelAt(modelPath)
-	if err != nil {
-		return nil, "", http.StatusUnprocessableEntity, fmt.Errorf("load prosody model: %v", err)
-	}
-
-	rendererID := s.renderer
-	if request.Renderer != "" {
-		rendererID = request.Renderer
-	}
-	if rendererID == "" {
-		rendererID = s.pluginCatalog().DefaultRenderer()
-	}
-	rendererPlugin, found := s.pluginCatalog().Renderer(rendererID)
-	if !found {
-		return nil, "", http.StatusBadRequest, fmt.Errorf("renderer plugin %q is not installed", rendererID)
-	}
-	if !render.IsKnownRenderer(rendererPlugin.Backend) {
-		return nil, "", http.StatusBadRequest, fmt.Errorf("renderer plugin %q requires unavailable backend %q", rendererID, rendererPlugin.Backend)
-	}
-	result, err := tts.Synthesize(tts.Config{
-		VoicebankPath:           vb.Path,
-		Voicebank:               bank,
-		Text:                    request.Text,
-		Reading:                 request.Kana,
-		Tone:                    request.Tone,
-		MoraDurationMS:          request.MoraDurationMS,
-		PauseDurationMS:         request.PauseDurationMS,
-		MoraDurationsMS:         request.MoraDurationsMS,
-		ProsodyModelPath:        modelPath,
-		ProsodyModel:            model,
-		ManualPitch:             request.ManualPitch,
-		IntonationStrength:      request.IntonationStrength,
-		ApplyPitch:              request.ApplyPitch,
-		Renderer:                rendererPlugin.Backend,
-		RendererCapabilities:    &rendererPlugin.Capabilities,
-		WorldlinePath:           configuredPluginAsset(s.worldlinePath, rendererPlugin, "worldline"),
-		WorldlineBridgePath:     configuredPluginAsset(s.worldlineBridgePath, rendererPlugin, "worldline_bridge"),
-		OpenJTalkPath:           s.openJTalkPath,
-		OpenJTalkDictionaryPath: s.openJTalkDictionary,
+	result, rendererID, err := s.synthesisService().Synthesize(synth.Request{
+		Text: request.Text, Kana: request.Kana, VoicebankID: request.VoicebankID,
+		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer,
+		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
+		MoraDurationsMS: request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
+		ApplyPitch: request.ApplyPitch, ManualPitch: request.ManualPitch,
 	})
 	if err != nil {
+		if errors.Is(err, synth.ErrUnavailable) {
+			return nil, "", http.StatusBadRequest, err
+		}
 		return nil, "", http.StatusUnprocessableEntity, err
 	}
 	return result, rendererID, http.StatusOK, nil
 }
 
-func configuredPluginAsset(explicit string, renderer plugin.Renderer, name string) string {
-	if explicit != "" {
-		return explicit
-	}
-	return renderer.Asset(name)
+// synthesisService adapts the server configuration for the shared synthesis
+// orchestrator. It is stateless, so it can be constructed per request.
+func (s *Server) synthesisService() *synth.Service {
+	return synth.NewService(s.pluginCatalog(), s.renderer, s.worldlinePath, s.worldlineBridgePath,
+		s.openJTalkPath, s.openJTalkDictionary, apiVoicebankResolver{server: s})
 }
 
 func (s *Server) pluginCatalog() *plugin.Catalog {

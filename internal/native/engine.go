@@ -16,6 +16,7 @@ import (
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
+	"utautts/internal/synth"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
@@ -36,18 +37,12 @@ type Engine struct {
 	mu         sync.RWMutex
 	voicebanks map[string]voicebank.Summary
 	catalog    *plugin.Catalog
+	synth      *synth.Service
 }
 
 func New(config Config) (*Engine, error) {
 	config.VoiceDir = voicebank.ResolveDirectory(config.VoiceDir)
-	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
-	if len(config.RendererDirectories) == 0 {
-		config.RendererDirectories = defaultRendererDirs
-	}
-	if len(config.ModelDirectories) == 0 {
-		config.ModelDirectories = defaultModelDirs
-	}
-	catalog, err := plugin.Discover(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
+	catalog, err := plugin.DiscoverWithDefaults(config.RendererDirectories, config.ModelDirectories, render.IsKnownRenderer)
 	if err != nil {
 		return nil, fmt.Errorf("discover plugins: %w", err)
 	}
@@ -55,6 +50,7 @@ func New(config Config) (*Engine, error) {
 		config.Renderer = catalog.DefaultRenderer()
 	}
 	engine := &Engine{config: config, voicebanks: make(map[string]voicebank.Summary), catalog: catalog}
+	engine.synth = synth.NewService(catalog, config.Renderer, config.WorldlinePath, config.WorldlineBridgePath, config.OpenJTalkPath, config.OpenJTalkDictionary, nativeVoicebankResolver{engine: engine})
 	if err := engine.reload(); err != nil {
 		return nil, fmt.Errorf("load voicebanks: %w", err)
 	}
@@ -103,8 +99,29 @@ func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
 	return json.Marshal(result)
 }
 
-type Voicebank struct {
-	ID, Name, Path, ImagePath string
+// nativeVoicebankResolver resolves a voicebank ID to its root path for the
+// shared synthesis service. An empty ID selects the default (first by ID)
+// voicebank deterministically.
+type nativeVoicebankResolver struct {
+	engine *Engine
+}
+
+func (r nativeVoicebankResolver) Resolve(id string) (string, bool) {
+	r.engine.mu.RLock()
+	defer r.engine.mu.RUnlock()
+	if id != "" {
+		summary, ok := r.engine.voicebanks[id]
+		return summary.Path, ok
+	}
+	ids := make([]string, 0, len(r.engine.voicebanks))
+	for candidate := range r.engine.voicebanks {
+		ids = append(ids, candidate)
+	}
+	sort.Strings(ids)
+	if len(ids) == 0 {
+		return "", false
+	}
+	return r.engine.voicebanks[ids[0]].Path, true
 }
 
 func (e *Engine) reload() error {
@@ -192,41 +209,12 @@ func (e *Engine) predictProsody(data []byte) (any, error) {
 	if request.Text == "" && request.Kana == "" {
 		return nil, fmt.Errorf("text or kana is required")
 	}
-	dictionary := dictionaryMap(request.Dictionary)
-	reading := request.Kana
-	if reading == "" {
-		var err error
-		reading, err = e.reading(request.Text, dictionary)
-		if err != nil {
-			return nil, err
-		}
-	}
-	modelPath := ""
-	if request.ModelID != "" && request.ModelID != "none" {
-		model, found := e.catalog.Model(request.ModelID)
-		if !found {
-			return nil, fmt.Errorf("prosody model not found")
-		}
-		modelPath = model.Path
-	}
-	rendererID := request.Renderer
-	if rendererID == "" {
-		rendererID = e.config.Renderer
-	}
-	rendererPlugin, found := e.catalog.Renderer(rendererID)
-	if !found {
-		return nil, fmt.Errorf("renderer plugin %q is not installed", rendererID)
-	}
-	if !render.IsKnownRenderer(rendererPlugin.Backend) {
-		return nil, fmt.Errorf("renderer plugin %q requires unavailable backend %q", rendererID, rendererPlugin.Backend)
-	}
-	preview, err := tts.PredictProsody(tts.Config{
-		Text: request.Text, Reading: reading, Dictionary: dictionary,
+	preview, _, err := e.synth.PredictProsody(synth.Request{
+		Text: request.Text, Kana: request.Kana, Dictionary: dictionaryMap(request.Dictionary),
+		ModelID: request.ModelID, Renderer: request.Renderer,
 		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
-		MoraDurationsMS: request.MoraDurationsMS, ProsodyModelPath: modelPath,
-		IntonationStrength: request.IntonationStrength, ApplyPitch: request.ApplyPitch,
-		Renderer: rendererPlugin.Backend, RendererCapabilities: &rendererPlugin.Capabilities,
-		OpenJTalkPath: e.config.OpenJTalkPath, OpenJTalkDictionaryPath: e.config.OpenJTalkDictionary,
+		MoraDurationsMS: request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
+		ApplyPitch: request.ApplyPitch,
 	})
 	if err != nil {
 		return nil, err
@@ -242,7 +230,7 @@ func (e *Engine) predictProsody(data []byte) (any, error) {
 		"mora_durations_ms":     preview.MoraDurationsMS,
 		"mora_positions_ms":     preview.MoraPositionsMS,
 		"pitch_points":          preview.PitchPoints,
-		"prosody_model_applied": modelPath != "",
+		"prosody_model_applied": e.synth.ModelAvailable(request.ModelID),
 	}, nil
 }
 
@@ -263,18 +251,10 @@ func dictionaryMap(entries []dictionaryEntry) map[string]string {
 }
 
 func (e *Engine) reading(text string, dictionary map[string]string) (string, error) {
-	reading, frontendErr := frontend.ToKanaWithDictionary(text, dictionary)
-	if frontendErr == nil {
-		return reading, nil
-	}
-	analysis, openJTalkErr := openjtalk.Analyze(frontend.ApplyDictionary(text, dictionary), openjtalk.Config{
+	return tts.ConvertToReading(text, dictionary, openjtalk.Config{
 		HelperPath:     e.config.OpenJTalkPath,
 		DictionaryPath: e.config.OpenJTalkDictionary,
 	})
-	if openJTalkErr != nil {
-		return "", fmt.Errorf("convert text to reading: %v; Open JTalk fallback: %w", frontendErr, openJTalkErr)
-	}
-	return analysis.Reading, nil
 }
 
 type synthesizeRequest struct {
@@ -322,50 +302,14 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 	if request.OutputPath == "" {
 		return nil, fmt.Errorf("output_path is required")
 	}
-	dictionary := dictionaryMap(request.Dictionary)
-	e.mu.RLock()
-	summary, ok := e.voicebanks[request.VoicebankID]
-	if !ok && request.VoicebankID == "" {
-		for _, item := range e.voicebanks {
-			summary = item
-			ok = true
-			break
-		}
-	}
-	e.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("voicebank not found")
-	}
-	modelPath := ""
-	if request.ModelID != "" && request.ModelID != "none" {
-		model, found := e.catalog.Model(request.ModelID)
-		if !found {
-			return nil, fmt.Errorf("prosody model not found")
-		}
-		modelPath = model.Path
-	}
-	rendererID := request.Renderer
-	if rendererID == "" {
-		rendererID = e.config.Renderer
-	}
-	rendererPlugin, pluginFound := e.catalog.Renderer(rendererID)
-	if !pluginFound {
-		return nil, fmt.Errorf("renderer plugin %q is not installed", rendererID)
-	}
-	if !render.IsKnownRenderer(rendererPlugin.Backend) {
-		return nil, fmt.Errorf("renderer plugin %q requires unavailable backend %q", rendererID, rendererPlugin.Backend)
-	}
-	worldlinePath := firstConfigured(e.config.WorldlinePath, rendererPlugin.Asset("worldline"))
-	worldlineBridgePath := firstConfigured(e.config.WorldlineBridgePath, rendererPlugin.Asset("worldline_bridge"))
-	reading := request.Kana
-	if reading == "" && modelPath == "" {
-		resolvedReading, err := e.reading(request.Text, dictionary)
-		if err != nil {
-			return nil, err
-		}
-		reading = resolvedReading
-	}
-	result, err := tts.Synthesize(tts.Config{VoicebankPath: summary.Path, Text: request.Text, Reading: reading, Dictionary: dictionary, Tone: request.Tone, MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS, MoraDurationsMS: request.MoraDurationsMS, ProsodyModelPath: modelPath, ManualPitch: request.ManualPitch, IntonationStrength: request.IntonationStrength, ApplyPitch: request.ApplyPitch, Renderer: rendererPlugin.Backend, RendererCapabilities: &rendererPlugin.Capabilities, WorldlinePath: worldlinePath, WorldlineBridgePath: worldlineBridgePath, OpenJTalkPath: e.config.OpenJTalkPath, OpenJTalkDictionaryPath: e.config.OpenJTalkDictionary})
+	result, rendererID, err := e.synth.Synthesize(synth.Request{
+		Text: request.Text, Kana: request.Kana, VoicebankID: request.VoicebankID,
+		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer,
+		Dictionary: dictionaryMap(request.Dictionary),
+		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
+		MoraDurationsMS: request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
+		ApplyPitch: request.ApplyPitch, ManualPitch: request.ManualPitch,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -388,13 +332,6 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 		"mora_durations_ms":     result.MoraDurationsMS,
 		"mora_positions_ms":     result.MoraPositionsMS,
 		"pitch_points":          result.PitchPoints,
-		"prosody_model_applied": modelPath != "",
+		"prosody_model_applied": e.synth.ModelAvailable(request.ModelID),
 	}, nil
-}
-
-func firstConfigured(explicit, fromPlugin string) string {
-	if explicit != "" {
-		return explicit
-	}
-	return fromPlugin
 }

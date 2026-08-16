@@ -88,19 +88,9 @@ func main() {
 		fmt.Printf("%s %s\n", appinfo.Name(), appinfo.Version())
 		return
 	}
-	defaultRendererDirs, defaultModelDirs := plugin.DefaultDirectories()
-	rendererDirectories = append(rendererDirectories, defaultRendererDirs...)
-	modelDirectories = append(modelDirectories, defaultModelDirs...)
-	catalog, catalogErr := plugin.Discover(rendererDirectories, modelDirectories, render.IsKnownRenderer)
+	catalog, catalogErr := plugin.DiscoverWithDefaults(rendererDirectories, modelDirectories, render.IsKnownRenderer)
 	if catalogErr != nil {
 		log.Printf("plugin discovery warning: %v", catalogErr)
-	}
-	if renderer == "" {
-		renderer = catalog.DefaultRenderer()
-	}
-	rendererPlugin, found := catalog.Renderer(renderer)
-	if !found {
-		log.Fatalf("renderer plugin %q is not installed", renderer)
 	}
 	if prosodyPath != "" {
 		model, found := catalog.Model(prosodyPath)
@@ -109,8 +99,6 @@ func main() {
 		}
 		prosodyPath = model.Path
 	}
-	worldlinePath = preferExplicit(worldlinePath, rendererPlugin.Asset("worldline"))
-	worldlineBridgePath = preferExplicit(worldlineBridgePath, rendererPlugin.Asset("worldline_bridge"))
 
 	if voicebankPath == "" {
 		voicebankPath = otoPath
@@ -128,7 +116,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	result, err := tts.Synthesize(tts.Config{
+	synthConfig := tts.Config{
 		VoicebankPath:           voicebankPath,
 		Text:                    text,
 		Reading:                 reading,
@@ -136,6 +124,7 @@ func main() {
 		MoraDurationMS:          moraMS,
 		PauseDurationMS:         pauseMS,
 		ReleaseMS:               releaseMS,
+		ReleaseSet:              true,
 		ProsodyModelPath:        prosodyPath,
 		ManualPitchPath:         manualPitchPath,
 		ProsodyFeatures:         prosodyFeatures,
@@ -145,16 +134,16 @@ func main() {
 		PitchFactors:            pitchFactors,
 		ApplyPitch:              applyPitch,
 		IntonationStrength:      intonationStrength,
-		Renderer:                rendererPlugin.Backend,
-		RendererCapabilities:    &rendererPlugin.Capabilities,
-		WorldlinePath:           worldlinePath,
-		WorldlineBridgePath:     worldlineBridgePath,
 		BoundaryBridgeMS:        boundaryBridgeMS,
 		BoundaryBridgeThreshold: boundaryBridgeThreshold,
 		SelectionMode:           voicebank.SelectionMode(selectionMode),
 		JoinModelPath:           joinModelPath,
 		JoinScoreScale:          joinScoreScale,
-	})
+	}
+	if err := tts.ApplyRenderer(&synthConfig, catalog, renderer, worldlinePath, worldlineBridgePath); err != nil {
+		log.Fatal(err)
+	}
+	result, err := tts.Synthesize(synthConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -174,13 +163,6 @@ func main() {
 
 	duration := float64(len(result.Audio.Data)) / float64(result.Audio.SampleRate)
 	fmt.Printf("wrote %s (%.2fs, %d Hz, %d units)\n", outPath, duration, result.Audio.SampleRate, len(result.Plan.Units))
-}
-
-func preferExplicit(explicit, pluginValue string) string {
-	if explicit != "" {
-		return explicit
-	}
-	return pluginValue
 }
 
 func loadProsodyFeatures(path, caseID, text, reading string) ([]prosody.FeatureFrame, error) {
