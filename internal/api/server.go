@@ -27,11 +27,12 @@ import (
 )
 
 const (
-	maxJSONRequestBytes   = 1 << 20
-	maxSynthesisTextRunes = 500
-	maxBatchItems         = 16
-	maxBatchWAVBytes      = 256 << 20
-	maxManualPitchPoints  = 1000
+	maxJSONRequestBytes    = 1 << 20
+	maxTextRunes           = 500
+	maxBatchItems          = 16
+	maxBatchWAVBytes       = 256 << 20
+	maxManualPitchPoints   = 1000
+	maxConcurrentSynthesis = 4
 )
 
 type Config struct {
@@ -54,6 +55,7 @@ type Voicebank struct {
 type Server struct {
 	mu                  sync.RWMutex
 	voicebanks          map[string]Voicebank
+	synthesisSem        chan struct{}
 	renderer            string
 	worldlinePath       string
 	worldlineBridgePath string
@@ -65,8 +67,6 @@ type Server struct {
 	catalog             *plugin.Catalog
 }
 
-// apiVoicebankResolver adapts the server's voicebank listing to the shared
-// synthesis service. An empty ID selects the default (first by ID) voicebank.
 type apiVoicebankResolver struct {
 	server *Server
 }
@@ -86,8 +86,9 @@ func New(config Config) (*Server, error) {
 		config.Renderer = catalog.DefaultRenderer()
 	}
 	srv := &Server{
-		voicebanks: map[string]Voicebank{},
-		renderer:   config.Renderer, worldlinePath: config.WorldlinePath, worldlineBridgePath: config.WorldlineBridgePath, voiceDir: voiceDir,
+		voicebanks:   map[string]Voicebank{},
+		synthesisSem: make(chan struct{}, maxConcurrentSynthesis),
+		renderer:     config.Renderer, worldlinePath: config.WorldlinePath, worldlineBridgePath: config.WorldlineBridgePath, voiceDir: voiceDir,
 		openJTalkPath: config.OpenJTalkPath, openJTalkDictionary: config.OpenJTalkDictionary,
 		authToken: config.AuthToken, allowRegistration: config.AllowVoicebankRegistration,
 		catalog: catalog,
@@ -210,6 +211,10 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.Text == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text is required"})
+		return
+	}
+	if len([]rune(request.Text)) > maxTextRunes {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": fmt.Sprintf("text is limited to %d characters", maxTextRunes)})
 		return
 	}
 	reading, err := tts.ConvertToReading(request.Text, nil, openjtalk.Config{
@@ -417,16 +422,20 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int, error) {
+	if s.synthesisSem != nil {
+		s.synthesisSem <- struct{}{}
+		defer func() { <-s.synthesisSem }()
+	}
 	if request.Kana == "" && request.Text == "" {
 		return nil, "", http.StatusBadRequest, fmt.Errorf("text or kana is required")
 	}
-	if len([]rune(request.Text)) > maxSynthesisTextRunes || len([]rune(request.Kana)) > maxSynthesisTextRunes {
-		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("text and kana are limited to %d characters", maxSynthesisTextRunes)
+	if len([]rune(request.Text)) > maxTextRunes || len([]rune(request.Kana)) > maxTextRunes {
+		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("text and kana are limited to %d characters", maxTextRunes)
 	}
 	if request.MoraDurationMS < 0 || request.MoraDurationMS > 1000 || request.PauseDurationMS < 0 || request.PauseDurationMS > 3000 {
 		return nil, "", http.StatusBadRequest, fmt.Errorf("duration settings are outside the supported range")
 	}
-	if len(request.MoraDurationsMS) > maxSynthesisTextRunes {
+	if len(request.MoraDurationsMS) > maxTextRunes {
 		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("mora duration settings contain too many values")
 	}
 	for _, duration := range request.MoraDurationsMS {
@@ -456,8 +465,6 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 	return result, rendererID, http.StatusOK, nil
 }
 
-// synthesisService adapts the server configuration for the shared synthesis
-// orchestrator. It is stateless, so it can be constructed per request.
 func (s *Server) synthesisService() *synth.Service {
 	return synth.NewService(s.pluginCatalog(), s.renderer, s.worldlinePath, s.worldlineBridgePath,
 		s.openJTalkPath, s.openJTalkDictionary, apiVoicebankResolver{server: s})

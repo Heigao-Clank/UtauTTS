@@ -314,16 +314,59 @@ func LoadLearnedModel(path string) (*LearnedModel, error) {
 	if len(model.Means) != length || len(model.Scales) != length {
 		return nil, errors.New("invalid join model feature dimensions")
 	}
-	if model.Mode == "acoustic_join_logistic" && len(model.Weights) != length {
-		return nil, errors.New("invalid logistic model dimensions")
+	if !allFinite(model.Means) {
+		return nil, errors.New("join model means contain non-finite values")
 	}
-	if model.Mode == "acoustic_join_mlp" && !validMLPDimensions(&model, length) {
-		return nil, errors.New("invalid MLP model dimensions")
+	for index, scale := range model.Scales {
+		if scale <= 0 || math.IsNaN(scale) || math.IsInf(scale, 0) {
+			return nil, fmt.Errorf("join model scale %d is not positive and finite", index)
+		}
+	}
+	if model.Mode == "acoustic_join_logistic" {
+		if len(model.Weights) != length {
+			return nil, errors.New("invalid logistic model dimensions")
+		}
+		if !allFinite(model.Weights) || !finiteValue(model.Bias) {
+			return nil, errors.New("logistic model weights contain non-finite values")
+		}
+	}
+	if model.Mode == "acoustic_join_mlp" {
+		if !validMLPDimensions(&model, length) {
+			return nil, errors.New("invalid MLP model dimensions")
+		}
+		if !finiteMLP(&model) {
+			return nil, errors.New("MLP model weights contain non-finite values")
+		}
 	}
 	if model.ScoreScale <= 0 {
 		model.ScoreScale = 4
 	}
 	return &model, nil
+}
+
+func allFinite(values []float64) bool {
+	for _, value := range values {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func finiteValue(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func finiteMLP(model *LearnedModel) bool {
+	if !finiteValue(model.Bias) || !allFinite(model.HiddenBias) || !allFinite(model.OutputWeights) {
+		return false
+	}
+	for _, weights := range model.HiddenWeights {
+		if !allFinite(weights) {
+			return false
+		}
+	}
+	return true
 }
 
 func trainMLP(examples []Example, vectors [][]float64, featureCount int, config TrainConfig, positiveWeight, negativeWeight float64) ([][]float64, []float64, []float64, float64) {

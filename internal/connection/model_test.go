@@ -115,6 +115,25 @@ func TestLearnedScoreIsBoundedAndKeepsContinuityBonus(t *testing.T) {
 	}
 }
 
+func TestLoadLearnedModelRejectsZeroScales(t *testing.T) {
+	model := &LearnedModel{
+		Version: LearnedModelVersion, FeatureVersion: 2, Mode: "acoustic_join_logistic",
+		FeatureNames: featureNames(), Means: make([]float64, len(featureNames())),
+		Scales: make([]float64, len(featureNames())), Weights: make([]float64, len(featureNames())),
+	}
+	for index := range model.Scales {
+		model.Scales[index] = 1
+	}
+	model.Scales[3] = 0
+	path := filepath.Join(t.TempDir(), "join.json")
+	if err := SaveLearnedModel(path, model); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadLearnedModel(path); err == nil {
+		t.Fatal("model with a zero scale was accepted")
+	}
+}
+
 func testLearningFeatures(delta float64) LearningFeatures {
 	left, right := make([]float64, 10), make([]float64, 10)
 	for index := range right {

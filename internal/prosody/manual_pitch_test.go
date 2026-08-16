@@ -18,7 +18,7 @@ func TestManualPitchCurveInterpolatesMoraCenters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if curve.FrameMS != 10 || len(curve.Cents) != 32 {
+	if curve.FrameMS != 10 || len(curve.Cents) != 31 {
 		t.Fatalf("curve metadata = %+v", curve)
 	}
 	if math.Abs(curve.Cents[5]) > 0.01 || math.Abs(curve.Cents[15]) > 0.01 || math.Abs(curve.Cents[20]-50) > 0.01 || math.Abs(curve.Cents[25]-100) > 0.01 {
@@ -47,5 +47,35 @@ func TestManualPitchCurveRejectsPauseAndMoraMismatch(t *testing.T) {
 		if err == nil {
 			t.Fatalf("accepted invalid point %+v", point)
 		}
+	}
+}
+
+func TestManualPitchCurveRejectsNegativePosition(t *testing.T) {
+	morae := []frontend.Mora{{Text: "あ"}}
+	timings := []MoraTiming{{StartMS: 0, DurationMS: 100}}
+	file := &ManualPitchFile{Version: 1, Points: []ManualPitchPoint{{Position: -1, Cents: 10}}}
+	if _, err := file.Curve(morae, timings, 200); err == nil {
+		t.Fatal("curve accepted a negative position")
+	}
+}
+
+func TestManualPitchValidateRejectsNegativePositionAndMissingVersion(t *testing.T) {
+	for _, file := range []*ManualPitchFile{
+		{Version: 1, Points: []ManualPitchPoint{{Position: -1, Cents: 10}}},
+		{Points: []ManualPitchPoint{{Position: 0, Cents: 10}}},
+	} {
+		if err := file.Validate(); err == nil {
+			t.Fatalf("Validate accepted %+v", file)
+		}
+	}
+}
+
+func TestManualPitchValidateDefaultsModeToOffset(t *testing.T) {
+	file := &ManualPitchFile{Version: 1, Points: []ManualPitchPoint{{Position: 0, Cents: 10}}}
+	if err := file.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if file.Mode != "offset" {
+		t.Fatalf("mode = %q, want offset", file.Mode)
 	}
 }

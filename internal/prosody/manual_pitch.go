@@ -38,27 +38,37 @@ func LoadManualPitch(path string) (*ManualPitchFile, error) {
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("decode manual pitch file: %w", err)
 	}
+	if err := file.Validate(); err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
+func (file *ManualPitchFile) Validate() error {
+	if file == nil {
+		return nil
+	}
 	if file.Version == 0 {
-		file.Version = ManualPitchVersion
+		return fmt.Errorf("manual pitch version is required")
 	}
 	if file.Version != ManualPitchVersion {
-		return nil, fmt.Errorf("unsupported manual pitch version %d", file.Version)
+		return fmt.Errorf("unsupported manual pitch version %d", file.Version)
 	}
 	if file.Mode == "" {
 		file.Mode = "offset"
 	}
 	if file.Mode != "offset" && file.Mode != "replace" {
-		return nil, fmt.Errorf("unsupported manual pitch mode %q", file.Mode)
+		return fmt.Errorf("unsupported manual pitch mode %q", file.Mode)
 	}
 	for index, point := range file.Points {
 		if point.Position < 0 {
-			return nil, fmt.Errorf("manual pitch point %d has negative position", index)
+			return fmt.Errorf("manual pitch point %d has negative position", index)
 		}
 		if math.IsNaN(point.Cents) || math.IsInf(point.Cents, 0) || math.Abs(point.Cents) > 1200 {
-			return nil, fmt.Errorf("manual pitch point %d is outside +/-1200 cents", index)
+			return fmt.Errorf("manual pitch point %d is outside +/-1200 cents", index)
 		}
 	}
-	return &file, nil
+	return nil
 }
 
 // Curve converts mora-centered edits into a smooth 10 ms frame contour.
@@ -77,8 +87,8 @@ func (file *ManualPitchFile) Curve(morae []frontend.Mora, timings []MoraTiming, 
 	values := make([]float64, len(morae))
 	set := make([]bool, len(morae))
 	for _, point := range file.Points {
-		if point.Position >= len(morae) {
-			return nil, fmt.Errorf("manual pitch point position %d exceeds mora count %d", point.Position, len(morae))
+		if point.Position < 0 || point.Position >= len(morae) {
+			return nil, fmt.Errorf("manual pitch point position %d is outside mora count %d", point.Position, len(morae))
 		}
 		if morae[point.Position].Pause {
 			return nil, fmt.Errorf("manual pitch point position %d refers to a pause", point.Position)
@@ -102,7 +112,7 @@ func (file *ManualPitchFile) Curve(morae []frontend.Mora, timings []MoraTiming, 
 		centerValues = append(centerValues, values[index])
 	}
 	frameMS := 10.0
-	length := max(2, int(math.Ceil(durationMS/frameMS))+2)
+	length := max(2, int(math.Ceil(durationMS/frameMS))+1)
 	curve := make([]float64, length)
 	if len(centers) == 0 {
 		return &PitchContour{FrameMS: frameMS, Cents: curve}, nil

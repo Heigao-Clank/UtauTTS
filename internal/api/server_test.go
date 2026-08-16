@@ -99,10 +99,18 @@ func TestJSONAndBatchLimits(t *testing.T) {
 
 	response = httptest.NewRecorder()
 	request = httptest.NewRequest(http.MethodPost, "/api/synthesize/audio",
-		strings.NewReader(`{"text":"`+strings.Repeat("あ", maxSynthesisTextRunes+1)+`"}`))
+		strings.NewReader(`{"text":"`+strings.Repeat("あ", maxTextRunes+1)+`"}`))
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("long synthesis status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/analyze",
+		strings.NewReader(`{"text":"`+strings.Repeat("あ", maxTextRunes+1)+`"}`))
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("long analyze status = %d, body = %s", response.Code, response.Body.String())
 	}
 
 	items := strings.Repeat(`{"request":{"kana":"あ"}},`, maxBatchItems) + `{"request":{"kana":"あ"}}`

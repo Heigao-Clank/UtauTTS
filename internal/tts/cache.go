@@ -15,11 +15,15 @@ import (
 // model. Keep the expensive immutable inputs alive between requests. These
 // caches are deliberately process-local; ClearCaches is used after a user
 // refreshes a voicebank directory.
+
+const maxAnalysisCacheEntries = 512
+
 var synthesisCache = struct {
 	sync.RWMutex
-	banks    map[string]*voicebank.Bank
-	models   map[string]modelCacheEntry
-	analyses map[analysisCacheKey]*openjtalk.Analysis
+	banks         map[string]*voicebank.Bank
+	models        map[string]modelCacheEntry
+	analyses      map[analysisCacheKey]*openjtalk.Analysis
+	analysisOrder []analysisCacheKey
 }{
 	banks:    make(map[string]*voicebank.Bank),
 	models:   make(map[string]modelCacheEntry),
@@ -106,6 +110,12 @@ func analyzeOpenJTalkCached(text string, cfg openjtalk.Config) (*openjtalk.Analy
 		analysis = existing
 	} else {
 		synthesisCache.analyses[key] = analysis
+		synthesisCache.analysisOrder = append(synthesisCache.analysisOrder, key)
+		if len(synthesisCache.analysisOrder) > maxAnalysisCacheEntries {
+			oldest := synthesisCache.analysisOrder[0]
+			synthesisCache.analysisOrder = synthesisCache.analysisOrder[1:]
+			delete(synthesisCache.analyses, oldest)
+		}
 	}
 	synthesisCache.Unlock()
 	return analysis, nil
@@ -118,6 +128,7 @@ func ClearCaches() {
 	synthesisCache.banks = make(map[string]*voicebank.Bank)
 	synthesisCache.models = make(map[string]modelCacheEntry)
 	synthesisCache.analyses = make(map[analysisCacheKey]*openjtalk.Analysis)
+	synthesisCache.analysisOrder = nil
 	synthesisCache.Unlock()
 	render.ClearWAVCache()
 }

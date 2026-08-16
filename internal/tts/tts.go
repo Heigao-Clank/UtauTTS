@@ -293,6 +293,9 @@ func Synthesize(cfg Config) (*Result, error) {
 		}
 	}
 	if manualPitch != nil {
+		if err := manualPitch.Validate(); err != nil {
+			return nil, fmt.Errorf("validate manual pitch: %w", err)
+		}
 		if manualPitch.Reading != "" && manualPitch.Reading != reading {
 			return nil, fmt.Errorf("manual pitch reading does not match synthesis reading")
 		}

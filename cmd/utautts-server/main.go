@@ -6,11 +6,23 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"utautts/internal/api"
 	"utautts/internal/appinfo"
 )
+
+func isLoopbackHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
+}
 
 func main() {
 	var port int
@@ -40,6 +52,9 @@ func main() {
 	if showVersion {
 		fmt.Printf("%s %s\n", appinfo.Name(), appinfo.Version())
 		return
+	}
+	if config.AuthToken == "" && !isLoopbackHost(host) {
+		log.Printf("warning: listening on %s without an auth token; all API endpoints are unauthenticated", host)
 	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", host, port))

@@ -161,7 +161,36 @@ func LoadModel(path string) (*Model, error) {
 	standardAccent := model.FeatureVersion == 1 && model.Version == StandardAccentModelVersion && model.Mode == "standard_japanese_accent"
 	multitask := model.FeatureVersion == 2 && model.Version == ProsodyMultitaskModelVersion && model.Mode == "prosody_multitask_tcn"
 	if !current && !sequence && !frame && !phrase && !standardAccent && !multitask {
-		return nil, fmt.Errorf("unsupported prosody model version %d/%d", model.Version, model.FeatureVersion)
+		return nil, fmt.Errorf("unsupported prosody model version %d/feature %d mode %q", model.Version, model.FeatureVersion, model.Mode)
+	}
+	var allowedHeads []string
+	switch {
+	case current:
+		allowedHeads = []string{}
+		if err := validateWeightMap("duration_weights", model.DurationWeights); err != nil {
+			return nil, err
+		}
+		if err := validateWeightMap("pitch_weights", model.PitchWeights); err != nil {
+			return nil, err
+		}
+		if err := validateWeightMap("energy_weights", model.EnergyWeights); err != nil {
+			return nil, err
+		}
+	case sequence:
+		allowedHeads = []string{"sequence_pitch"}
+	case frame:
+		allowedHeads = []string{"frame_pitch"}
+	case phrase:
+		allowedHeads = []string{"phrase_pitch"}
+	case standardAccent:
+		allowedHeads = []string{"standard_accent"}
+	case multitask:
+		allowedHeads = []string{"mora_duration", "frame_pitch"}
+	}
+	for _, head := range model.heads() {
+		if head.present && !containsString(allowedHeads, head.name) {
+			return nil, fmt.Errorf("prosody model head %q is not supported by mode %q", head.name, model.Mode)
+		}
 	}
 	if sequence {
 		if err := validateSequencePitch(model.SequencePitch); err != nil {
@@ -206,6 +235,39 @@ func (m *Model) Save(path string) error {
 		}
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+type modelHead struct {
+	name    string
+	present bool
+}
+
+func (m *Model) heads() []modelHead {
+	return []modelHead{
+		{"mora_duration", m.MoraDuration != nil},
+		{"sequence_pitch", m.SequencePitch != nil},
+		{"frame_pitch", m.FramePitch != nil},
+		{"phrase_pitch", m.PhrasePitch != nil},
+		{"standard_accent", m.StandardAccent != nil},
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func validateWeightMap(name string, weights map[string]float64) error {
+	for key, value := range weights {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("%s %q must be finite, got %v", name, key, value)
+		}
+	}
+	return nil
 }
 
 func (m *Model) Predict(morae []frontend.Mora) []Prediction {

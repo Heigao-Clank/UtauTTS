@@ -2,6 +2,7 @@ package prosody
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -371,6 +372,27 @@ func TestPhraseAnchorV9ProducesSmoothContourAndLoads(t *testing.T) {
 	}
 	if loaded, err := LoadModel(v91Path); err != nil || loaded.PhrasePitch == nil {
 		t.Fatalf("v9.1 model did not round-trip: model=%#v err=%v", loaded, err)
+	}
+}
+
+func TestLoadModelRejectsMismatchedHeads(t *testing.T) {
+	invalid := []*Model{
+		{Version: ModelVersion, FeatureVersion: 1, Mode: "speech_prosody_residual",
+			FramePitch: &FramePitchModel{FrameMS: 10}},
+		{Version: FramePitchModelVersion, FeatureVersion: 1, Mode: "intonation_frame_tcn_accent_bounded",
+			SequencePitch: &SequencePitchModel{}},
+		{Version: ProsodyMultitaskModelVersion, FeatureVersion: 2, Mode: "prosody_multitask_tcn",
+			MoraDuration: &SequencePitchModel{}, FramePitch: &FramePitchModel{FrameMS: 10},
+			PhrasePitch: &PhrasePitchModel{}},
+	}
+	for index, model := range invalid {
+		path := filepath.Join(t.TempDir(), fmt.Sprintf("model-%d.json", index))
+		if err := model.Save(path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadModel(path); err == nil {
+			t.Fatalf("model %d with mismatched heads was accepted", index)
+		}
 	}
 }
 
