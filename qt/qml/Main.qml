@@ -61,7 +61,6 @@ ApplicationWindow {
     property var batchExportQueue: []
     property url batchExportDirectory
     property var dragExportFiles: []
-    property string dragExportTarget: ""
     property bool dragExportSelectedOnly: false
     property bool dragExportReady: false
     property bool playbackQueueActive: false
@@ -160,18 +159,7 @@ ApplicationWindow {
 
     FolderDialog {
         id: dragSaveDialog
-        onAccepted: window.openDragTargetSelectionWindow(selectedFolder)
-    }
-
-    DragTargetSelectionWindow {
-        id: dragTargetSelectionWindow
-        hostPalette: window.palette
-        mutedText: window.mutedText
-        exportDirectory: window.batchExportDirectory
-        onExportRequested: target => {
-            dragTargetSelectionWindow.close();
-            window.startDragExport(target);
-        }
+        onAccepted: window.startDragExport(selectedFolder)
     }
 
     DragSourceWindow {
@@ -179,7 +167,6 @@ ApplicationWindow {
         hostPalette: window.palette
         backend: window.appBackend
         files: window.dragExportFiles
-        targetName: window.dragExportTarget
         exportDirectory: window.batchExportDirectory
         ready: window.dragExportReady
         accent: window.accent
@@ -358,7 +345,8 @@ ApplicationWindow {
                 pitchEditor.moraDurations = durations.slice();
                 pitchEditor.moraPositions = positions.slice();
             }
-            window.requestProsodyPreview(index);
+            if (!window.batchExportActive)
+                window.requestProsodyPreview(index);
         }
 
         function onProsodyChanged() {
@@ -443,7 +431,7 @@ ApplicationWindow {
                 ++window.batchExportCompleted;
                 if (window.batchExportMode === "drag")
                     window.dragExportFiles.push(destination);
-                Qt.callLater(window.synthesizeBatchItem);
+                Qt.callLater(function() { window.synthesizeBatchItem(); });
                 return;
             }
             if (window.saveRequestPending) {
@@ -497,7 +485,8 @@ ApplicationWindow {
         }
 
         function onErrorChanged() {
-            if (window.batchExportActive && window.pendingUtteranceId.length && window.appBackend.error.length)
+            if (window.batchExportActive && !window.appBackend.busy
+                    && window.pendingUtteranceId.length && window.appBackend.error.length)
                 window.finishBatchExport(false);
             else if (window.playbackQueueActive && window.pendingUtteranceId.length && window.appBackend.error.length)
                 window.stopPlaybackQueue();
@@ -1522,16 +1511,6 @@ ApplicationWindow {
         dragSaveDialog.open();
     }
 
-    function openDragTargetSelectionWindow(directory) {
-        if (!directory || !directory.toString().length)
-            return;
-        window.batchExportDirectory = directory;
-        window.dragExportReady = false;
-        window.dragExportFiles = [];
-        dragTargetSelectionWindow.reset();
-        window.showAuxiliaryWindow(dragTargetSelectionWindow);
-    }
-
     function projectNumber(value, fallback, minimum, maximum, integer) {
         const parsed = Number(value);
         if (!Number.isFinite(parsed))
@@ -1718,7 +1697,7 @@ ApplicationWindow {
         markUtteranceDirty(selectedIndex);
         if (["modelId", "renderer", "moraDuration", "pauseDuration", "intonation", "applyPitch"].indexOf(name) >= 0) {
             const updated = utterances.get(selectedIndex);
-            if (updated.content.trim() && updated.reading)
+            if (!window.batchExportActive && updated.content.trim() && updated.reading)
                 Qt.callLater(function() { window.requestProsodyPreview(selectedIndex); });
         }
     }
@@ -2186,7 +2165,7 @@ ApplicationWindow {
     }
 
     function requestProsodyPreview(index) {
-        if (index < 0 || index >= utterances.count)
+        if (window.batchExportActive || index < 0 || index >= utterances.count)
             return;
         const item = utterances.get(index);
         if (!item.content.trim() || !item.reading)
@@ -2226,20 +2205,25 @@ ApplicationWindow {
         window.clearPlayback();
         window.pendingUtteranceId = "";
         window.pendingRevision = -1;
+        window.pendingProsodyRequestId = "";
+        window.pendingProsodyUtteranceId = "";
+        window.pendingProsodyRevision = -1;
         window.appBackend.clearLogs();
         window.showAuxiliaryWindow(synthesisLogWindow);
-        Qt.callLater(window.synthesizeBatchItem);
+        Qt.callLater(function() { window.synthesizeBatchItem(); });
     }
 
     function startBatchExport(directory) {
         window.beginBatchExport(directory, "save", window.buildExportQueue(false));
     }
 
-    function startDragExport(target) {
-        const queue = window.buildExportQueue(window.dragExportSelectedOnly);
-        if (!target || !queue.length)
+    function startDragExport(directory) {
+        if (!directory || !directory.toString().length)
             return;
-        window.dragExportTarget = target;
+        const queue = window.buildExportQueue(window.dragExportSelectedOnly);
+        if (!queue.length)
+            return;
+        window.batchExportDirectory = directory;
         window.dragExportReady = false;
         window.beginBatchExport(window.batchExportDirectory, "drag", queue);
     }
@@ -2247,6 +2231,10 @@ ApplicationWindow {
     function synthesizeBatchItem() {
         if (!window.batchExportActive)
             return;
+        if (window.appBackend.busy) {
+            Qt.callLater(function() { window.synthesizeBatchItem(); });
+            return;
+        }
         while (window.batchExportIndex < window.batchExportQueue.length) {
             const index = window.batchExportQueue[window.batchExportIndex++];
             const item = utterances.get(index);

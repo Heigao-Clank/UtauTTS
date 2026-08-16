@@ -9,7 +9,6 @@ Window {
     required property var hostPalette
     required property var backend
     required property var files
-    required property string targetName
     required property url exportDirectory
     required property bool ready
     required property color accent
@@ -49,7 +48,7 @@ Window {
 
             Label {
                 anchors.centerIn: parent
-                text: root.targetName + "のタイムラインへドロップ"
+                text: "タイムラインへドラッグ"
                 horizontalAlignment: Text.AlignHCenter
                 color: palette.text
             }
