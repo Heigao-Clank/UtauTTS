@@ -22,6 +22,8 @@ UTAUボイスバンクに収録された原音を選択・配置・接続し、�
 
 - `UtauTTS-win-x64.zip`: GUI、CLI、診断・学習ツール、runtime、モデル、Renderer、同梱音源
 - `UtauTTS-Server-win-x64.zip`: GUIを含まないHTTPサーバー
+- `UtauTTS-linux-x64.zip`: Linux GUI版
+- `UtauTTS-Server-linux-x64.zip`: Linux HTTPサーバー版
 
 ### GUI
 
@@ -59,7 +61,7 @@ v8モデルを明示する場合は、次のようにモデルIDと互換Rendere
 
 ### HTTP Server
 
-`UtauTTS-Server-win-x64.zip` を展開し、`voice` ディレクトリへ音源を置いて起動します。
+`UtauTTS-Server-win-x64.zip`（または Linux では `UtauTTS-Server-linux-x64.zip`）を展開し、`voice` ディレクトリへ音源を置いて起動します。
 
 ```powershell
 .\UtauTTS-Server\utautts-server.exe `
@@ -77,7 +79,21 @@ Windows x64でのリリースビルドには、Go、Qt 6.5以降（Qt Quick・Qt
 .\build.bat
 ```
 
-引数を省略するとWindows版をビルドします。`.\build.bat linux` はWSL経由、`.\build.bat both` はWindows版とLinux版を順にビルドします。ビルド時にはOpenUtau由来の依存ファイルを取得し、SHA-256を検証します。第三者ライセンスと音源の利用条件は [THIRD_PARTY_NOTICES.txt](./THIRD_PARTY_NOTICES.txt)、`licenses/`、[docs/voicebank.md](docs/voicebank.md) を確認してください。
+引数を省略するとWindows版をビルドします。`.\build.bat linux` はWSL経由、`.\build.bat both` はWindows版とLinux版を順にビルドします。Linux版は GUI 版（`release/UtauTTS-linux-x64.zip`）とサーバー版（`release/UtauTTS-Server-linux-x64.zip`）の2つを出力します。ビルド時にはOpenUtau由来の依存ファイルを取得し、SHA-256を検証します。第三者ライセンスと音源の利用条件は [THIRD_PARTY_NOTICES.txt](./THIRD_PARTY_NOTICES.txt)、`licenses/`、[docs/voicebank.md](docs/voicebank.md) を確認してください。
+
+Linux版（`.\build.bat linux`）はWSL2上のDebian/Ubuntuでビルドします。WSLディストリビューションに以下をインストールしてください。
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake ninja-build pkg-config unzip zip curl wget ca-certificates \
+  qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-tools-dev qt6-l10n-tools \
+  python3 python3-pip python3-venv
+# Go（公式バイナリを /usr/local/go へ展開）
+# .NET 8 SDK（公式パッケージを /opt/dotnet へ展開）
+# python3 -m venv /opt/utautts-py && /opt/utautts-py/bin/pip install pyopenjtalk
+```
+
+`/usr/local/go/bin` と `/opt/dotnet` がPATHに含まれている必要があります。ビルドはWSLのデフォルトユーザー（root以外）で実行してください。
 
 開発時のテストは次のとおりです。
 
