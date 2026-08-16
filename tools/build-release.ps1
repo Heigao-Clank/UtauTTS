@@ -55,7 +55,7 @@ foreach ($zip in @($guiZip, $serverZip)) {
     }
 }
 
-$env:GOCACHE = Join-Path $root '.tmp-go-cache'
+$env:GOCACHE = Join-Path $root 'build\go-cache'
 Push-Location $root
 try {
     Write-Host '=== Test ==='
@@ -66,17 +66,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Qt GUI build failed with exit code $LASTEXITCODE" }
     $guiCommands = @(
         @('utautts-cli.exe', './cmd/utautts-cli'),
-        @('oto-inspect.exe', './cmd/oto-inspect'),
-        @('connection-eval.exe', './cmd/connection-eval'),
-        @('connection-compare.exe', './cmd/connection-compare'),
-        @('connection-dataset.exe', './cmd/connection-dataset'),
-        @('connection-train.exe', './cmd/connection-train'),
-        @('connection-lattice.exe', './cmd/connection-lattice'),
-        @('connection-benchmark.exe', './cmd/connection-benchmark'),
-        @('listening-test.exe', './cmd/listening-test'),
-        @('listening-score.exe', './cmd/listening-score'),
-        @('prosody-dataset.exe', './cmd/prosody-dataset'),
-        @('prosody-train.exe', './cmd/prosody-train')
+        @('oto-inspect.exe', './cmd/tools/oto-inspect'),
+        @('connection-eval.exe', './cmd/tools/connection-eval'),
+        @('connection-compare.exe', './cmd/tools/connection-compare'),
+        @('connection-dataset.exe', './cmd/tools/connection-dataset'),
+        @('connection-train.exe', './cmd/tools/connection-train'),
+        @('connection-lattice.exe', './cmd/tools/connection-lattice'),
+        @('connection-benchmark.exe', './cmd/tools/connection-benchmark'),
+        @('listening-test.exe', './cmd/tools/listening-test'),
+        @('listening-score.exe', './cmd/tools/listening-score'),
+        @('prosody-dataset.exe', './cmd/tools/prosody-dataset'),
+        @('prosody-train.exe', './cmd/tools/prosody-train')
     )
     foreach ($item in $guiCommands) {
         Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $guiToolsPath $item[0]), $item[1])

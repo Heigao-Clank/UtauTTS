@@ -50,7 +50,7 @@ if (Test-Path -LiteralPath $appDirectory) { Remove-Item -LiteralPath $appDirecto
 New-Item -ItemType Directory -Force -Path $appDirectory | Out-Null
 $previousCgo = $env:CGO_ENABLED; $previousCC=$env:CC; $previousCXX=$env:CXX; $previousPath=$env:Path; $previousGoCache=$env:GOCACHE
 try {
-    $env:CGO_ENABLED='1';$env:CC=$goCC;$env:CXX=$goCXX;$env:GOCACHE=Join-Path $root '.tmp-go-cache-qt-cgo';$env:Path=(Split-Path $goCC -Parent)+';'+$env:Path
+    $env:CGO_ENABLED='1';$env:CC=$goCC;$env:CXX=$goCXX;$env:GOCACHE=Join-Path $root 'build\go-cache-qt-cgo';$env:Path=(Split-Path $goCC -Parent)+';'+$env:Path
     Push-Location $root
     try { & go build -buildmode=c-shared -o (Join-Path $nativeDir 'utautts_native.dll') ./cmd/utautts-native; if ($LASTEXITCODE -ne 0) { throw 'Go native library build failed' } }
     finally { Pop-Location }
@@ -79,7 +79,7 @@ Copy-Item -LiteralPath (Join-Path $nativeDir 'utautts_native.dll') -Destination 
 & $deployTool --release --qmldir (Join-Path $root 'qt/qml') (Join-Path $appDirectory 'utautts-gui.exe')
 if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
 $previousLauncherGoCache = $env:GOCACHE
-$env:GOCACHE = Join-Path $root '.tmp-go-cache'
+$env:GOCACHE = Join-Path $root 'build\go-cache'
 $launcherDirectory = Join-Path $root 'cmd/utautts-launcher'
 $launcherIcon = Join-Path $launcherDirectory 'utautts.ico'
 $launcherResource = Join-Path $launcherDirectory 'utautts.syso'
