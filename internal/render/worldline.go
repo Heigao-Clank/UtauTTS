@@ -28,148 +28,12 @@ type worldlineManifest struct {
 	Units         []worldlineManifestUnit `json:"units"`
 }
 
-func renderOpenUtauClassicWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-convergence", false)
-}
-
-func renderOpenUtauClassicWorldlineLocalPitch(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-convergence", true)
-}
-
 func renderOpenUtauClassicWorldlineFaithful(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful", true)
 }
 
 func renderOpenUtauClassicWorldlineFaithfulGPU(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful-gpu", true)
-}
-
-func renderOpenUtauClassicWorldlineFaithfulPhase(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful-phase", true)
-}
-
-// renderWaveformOpenUtauPitchPost first completes the ordinary waveform
-// concatenation, then sends that one continuous phrase through the Classic
-// resampler. Unlike the vowel-only hybrid, it never alternates raw and WORLD
-// timbres every mora. Modulation 100 preserves the source phrase's local pitch
-// variation while the frame curve supplies the learned relative movement.
-func renderWaveformOpenUtauPitchPost(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 100, 0, 0)
-}
-
-// renderWaveformOpenUtauPitchPostControlled suppresses the source phrase's F0
-// modulation so a diagnostic comparison exposes the supplied contour itself.
-// The normal post backend retains modulation 100 for voice preservation.
-func renderWaveformOpenUtauPitchPostControlled(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 0, 0, 0)
-}
-
-// renderWaveformOpenUtauPitchPostSpectral keeps the pitch-bearing low band of
-// the continuous Worldline output, while restoring the raw waveform's upper
-// band for consonant identity. A complementary zero-phase FIR avoids both the
-// mora-rate timbre gating and same-band raw/processed beating.
-func renderWaveformOpenUtauPitchPostSpectral(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 100, 410, 1001)
-}
-
-// renderWaveformOpenUtauPitchPostSpectral2 retains the first two harmonics of
-// this voice (about 260-590 Hz) from the pitched branch. It diagnoses whether
-// the fundamental-only split sounds metallic because its upper harmonics keep
-// the original pitch.
-func renderWaveformOpenUtauPitchPostSpectral2(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWaveformOpenUtauPitchPostMode(synthesisPlan, cfg, 100, 690, 1601)
-}
-
-func renderWaveformOpenUtauPitchPostMode(synthesisPlan *plan.Plan, cfg Config, modulation, restoreAboveHz float64, restoreTaps int) (*audio.PCM, error) {
-	baseCfg := cfg
-	baseCfg.Backend = "waveform"
-	baseCfg.ApplyPitch = false
-	baseCfg.IntonationStrength = 0
-	baseCfg.PitchCurve = nil
-	base, err := renderWaveform(synthesisPlan, baseCfg)
-	if err != nil {
-		return nil, err
-	}
-	if !planHasPitchShift(synthesisPlan, cfg) {
-		return base, nil
-	}
-	library, err := resolveWorldlineLibrary(cfg.WorldlinePath)
-	if err != nil {
-		return nil, err
-	}
-	bridge, err := resolveWorldlineBridge(cfg.WorldlineBridgePath)
-	if err != nil {
-		return nil, err
-	}
-	reference := pitch.EstimateMedian(pcmFloats(base.Data), base.SampleRate)
-	if reference <= 0 {
-		reference = 220
-	}
-	durationMS := float64(len(base.Data)) * 1000 / float64(base.SampleRate)
-	requiredLengthMS := math.Ceil(durationMS/50+0.5) * 50
-	curveLength := max(2, int(math.Ceil(requiredLengthMS/worldlineFrameMS))+2)
-	f0Curve := make([]float64, curveLength)
-	for frame := range f0Curve {
-		f0Curve[frame] = reference * pitchCurveFactorAt(cfg.PitchCurve, float64(frame)*worldlineFrameMS)
-	}
-
-	tempDir, err := os.MkdirTemp("", "utautts-worldline-post-")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tempDir)
-	sourcePath := filepath.Join(tempDir, "waveform.wav")
-	if err := audio.WriteWav(sourcePath, base); err != nil {
-		return nil, fmt.Errorf("write waveform post-process source: %w", err)
-	}
-	manifest := worldlineManifest{
-		Engine:        "classic-worldline-convergence",
-		WorldlinePath: library,
-		OutputPath:    filepath.Join(tempDir, "output.wav"),
-		SampleRate:    base.SampleRate,
-		F0Curve:       f0Curve,
-		Units: []worldlineManifestUnit{{
-			Source: sourcePath, PositionMS: 0, SkipMS: 0, LengthMS: durationMS,
-			FadeInMS: 0, FadeOutMS: 0, OffsetMS: 0, RequiredLengthMS: requiredLengthMS,
-			ConsonantMS: 0, CutoffMS: 0,
-			Tone: int(math.Round(69 + 12*math.Log2(reference/440))), ConsonantVelocity: 100,
-			PitchStartMS: 0, Volume: 100, Modulation: modulation, Tempo: 120,
-		}},
-	}
-	manifestPath := filepath.Join(tempDir, "manifest.json")
-	data, err := json.Marshal(manifest)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(manifestPath, data, 0o600); err != nil {
-		return nil, err
-	}
-	command := exec.Command(bridge, manifestPath)
-	processutil.Configure(command)
-	if output, err := command.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("worldline post-process bridge failed: %w: %s", err, output)
-	}
-	processed, err := audio.ReadWav(manifest.OutputPath)
-	if err != nil {
-		return nil, fmt.Errorf("read worldline post-process output: %w", err)
-	}
-	if processed.SampleRate != base.SampleRate || processed.Channels != 1 {
-		return nil, fmt.Errorf("worldline post-process format mismatch")
-	}
-	if len(processed.Data) < len(base.Data) {
-		processed.Data = append(processed.Data, make([]int16, len(base.Data)-len(processed.Data))...)
-	} else {
-		processed.Data = processed.Data[:len(base.Data)]
-	}
-	matched := matchLevelAndMean(pcmFloats(processed.Data), pcmFloats(base.Data))
-	for index, value := range matched {
-		value = math.Max(-1, math.Min(32767.0/32768.0, value))
-		processed.Data[index] = int16(math.Round(value * 32768))
-	}
-	if restoreAboveHz > 0 {
-		processed = restoreRawHighBand(base, processed, restoreAboveHz, restoreTaps)
-	}
-	return processed, nil
 }
 
 type worldlineManifestUnit struct {
@@ -199,16 +63,9 @@ type worldlineEnvelopePoint struct {
 	Y   float64 `json:"y"`
 }
 
-func renderWorldline(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWorldlineEngine(synthesisPlan, cfg, "phrase-synth", false)
-}
-
 func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, localSourcePitch bool) (*audio.PCM, error) {
 	if synthesisPlan == nil || len(synthesisPlan.Units) == 0 {
 		return nil, errors.New("empty synthesis plan")
-	}
-	if cfg.ReleaseMS <= 0 {
-		cfg.ReleaseMS = 20
 	}
 	library, err := resolveWorldlineLibrary(cfg.WorldlinePath)
 	if err != nil {

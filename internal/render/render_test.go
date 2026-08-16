@@ -121,31 +121,6 @@ func TestSmoothAndLimitPitchCurveDoesNotMutateAndLimitsSlope(t *testing.T) {
 	}
 }
 
-func TestRestoreRawHighBandIsComplementaryAndKeepsOnlyLowDifference(t *testing.T) {
-	const sampleRate = 8000
-	raw := &audio.PCM{SampleRate: sampleRate, Channels: 1, Data: make([]int16, 800)}
-	identical := &audio.PCM{SampleRate: sampleRate, Channels: 1, Data: append([]int16(nil), raw.Data...)}
-	if got := restoreRawHighBand(raw, identical, 500, 65); !reflect.DeepEqual(got.Data, raw.Data) {
-		t.Fatal("identical raw/processed signals did not reconstruct exactly")
-	}
-	rmsFor := func(frequency float64) float64 {
-		processed := &audio.PCM{SampleRate: sampleRate, Channels: 1, Data: make([]int16, len(raw.Data))}
-		for index := range processed.Data {
-			processed.Data[index] = int16(math.Round(10000 * math.Sin(2*math.Pi*frequency*float64(index)/sampleRate)))
-		}
-		got := restoreRawHighBand(raw, processed, 500, 65)
-		sum := 0.0
-		for _, value := range got.Data[100:700] {
-			sum += float64(value) * float64(value)
-		}
-		return math.Sqrt(sum / 600)
-	}
-	low, high := rmsFor(150), rmsFor(2000)
-	if low < 5000 || high > low*0.1 {
-		t.Fatalf("unexpected complementary filter response: low=%f high=%f", low, high)
-	}
-}
-
 func TestOpenUtauEnvelopeUsesNextPhoneTailTiming(t *testing.T) {
 	units := []plan.Unit{
 		{NoteStartMS: 0, DurationMS: 100, PreutteranceMS: 30, OverlapMS: 5},
@@ -192,6 +167,36 @@ func TestRenderRejectsNonFiniteTimingConfiguration(t *testing.T) {
 	}
 }
 
+func TestRenderReleaseZeroIsHonoredWhenExplicit(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/unit.wav"
+	data := make([]int16, 300)
+	for i := range data {
+		data[i] = 10000
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{DurationMS: 200, Units: []plan.Unit{{
+		Alias: "あ", Source: path, NoteStartMS: 100, DurationMS: 100,
+		PreutteranceMS: 100, OverlapMS: 0,
+	}}}
+	implicit, err := Render(p, Config{ReleaseMS: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit, err := Render(p, Config{ReleaseMS: 0, ReleaseSet: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(implicit.Data) != 220 {
+		t.Fatalf("unset release frames = %d, want 220", len(implicit.Data))
+	}
+	if len(explicit.Data) != 200 {
+		t.Fatalf("explicit zero release frames = %d, want 200", len(explicit.Data))
+	}
+}
+
 func TestRenderRejectsUnsafePitchCurveRangeAndFrame(t *testing.T) {
 	for _, curve := range []*PitchCurve{
 		{FrameMS: 0.01, Cents: []float64{0}},
@@ -202,218 +207,6 @@ func TestRenderRejectsUnsafePitchCurveRangeAndFrame(t *testing.T) {
 		if err == nil {
 			t.Fatalf("accepted unsafe curve: %+v", curve)
 		}
-	}
-}
-
-func TestPitchCurveHasShift(t *testing.T) {
-	if pitchCurveHasShift(&PitchCurve{FrameMS: 5, Cents: []float64{0, 0}}) {
-		t.Fatal("flat curve was treated as shifted")
-	}
-	if !pitchCurveHasShift(&PitchCurve{FrameMS: 5, Cents: []float64{0, 25}}) {
-		t.Fatal("non-flat curve was not treated as shifted")
-	}
-}
-
-func TestStableVowelFramesExcludeFixedConsonantAndNoteTail(t *testing.T) {
-	unit := plan.Unit{NoteStartMS: 100, DurationMS: 140, PreutteranceMS: 60, ConsonantMS: 100}
-	start, end, ok := stableVowelFrames([]plan.Unit{unit}, 0, 20, 1000, 400, 400)
-	if !ok || start != 152 || end != 228 {
-		t.Fatalf("stable vowel = %d..%d ok=%v, want 152..228", start, end, ok)
-	}
-}
-
-func TestStableVowelFramesStopBeforeNextHandoff(t *testing.T) {
-	units := []plan.Unit{
-		{NoteStartMS: 100, DurationMS: 240, PreutteranceMS: 35, ConsonantMS: 70},
-		{NoteStartMS: 340, DurationMS: 240, PreutteranceMS: 35, ConsonantMS: 70},
-	}
-	start, end, ok := stableVowelFrames(units, 0, 20, 1000, 700, 700)
-	if !ok || start != 147 || end != 305 {
-		t.Fatalf("stable vowel = %d..%d ok=%v, want 147..305", start, end, ok)
-	}
-}
-
-func TestBestBranchLagFindsLocalAlignment(t *testing.T) {
-	baseline := make([]float64, 300)
-	processed := make([]float64, 300)
-	for i := 0; i < 300; i++ {
-		baseline[i] = math.Sin(2 * math.Pi * float64(i) / 23)
-	}
-	copy(processed[5:], baseline[:295])
-	lag, correlation := bestBranchLag(baseline, processed, 80, 220, 1000, false)
-	if lag != 5 || correlation < 0.99 {
-		t.Fatalf("lag=%d correlation=%f, want lag 5 with high correlation", lag, correlation)
-	}
-}
-
-func TestBestConstantBranchLagDoesNotWarpVowelInterior(t *testing.T) {
-	baseline := make([]float64, 300)
-	processed := make([]float64, 300)
-	for i := range baseline {
-		baseline[i] = math.Sin(2 * math.Pi * float64(i) / 23)
-	}
-	copy(processed[5:], baseline[:295])
-	lag, correlation := bestConstantBranchLag(baseline, processed, 80, 220, 1000)
-	if lag != 5 || correlation < 0.99 {
-		t.Fatalf("lag=%d correlation=%f, want one constant lag 5", lag, correlation)
-	}
-	for frame := 80; frame < 220; frame++ {
-		if processed[frame+lag] != baseline[frame] {
-			t.Fatalf("constant alignment warped frame %d", frame)
-		}
-	}
-}
-
-func TestOpenUtauPitchRegionsKeepPhoneBoundariesRawAndReleaseProcessed(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{
-		{NoteStartMS: 0, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50},
-		{NoteStartMS: 240, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50},
-	}
-	baseline := make([]float64, msToFrames(500, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		processed[index] = 0.2 * math.Sin(2*math.Pi*230*float64(index)/sampleRate)
-	}
-	regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed)
-	if len(regions) != 2 || regions[0].end >= regions[1].start || regions[1].end != len(baseline) || regions[1].fadeOut {
-		t.Fatalf("regions=%+v, want raw phone boundary and final processed release", regions)
-	}
-}
-
-func TestOpenUtauPitchRegionsKeepUnvoicedGapRaw(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{
-		{NoteStartMS: 0, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50},
-		{NoteStartMS: 240, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50},
-	}
-	baseline := make([]float64, msToFrames(500, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		value := 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		baseline[index], processed[index] = value, value
-	}
-	for index := msToFrames(230, sampleRate); index < msToFrames(270, sampleRate); index++ {
-		baseline[index], processed[index] = 0, 0
-	}
-	regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed)
-	if len(regions) != 2 {
-		t.Fatalf("regions=%+v, want unvoiced gap to split regions", regions)
-	}
-}
-
-func TestOpenUtauPitchRegionsDoNotHideBriefMissingConsonant(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{
-		{NoteStartMS: 0, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50},
-		{NoteStartMS: 240, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50},
-	}
-	baseline := make([]float64, msToFrames(500, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		value := 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		baseline[index], processed[index] = value, value
-	}
-	// Simulate a short consonant that the processed branch has dropped. A
-	// whole-gap RMS check would be dominated by the vowels on either side.
-	for index := msToFrames(238, sampleRate); index < msToFrames(250, sampleRate); index++ {
-		baseline[index] = 0.12 * math.Sin(2*math.Pi*3000*float64(index)/sampleRate)
-		processed[index] = 0
-	}
-	regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed)
-	if len(regions) != 2 {
-		t.Fatalf("regions=%+v, want brief dropped consonant to split regions", regions)
-	}
-}
-
-func TestOpenUtauPitchRegionsRejectCandidateWithBriefProcessedDropout(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{{NoteStartMS: 0, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50}}
-	baseline := make([]float64, msToFrames(260, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		processed[index] = 0.18 * math.Sin(2*math.Pi*230*float64(index)/sampleRate)
-	}
-	// The processed vowel loses only 12 ms. A whole-vowel RMS still looks
-	// healthy, but exposing it would produce the reported missing-phone sound.
-	for index := msToFrames(130, sampleRate); index < msToFrames(142, sampleRate); index++ {
-		processed[index] = 0
-	}
-	if regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed); len(regions) != 0 {
-		t.Fatalf("regions=%+v, want dropped vowel candidate to remain raw", regions)
-	}
-}
-
-func TestOpenUtauPitchRegionsAcceptCandidateWithModerateLevelDifference(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{{NoteStartMS: 0, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50}}
-	baseline := make([]float64, msToFrames(260, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		processed[index] = 0.15 * math.Sin(2*math.Pi*230*float64(index)/sampleRate)
-	}
-	if regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed); len(regions) != 1 {
-		t.Fatalf("regions=%+v, want intact lower-level vowel candidate accepted", regions)
-	}
-}
-
-func TestOpenUtauPitchRegionsRejectCandidateWithExcessProcessedEnergy(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{{NoteStartMS: 0, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50}}
-	baseline := make([]float64, msToFrames(260, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		processed[index] = 0.18 * math.Sin(2*math.Pi*230*float64(index)/sampleRate)
-	}
-	for index := msToFrames(130, sampleRate); index < msToFrames(142, sampleRate); index++ {
-		processed[index] *= 2.5
-	}
-	if regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed); len(regions) != 0 {
-		t.Fatalf("regions=%+v, want locally excessive processed candidate to remain raw", regions)
-	}
-}
-
-func TestOpenUtauPitchRegionsDoNotMergeAcrossRejectedCandidate(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{
-		{NoteStartMS: 0, DurationMS: 200, PreutteranceMS: 20, ConsonantMS: 40},
-		{NoteStartMS: 200, DurationMS: 200, PreutteranceMS: 20, ConsonantMS: 40},
-		{NoteStartMS: 400, DurationMS: 200, PreutteranceMS: 20, ConsonantMS: 40},
-	}
-	baseline := make([]float64, msToFrames(620, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		processed[index] = 0.18 * math.Sin(2*math.Pi*230*float64(index)/sampleRate)
-	}
-	for index := msToFrames(290, sampleRate); index < msToFrames(302, sampleRate); index++ {
-		processed[index] = 0
-	}
-	regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed)
-	if len(regions) != 2 {
-		t.Fatalf("regions=%+v, want good vowels on either side of rejected candidate kept separate", regions)
-	}
-}
-
-func TestOpenUtauPitchRegionsDoNotExtendIntoDroppedRelease(t *testing.T) {
-	const sampleRate = 16000
-	units := []plan.Unit{{NoteStartMS: 0, DurationMS: 240, PreutteranceMS: 20, ConsonantMS: 50}}
-	baseline := make([]float64, msToFrames(280, sampleRate))
-	processed := make([]float64, len(baseline))
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*220*float64(index)/sampleRate)
-		processed[index] = 0.18 * math.Sin(2*math.Pi*230*float64(index)/sampleRate)
-	}
-	for index := msToFrames(245, sampleRate); index < len(processed); index++ {
-		processed[index] = 0
-	}
-	regions := openUtauPitchRegions(units, 20, sampleRate, baseline, processed)
-	if len(regions) != 1 || regions[0].end == len(baseline) || !regions[0].fadeOut {
-		t.Fatalf("regions=%+v, want dropped release left as raw waveform", regions)
 	}
 }
 
@@ -447,29 +240,6 @@ func TestRenderAllowsSilentClosureUnit(t *testing.T) {
 	}
 }
 
-func TestRemovedLongRendererLegacy(t *testing.T) {
-	t.Skip("legacy renderer was removed")
-	path := t.TempDir() + "/continuous.wav"
-	data := make([]int16, 1000)
-	for index := range data {
-		data[index] = int16(7000 * math.Sin(2*math.Pi*0.02*float64(index)))
-	}
-	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
-		t.Fatal(err)
-	}
-	p := &plan.Plan{DurationMS: 280, Units: []plan.Unit{
-		{Position: 0, Alias: "a か", Source: path, OtoPath: "oto.ini", OtoLine: 10, NoteStartMS: 0, DurationMS: 140, OffsetMS: 0, ConsonantMS: 80, PreutteranceMS: 40, PitchFactor: 1, EnergyFactor: 1},
-		{Position: 1, Alias: "a き", Source: path, OtoPath: "oto.ini", OtoLine: 11, NoteStartMS: 140, DurationMS: 140, OffsetMS: 300, ConsonantMS: 80, PreutteranceMS: 40, PitchFactor: 1, EnergyFactor: 1},
-	}}
-	pcm, err := Render(p, Config{Backend: "waveform", ReleaseMS: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pcm.Data) < 280 || p.Units[0].LongUnitGroup != 1 || p.Units[1].LongUnitGroup != 1 || p.Units[0].LongUnitSize != 2 {
-		t.Fatalf("long-unit audit missing: units=%+v frames=%d", p.Units, len(pcm.Data))
-	}
-}
-
 func TestWorldlineF0CurveInterpolatesInLogFrequency(t *testing.T) {
 	p := &plan.Plan{Units: []plan.Unit{{NoteStartMS: 0}, {NoteStartMS: 100}}}
 	curve := worldlineF0Curve(p, []float64{200, 400}, []float64{1, 1}, 220, 11)
@@ -499,96 +269,6 @@ func TestWorldlineLocalF0CurveDoesNotGlideBetweenRecordings(t *testing.T) {
 	}
 	if math.Abs(curve[10]-388) > 0.01 {
 		t.Fatalf("next unit = %.2f, want local 388Hz baseline", curve[10])
-	}
-}
-
-func TestDirectConsonantWeightsCanForceCVFixedRegion(t *testing.T) {
-	p := &plan.Plan{Units: []plan.Unit{{
-		Position: 0, Alias: "か", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 80, DurationMS: 140,
-	}}}
-	const sampleRate = 8000
-	baseline := make([]float64, sampleRate/2)
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
-	}
-	standard := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreNone, false, true)
-	forced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreFull, false, true)
-	center := msToFrames(100, sampleRate)
-	if standard[center] != 0 || forced[center] != 1 {
-		t.Fatalf("standard=%f forced=%f", standard[center], forced[center])
-	}
-}
-
-func TestDirectConsonantWeightsBalancedCVStopsBeforeVowelTail(t *testing.T) {
-	p := &plan.Plan{Units: []plan.Unit{{
-		Position: 0, Alias: "あ", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,
-	}}}
-	const sampleRate = 8000
-	baseline := make([]float64, sampleRate/2)
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
-	}
-	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, false, true)
-	attack := msToFrames(90, sampleRate)
-	vowelTail := msToFrames(145, sampleRate)
-	if math.Abs(balanced[attack]-0.85) > 0.001 {
-		t.Fatalf("attack weight=%f, want 0.85", balanced[attack])
-	}
-	if balanced[vowelTail] != 0 {
-		t.Fatalf("vowel tail weight=%f, want 0", balanced[vowelTail])
-	}
-}
-
-func TestDirectConsonantWeightsGentleCVUsesIntermediateAttackWeight(t *testing.T) {
-	p := &plan.Plan{Units: []plan.Unit{{
-		Position: 0, Alias: "あ", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,
-	}}}
-	const sampleRate = 8000
-	baseline := make([]float64, sampleRate/2)
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
-	}
-	gentle := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreGentle, false, true)
-	attack := msToFrames(90, sampleRate)
-	if math.Abs(gentle[attack]-0.55) > 0.001 {
-		t.Fatalf("gentle attack weight=%f, want 0.55", gentle[attack])
-	}
-}
-
-func TestDirectConsonantWeightsBalancedAvoidsShiftedPeriodicVowel(t *testing.T) {
-	p := &plan.Plan{Units: []plan.Unit{{
-		Position: 0, Alias: "か", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,
-		PitchFactor: 1.03, IntonationFactor: 1.02,
-	}}}
-	const sampleRate = 8000
-	baseline := make([]float64, sampleRate/2)
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
-	}
-	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, false, true)
-	beforeBoundary := msToFrames(98, sampleRate)
-	afterTransition := msToFrames(105, sampleRate)
-	if balanced[beforeBoundary] == 0 {
-		t.Fatal("shifted CV consonant attack was not protected")
-	}
-	if balanced[afterTransition] != 0 {
-		t.Fatalf("shifted raw vowel leaked after transition: %f", balanced[afterTransition])
-	}
-}
-
-func TestDirectConsonantWeightsBalancedRespectsFramePitchShift(t *testing.T) {
-	p := &plan.Plan{Units: []plan.Unit{{
-		Position: 0, Alias: "か", NoteStartMS: 100, PreutteranceMS: 40, ConsonantMS: 100, DurationMS: 140,
-		PitchFactor: 1, IntonationFactor: 1,
-	}}}
-	const sampleRate = 8000
-	baseline := make([]float64, sampleRate/2)
-	for index := range baseline {
-		baseline[index] = 0.2 * math.Sin(2*math.Pi*200*float64(index)/sampleRate)
-	}
-	balanced := directConsonantWeights(p, 20, sampleRate, len(baseline), baseline, baseline, cvRestoreBalanced, true, true)
-	if got := balanced[msToFrames(105, sampleRate)]; got != 0 {
-		t.Fatalf("frame-shifted raw vowel leaked after transition: %f", got)
 	}
 }
 

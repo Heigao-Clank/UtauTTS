@@ -1,9 +1,11 @@
 package render
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"sync"
 
@@ -14,6 +16,7 @@ import (
 
 type Config struct {
 	ReleaseMS               float64
+	ReleaseSet              bool
 	IntonationStrength      float64
 	ApplyPitch              bool
 	Backend                 string
@@ -29,12 +32,19 @@ type Config struct {
 // generated contour and renderer-side correction.
 const MaxIntonationStrength = 2.0
 
-// rendererImplementations is only an executable dispatch table. Display
-// identity and declared capabilities belong to each renderer's plugin.json.
-var rendererImplementations = map[string]struct{}{
-	"waveform":                                {},
-	"openutau-classic-worldline-faithful":     {},
-	"openutau-classic-worldline-faithful-gpu": {},
+// defaultReleaseMS is the unit release envelope applied when a caller has not
+// explicitly configured one. Zero is a valid explicit value meaning "no
+// release"; callers that want it must set ReleaseSet.
+const defaultReleaseMS = 20.0
+
+// rendererImplementations is the single source of truth for which backend
+// strings this executable can dispatch. Display identity and declared
+// capabilities belong to each renderer's plugin.json; a renderer manifest
+// whose backend is not in this map is rejected at discovery time.
+var rendererImplementations = map[string]func(*plan.Plan, Config) (*audio.PCM, error){
+	"waveform":                            renderWaveform,
+	"openutau-classic-worldline-faithful": renderOpenUtauClassicWorldlineFaithful,
+	"openutau-classic-worldline-faithful-gpu": renderOpenUtauClassicWorldlineFaithfulGPU,
 }
 
 func IsKnownRenderer(id string) bool {
@@ -79,6 +89,88 @@ func newSourceCache() sourceCache {
 	}
 }
 
+// WAV sources are decoded once per render in a process-local cache and once
+// more by the shared global cache below. The GUI synthesizes the same
+// voicebank repeatedly, so keeping decoded recordings alive between renders
+// avoids rereading every file for each preview.
+const maxWAVCacheBytes = 256 << 20 // 256 MiB of decoded source audio
+
+type wavCacheEntry struct {
+	path    string
+	size    int64
+	modTime int64
+	pcm     *audio.PCM
+}
+
+type wavCache struct {
+	mu     sync.Mutex
+	byPath map[string]*list.Element
+	order  *list.List
+	bytes  int64
+}
+
+var globalWAVCache = wavCache{
+	byPath: make(map[string]*list.Element),
+	order:  list.New(),
+}
+
+func (c *wavCache) remove(element *list.Element) {
+	entry := element.Value.(*wavCacheEntry)
+	c.bytes -= int64(len(entry.pcm.Data)) * 2
+	delete(c.byPath, entry.path)
+	c.order.Remove(element)
+}
+
+func (c *wavCache) evict() {
+	for c.bytes > maxWAVCacheBytes && c.order.Len() > 0 {
+		c.remove(c.order.Back())
+	}
+}
+
+// loadWAVCached decodes a WAV once and reuses it across renders. Entries are
+// keyed by path plus size and modification time, so edited recordings are
+// picked up automatically and evicted least-recently-used against a byte
+// budget.
+func loadWAVCached(path string) (*audio.PCM, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	modTime := info.ModTime().UnixNano()
+	globalWAVCache.mu.Lock()
+	defer globalWAVCache.mu.Unlock()
+	if element, ok := globalWAVCache.byPath[path]; ok {
+		entry := element.Value.(*wavCacheEntry)
+		if entry.size == info.Size() && entry.modTime == modTime {
+			globalWAVCache.order.MoveToFront(element)
+			return entry.pcm, nil
+		}
+		globalWAVCache.remove(element)
+	}
+	pcm, err := audio.ReadWav(path)
+	if err != nil {
+		return nil, err
+	}
+	entry := &wavCacheEntry{path: path, size: info.Size(), modTime: modTime, pcm: pcm}
+	element := globalWAVCache.order.PushFront(entry)
+	globalWAVCache.byPath[path] = element
+	globalWAVCache.bytes += int64(len(pcm.Data)) * 2
+	globalWAVCache.evict()
+	return pcm, nil
+}
+
+// ClearWAVCache drops all cached source recordings. Call it when the set of
+// available voicebanks changes so removed recordings are not retained.
+func ClearWAVCache() {
+	globalWAVCache.mu.Lock()
+	defer globalWAVCache.mu.Unlock()
+	for element := globalWAVCache.order.Front(); element != nil; {
+		next := element.Next()
+		globalWAVCache.remove(element)
+		element = next
+	}
+}
+
 type effectiveTiming struct {
 	preutteranceMS float64
 	consonantMS    float64
@@ -99,6 +191,9 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	}
 	if cfg.ReleaseMS < 0 {
 		return nil, fmt.Errorf("release_ms must be non-negative, got %v", cfg.ReleaseMS)
+	}
+	if !cfg.ReleaseSet && cfg.ReleaseMS == 0 {
+		cfg.ReleaseMS = defaultReleaseMS
 	}
 	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > MaxIntonationStrength {
 		return nil, fmt.Errorf("intonation_strength must be between 0 and %.0f, got %v", MaxIntonationStrength, cfg.IntonationStrength)
@@ -126,16 +221,13 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	if cfg.BoundaryBridgeMS > 0 && !rendererSupportsBoundaryBridge(cfg.Backend) {
 		return nil, fmt.Errorf("boundary bridge requires waveform renderer, got %q", cfg.Backend)
 	}
-	switch cfg.Backend {
-	case "", "waveform":
+	if cfg.Backend == "" {
 		return renderWaveform(synthesisPlan, cfg)
-	case "openutau-classic-worldline-faithful":
-		return renderOpenUtauClassicWorldlineFaithful(synthesisPlan, cfg)
-	case "openutau-classic-worldline-faithful-gpu":
-		return renderOpenUtauClassicWorldlineFaithfulGPU(synthesisPlan, cfg)
-	default:
-		return nil, fmt.Errorf("unknown renderer backend %q", cfg.Backend)
 	}
+	if backend, ok := rendererImplementations[cfg.Backend]; ok {
+		return backend(synthesisPlan, cfg)
+	}
+	return nil, fmt.Errorf("unknown renderer backend %q", cfg.Backend)
 }
 
 func effectiveUnitPitchFactor(unit plan.Unit, applyPitch bool) float64 {
@@ -143,18 +235,6 @@ func effectiveUnitPitchFactor(unit plan.Unit, applyPitch bool) float64 {
 		return 1
 	}
 	return unit.PitchFactor
-}
-
-func pitchCurveHasShift(curve *PitchCurve) bool {
-	if curve == nil {
-		return false
-	}
-	for _, cents := range curve.Cents {
-		if math.Abs(cents) > 0.1 {
-			return true
-		}
-	}
-	return false
 }
 
 func rendererSupportsBoundaryBridge(renderer string) bool {
@@ -176,93 +256,9 @@ func pitchCurveFactorAt(curve *PitchCurve, timeMS float64) float64 {
 	return math.Pow(2, cents/1200)
 }
 
-func renderWaveformLong(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	if synthesisPlan == nil || len(synthesisPlan.Units) == 0 {
-		return nil, errors.New("empty synthesis plan")
-	}
-	if cfg.ReleaseMS <= 0 {
-		cfg.ReleaseMS = 20
-	}
-	collapsed := *synthesisPlan
-	collapsed.Units = collapseLongUnits(synthesisPlan.Units)
-	for index := range synthesisPlan.Units {
-		timing := normalizeTiming(synthesisPlan.Units[index], cfg.ReleaseMS)
-		unit := &synthesisPlan.Units[index]
-		unit.TimingScale = timing.scale
-		unit.EffectivePreutteranceMS = timing.preutteranceMS
-		unit.EffectiveConsonantMS = timing.consonantMS
-		unit.EffectiveOverlapMS = timing.overlapMS
-		unit.IntonationFactor = 1
-	}
-	pcm, err := renderWaveform(&collapsed, cfg)
-	if err != nil {
-		return nil, err
-	}
-	synthesisPlan.BoundaryBridgeMS = collapsed.BoundaryBridgeMS
-	synthesisPlan.BoundaryBridgeThreshold = collapsed.BoundaryBridgeThreshold
-	synthesisPlan.BoundaryBridges = collapsed.BoundaryBridges
-	synthesisPlan.BoundaryRepairDecisions = collapsed.BoundaryRepairDecisions
-	return pcm, nil
-}
-
-func collapseLongUnits(units []plan.Unit) []plan.Unit {
-	result := make([]plan.Unit, 0, len(units))
-	groupID := 0
-	for start := 0; start < len(units); {
-		end := start + 1
-		for end < len(units) && canContinueLongUnit(units[end-1], units[end]) {
-			end++
-		}
-		if end-start < 2 {
-			result = append(result, units[start])
-			start = end
-			continue
-		}
-		groupID++
-		for index := start; index < end; index++ {
-			units[index].LongUnitGroup = groupID
-			units[index].LongUnitSize = end - start
-		}
-		combined := units[start]
-		last := units[end-1]
-		combined.Alias = combined.Alias + "…" + last.Alias
-		combined.DurationMS = last.NoteStartMS + last.DurationMS - combined.NoteStartMS
-		combined.LongUnitGroup = groupID
-		combined.LongUnitSize = end - start
-		if last.CutoffMS < 0 {
-			absoluteEndMS := last.OffsetMS - last.CutoffMS
-			combined.CutoffMS = -(absoluteEndMS - combined.OffsetMS)
-		} else {
-			combined.CutoffMS = last.CutoffMS
-		}
-		result = append(result, combined)
-		start = end
-	}
-	return result
-}
-
-func canContinueLongUnit(previous, current plan.Unit) bool {
-	if previous.Silent || current.Silent || previous.Source == "" || previous.Source != current.Source {
-		return false
-	}
-	if previous.OtoPath == "" || previous.OtoPath != current.OtoPath || current.OtoLine != previous.OtoLine+1 {
-		return false
-	}
-	if current.Position != previous.Position+1 || current.OffsetMS <= previous.OffsetMS {
-		return false
-	}
-	return math.Abs(previous.PitchFactor-current.PitchFactor) < 1e-6 && math.Abs(previous.EnergyFactor-current.EnergyFactor) < 1e-6
-}
-
 func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWaveformWithStretch(synthesisPlan, cfg, false, func(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) ([]float64, error) {
 		return retimeWithCompressedPrefix(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate), nil
-	})
-}
-
-func renderWaveformGPU(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
-	return renderWaveformWithStretch(synthesisPlan, cfg, true, func(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) ([]float64, error) {
-		return retimeWithCompressedPrefixUsing(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate, gpuWSOLA)
 	})
 }
 
@@ -283,9 +279,6 @@ const maxParallelGPUUnits = 32
 func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRetime bool, retime func([]float64, int, int, int, int) ([]float64, error)) (*audio.PCM, error) {
 	if synthesisPlan == nil || len(synthesisPlan.Units) == 0 {
 		return nil, errors.New("empty synthesis plan")
-	}
-	if cfg.ReleaseMS <= 0 {
-		cfg.ReleaseMS = 20
 	}
 	synthesisPlan.BoundaryBridgeMS = 0
 	synthesisPlan.BoundaryBridgeThreshold = 0
@@ -653,7 +646,7 @@ func (c *sourceCache) load(path string) (*audio.PCM, error) {
 	if pcm, ok := c.raw[path]; ok {
 		return pcm, nil
 	}
-	pcm, err := audio.ReadWav(path)
+	pcm, err := loadWAVCached(path)
 	if err != nil {
 		return nil, err
 	}

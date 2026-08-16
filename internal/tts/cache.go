@@ -7,6 +7,7 @@ import (
 
 	"utautts/internal/openjtalk"
 	"utautts/internal/prosody"
+	"utautts/internal/render"
 	"utautts/internal/voicebank"
 )
 
@@ -118,4 +119,5 @@ func ClearCaches() {
 	synthesisCache.models = make(map[string]modelCacheEntry)
 	synthesisCache.analyses = make(map[analysisCacheKey]*openjtalk.Analysis)
 	synthesisCache.Unlock()
+	render.ClearWAVCache()
 }
