@@ -3,6 +3,7 @@
 ## 利用者向け
 
 - [GUIの使い方](gui.md): 文章入力、再生、保存、ショートカット、ドラッグ＆ドロップ
+- [コマンドライン（CLI）](cli.md): CLIでの合成、オプション一覧
 - [イントネーションとモーラ長の編集](manual-pitch.md): GUI・CLIでの韻律編集
 - [辞書設定](dictionary.md): 表記ごとの読みの登録と適用ルール
 - [トラブルシューティング](troubleshooting.md): runtime、Open JTalk、Rendererの問題
