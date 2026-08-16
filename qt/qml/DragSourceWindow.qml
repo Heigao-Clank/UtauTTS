@@ -15,7 +15,7 @@ Window {
     required property color mutedText
     signal dragError()
 
-    title: "音声をドラッグ"
+    title: "exoをドラッグ"
     visible: false
     width: 720
     height: 420
@@ -26,6 +26,8 @@ Window {
     palette: hostPalette
     color: palette.window
 
+    property bool exoDrag: root.files.length === 1 && String(root.files[0]).toLowerCase().endsWith(".exo")
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 16
@@ -33,7 +35,9 @@ Window {
 
         Label {
             Layout.fillWidth: true
-            text: "下の領域をドラッグして、タイムライン上で離してください。"
+            text: root.exoDrag
+                  ? "AviUtlの拡張編集にドラッグ＆ドロップしてください。"
+                  : "下の領域をドラッグして、タイムライン上で離してください。"
             wrapMode: Text.WordWrap
         }
 

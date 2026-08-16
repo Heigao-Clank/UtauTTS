@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"utautts/internal/audio"
@@ -171,5 +172,36 @@ func TestNewAllowsMissingVoiceDirectory(t *testing.T) {
 	result, err := engine.Call("voicebanks", nil)
 	if err != nil || string(result) != `{"voicebanks":[]}` {
 		t.Fatalf("voicebanks=%s err=%v", result, err)
+	}
+}
+
+func TestEngineWritesDragExo(t *testing.T) {
+	root := t.TempDir()
+	paths := make([]string, 2)
+	for index, duration := range []int{1000, 2000} {
+		paths[index] = filepath.Join(root, fmt.Sprintf("00%d_あ.wav", index+1))
+		data := make([]int16, duration)
+		for frame := range data {
+			data[frame] = 4000
+		}
+		if err := audio.WriteWav(paths[index], &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine, err := New(Config{VoiceDir: filepath.Join(root, "missing")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "utautts.exo")
+	request, _ := json.Marshal(map[string]any{"output_path": output, "files": paths, "frame_rate": 60})
+	if _, err := engine.Call("writeExo", request); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(content) < 16 || !strings.Contains(string(content), "audio_rate") {
+		t.Fatalf("unexpected exo output: %q", content)
 	}
 }

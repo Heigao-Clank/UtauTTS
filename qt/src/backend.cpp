@@ -217,9 +217,6 @@ void Backend::initialize() {
     const QString runtime = root.filePath("runtime");
     const QString openJTalkPath = QDir(runtime).filePath("utautts-openjtalk-features.exe");
     const QString openJTalkDictionary = QDir(runtime).filePath("open_jtalk_dic_utf_8-1.11");
-    // Leave these unset when running from a development tree. The Go backend
-    // can then search its normal fallback locations instead of treating a
-    // missing runtime copy as an explicit, unrecoverable path.
     if (QFileInfo(openJTalkPath).isFile()) {
         config.insert("openjtalk_path", openJTalkPath);
     }
@@ -491,6 +488,34 @@ bool Backend::startFileDrag(const QVariantList &files) {
     drag->exec(Qt::CopyAction);
     setError({});
     return true;
+}
+
+QUrl Backend::writeDragExo(const QUrl &directory, const QVariantList &files, int frameRate) {
+    if (!directory.isLocalFile() || files.isEmpty()) {
+        setError(tr("ドラッグ用のexoファイルを作成できません"));
+        return {};
+    }
+    QStringList paths;
+    paths.reserve(files.size());
+    for (const QVariant &value : files) {
+        const QUrl url = value.canConvert<QUrl>() ? value.toUrl() : QUrl(value.toString());
+        if (!url.isLocalFile() || url.toLocalFile().isEmpty() || !QFileInfo::exists(url.toLocalFile())) {
+            setError(tr("ドラッグするWAVファイルが見つかりません"));
+            return {};
+        }
+        paths.append(QFileInfo(url.toLocalFile()).absoluteFilePath());
+    }
+    const int boundedFrameRate = qBound(1, frameRate, 240);
+    const QString exoPath = QDir(directory.toLocalFile()).filePath(QStringLiteral("utautts.exo"));
+    const QVariantMap request{{"output_path", QDir::toNativeSeparators(exoPath)}, {"files", paths}, {"frame_rate", boundedFrameRate}};
+    try {
+        call("writeExo", request);
+    } catch (const std::exception &exception) {
+        setError(QString::fromUtf8(exception.what()));
+        return {};
+    }
+    setError({});
+    return QUrl::fromLocalFile(exoPath);
 }
 
 QUrl Backend::defaultSaveFile(const QString &fileName) const {

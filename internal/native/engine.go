@@ -11,6 +11,7 @@ import (
 
 	"utautts/internal/appinfo"
 	"utautts/internal/audio"
+	"utautts/internal/aviutl"
 	"utautts/internal/frontend"
 	"utautts/internal/openjtalk"
 	"utautts/internal/plugin"
@@ -90,6 +91,8 @@ func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
 		result, err = e.predictProsody(requestJSON)
 	case "synthesize":
 		result, err = e.synthesize(requestJSON)
+	case "writeExo":
+		result, err = e.writeExo(requestJSON)
 	default:
 		err = fmt.Errorf("unknown native method %q", method)
 	}
@@ -99,9 +102,6 @@ func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
 	return json.Marshal(result)
 }
 
-// nativeVoicebankResolver resolves a voicebank ID to its root path for the
-// shared synthesis service. An empty ID selects the default (first by ID)
-// voicebank deterministically.
 type nativeVoicebankResolver struct {
 	engine *Engine
 }
@@ -334,4 +334,41 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 		"pitch_points":          result.PitchPoints,
 		"prosody_model_applied": e.synth.ModelAvailable(request.ModelID),
 	}, nil
+}
+
+func (e *Engine) writeExo(data []byte) (any, error) {
+	var request struct {
+		OutputPath string   `json:"output_path"`
+		Files      []string `json:"files"`
+		FrameRate  int      `json:"frame_rate"`
+	}
+	if err := json.Unmarshal(data, &request); err != nil {
+		return nil, fmt.Errorf("decode write exo request: %w", err)
+	}
+	if request.OutputPath == "" {
+		return nil, fmt.Errorf("output_path is required")
+	}
+	if len(request.Files) == 0 {
+		return nil, fmt.Errorf("files are required")
+	}
+	if request.FrameRate <= 0 {
+		request.FrameRate = 60
+	}
+	for _, file := range request.Files {
+		info, err := os.Stat(file)
+		if err != nil || info.IsDir() {
+			return nil, fmt.Errorf("WAV file not found: %s", file)
+		}
+	}
+	outputPath, err := filepath.Abs(request.OutputPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return nil, err
+	}
+	if err := aviutl.WriteExo(outputPath, request.Files, request.FrameRate); err != nil {
+		return nil, err
+	}
+	return map[string]any{"exo_path": outputPath}, nil
 }

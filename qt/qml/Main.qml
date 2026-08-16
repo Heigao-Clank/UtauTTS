@@ -62,6 +62,7 @@ ApplicationWindow {
     property url batchExportDirectory
     property var dragExportFiles: []
     property bool dragExportSelectedOnly: false
+    property int dragExportFrameRate: 60
     property bool dragExportReady: false
     property bool playbackQueueActive: false
     property var playbackQueue: []
@@ -160,6 +161,55 @@ ApplicationWindow {
     FolderDialog {
         id: dragSaveDialog
         onAccepted: window.startDragExport(selectedFolder)
+    }
+
+    Dialog {
+        id: frameRateDialog
+        title: "exoのフレームレート"
+        modal: true
+        width: Math.min(window.width - 40, 400)
+        anchors.centerIn: Overlay.overlay
+        closePolicy: Popup.CloseOnEscape
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            window.dragExportFrameRate = frameRateSpin.value;
+            dragSaveDialog.open();
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: "exoのフレームレートを指定してください。"
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    text: "フレームレート"
+                }
+                SpinBox {
+                    id: frameRateSpin
+                    Layout.preferredWidth: 120
+                    from: 1
+                    to: 240
+                    stepSize: 1
+                    value: 60
+                    editable: true
+                }
+                Label {
+                    text: "fps"
+                    color: window.mutedText
+                }
+                Item {
+                    Layout.fillWidth: true
+                }
+            }
+        }
     }
 
     DragSourceWindow {
@@ -516,12 +566,12 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem {
-                text: "選択中の音声をドラッグ＆ドロップ..."
+                text: "選択テキストをexoに出力..."
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive && window.current().content.trim().length > 0
                 onTriggered: window.openDragExportDialog(true)
             }
             MenuItem {
-                text: "全テキストの音声をドラッグ＆ドロップ..."
+                text: "全テキストをexoに出力..."
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openDragExportDialog(false)
             }
@@ -1487,7 +1537,7 @@ ApplicationWindow {
         if (selectedOnly && !window.current().content.trim().length)
             return;
         window.dragExportSelectedOnly = selectedOnly;
-        dragSaveDialog.open();
+        frameRateDialog.open();
     }
 
     function projectNumber(value, fallback, minimum, maximum, integer) {
@@ -1917,9 +1967,6 @@ ApplicationWindow {
         utterances.setProperty(index, "autoMoraPositionsJson", "[]");
     }
 
-    // applyAutomaticProsody records a fresh automatic prosody result and, for
-    // the selected utterance, refreshes the pitch editor unless the user has
-    // manually edited durations or positions.
     function applyAutomaticProsody(index, automaticPoints, automaticDurations, automaticPositions) {
         if (index < 0 || index >= utterances.count)
             return;
@@ -2266,11 +2313,16 @@ ApplicationWindow {
         if (success && (window.appBackend.closeLogOnSuccess || wasDragExport))
             synthesisLogWindow.close();
         if (dragExportSucceeded && files.length) {
-            window.dragExportFiles = files;
+            window.dragExportFiles = window.dragFilesWithExo(files);
             window.dragExportReady = true;
             window.showAuxiliaryWindow(dragTargetWindow);
         } else if (!success && wasDragExport) {
             window.dragExportReady = false;
         }
+    }
+
+    function dragFilesWithExo(files) {
+        const exo = window.appBackend.writeDragExo(window.batchExportDirectory, files, window.dragExportFrameRate);
+        return exo && exo.toString().length ? [exo] : files;
     }
 }
