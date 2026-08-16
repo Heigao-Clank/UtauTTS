@@ -47,6 +47,9 @@ ApplicationWindow {
     property int audioRevision: -1
     property string pendingUtteranceId: ""
     property int pendingRevision: -1
+    property string pendingProsodyRequestId: ""
+    property string pendingProsodyUtteranceId: ""
+    property int pendingProsodyRevision: -1
     property bool saveRequestPending: false
     property bool playbackRequested: false
     property string playbackError: ""
@@ -354,6 +357,35 @@ ApplicationWindow {
                 pitchEditor.morae = morae.slice();
                 pitchEditor.moraDurations = durations.slice();
                 pitchEditor.moraPositions = positions.slice();
+            }
+            window.requestProsodyPreview(index);
+        }
+
+        function onProsodyChanged() {
+            if (window.appBackend.prosodyRequestId !== window.pendingProsodyRequestId)
+                return;
+            const index = window.utteranceIndex(window.pendingProsodyUtteranceId);
+            if (index < 0 || utterances.get(index).revision !== window.pendingProsodyRevision)
+                return;
+            let result;
+            try {
+                result = JSON.parse(window.appBackend.prosodyJson);
+            } catch (error) {
+                return;
+            }
+            const item = utterances.get(index);
+            const automaticPoints = window.copySequence(result.pitch_points);
+            const automaticDurations = window.copySequence(result.mora_durations_ms);
+            const automaticPositions = window.copySequence(result.mora_positions_ms);
+            utterances.setProperty(index, "autoPointsJson", JSON.stringify(automaticPoints));
+            utterances.setProperty(index, "autoMoraDurationsJson", JSON.stringify(automaticDurations));
+            utterances.setProperty(index, "autoMoraPositionsJson", JSON.stringify(automaticPositions));
+            if (index === window.selectedIndex) {
+                pitchEditor.autoPoints = automaticPoints.slice();
+                pitchEditor.moraDurations = window.hasManualMoraDurations(item)
+                        ? window.decodeSequence(item.moraDurationsJson) : automaticDurations.slice();
+                pitchEditor.moraPositions = window.hasManualMoraDurations(item)
+                        ? window.decodeSequence(item.moraPositionsJson) : automaticPositions.slice();
             }
         }
 
@@ -1684,6 +1716,11 @@ ApplicationWindow {
         else if (name === "pauseDuration")
             pitchEditor.defaultPauseDuration = value;
         markUtteranceDirty(selectedIndex);
+        if (["modelId", "renderer", "moraDuration", "pauseDuration", "intonation", "applyPitch"].indexOf(name) >= 0) {
+            const updated = utterances.get(selectedIndex);
+            if (updated.content.trim() && updated.reading)
+                Qt.callLater(function() { window.requestProsodyPreview(selectedIndex); });
+        }
     }
 
     function updateUtteranceText(index, text) {
@@ -2129,6 +2166,36 @@ ApplicationWindow {
             };
         }
         return request;
+    }
+
+    function buildProsodyRequest(item, requestId) {
+        return {
+            request_id: requestId,
+            text: item.content,
+            kana: item.reading || "",
+            dictionary: window.appBackend.dictionaryEntries,
+            model_id: item.modelId,
+            renderer: item.renderer,
+            mora_duration_ms: item.moraDuration,
+            pause_duration_ms: item.pauseDuration,
+            mora_durations_ms: window.hasManualMoraDurations(item)
+                    ? window.decodeSequence(item.moraDurationsJson) : [],
+            intonation_strength: item.intonation,
+            apply_pitch: item.applyPitch
+        };
+    }
+
+    function requestProsodyPreview(index) {
+        if (index < 0 || index >= utterances.count)
+            return;
+        const item = utterances.get(index);
+        if (!item.content.trim() || !item.reading)
+            return;
+        const requestId = item.utteranceId + ":" + item.revision + ":" + Date.now();
+        window.pendingProsodyRequestId = requestId;
+        window.pendingProsodyUtteranceId = item.utteranceId;
+        window.pendingProsodyRevision = item.revision;
+        window.appBackend.predictProsody(window.buildProsodyRequest(item, requestId));
     }
 
     function buildExportQueue(selectedOnly) {

@@ -345,6 +345,46 @@ void Backend::analyze(const QString &text, const QString &requestId) {
     watcher->setFuture(future);
 }
 
+void Backend::predictProsody(const QVariantMap &request) {
+    QString requestId = request.value("request_id").toString();
+    if (requestId.isEmpty()) {
+        requestId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
+    const quint64 generation = ++m_nextProsodyGeneration;
+    auto *watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcher<QVariantMap>::finished, this,
+            [this, watcher, generation, requestId]() {
+                const QVariantMap value = watcher->result();
+                if (generation == m_nextProsodyGeneration) {
+                    if (value.contains("_error")) {
+                        setError(value.value("_error").toString());
+                    } else {
+                        m_prosodyRequestId = requestId;
+                        m_prosodyJson = QString::fromUtf8(
+                            QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact));
+                        emit prosodyChanged();
+                        setError({});
+                    }
+                }
+                watcher->deleteLater();
+                if (--m_activeCallCount == 0) {
+                    m_activeCalls.clearFutures();
+                }
+            });
+    QVariantMap callRequest = request;
+    callRequest.insert("request_id", requestId);
+    const auto future = QtConcurrent::run([this, callRequest]() {
+        try {
+            return call("predictProsody", callRequest);
+        } catch (const std::exception &exception) {
+            return QVariantMap{{"_error", QString::fromUtf8(exception.what())}};
+        }
+    });
+    ++m_activeCallCount;
+    m_activeCalls.addFuture(future);
+    watcher->setFuture(future);
+}
+
 void Backend::synthesize(const QVariantMap &input) {
     if (m_busy) {
         return;

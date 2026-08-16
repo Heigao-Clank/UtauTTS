@@ -72,6 +72,30 @@ func TestIntonationStrengthAcceptsAmplificationRange(t *testing.T) {
 	}
 }
 
+func TestPredictProsodyDoesNotRenderAudio(t *testing.T) {
+	preview, err := PredictProsody(Config{
+		Reading:         "あいう",
+		MoraDurationMS:  100,
+		PauseDurationMS: 180,
+		ApplyPitch:      false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Reading != "あいう" || len(preview.Morae) != 3 {
+		t.Fatalf("unexpected preview reading/morae: %#v", preview)
+	}
+	if !reflect.DeepEqual(preview.MoraDurationsMS, []float64{100, 100, 100}) {
+		t.Fatalf("durations = %#v", preview.MoraDurationsMS)
+	}
+	if !reflect.DeepEqual(preview.MoraPositionsMS, []float64{50, 150, 250}) {
+		t.Fatalf("positions = %#v", preview.MoraPositionsMS)
+	}
+	if !reflect.DeepEqual(preview.PitchPoints, []float64{0, 0, 0}) {
+		t.Fatalf("pitch points = %#v", preview.PitchPoints)
+	}
+}
+
 func TestMoraTimingsDistributeConsecutiveTrailingPauses(t *testing.T) {
 	morae := []frontend.Mora{{Text: "a"}, {Pause: true}, {Pause: true}}
 	p := &plan.Plan{DurationMS: 300, Units: []plan.Unit{{Position: 0, NoteStartMS: 0, DurationMS: 100}}}

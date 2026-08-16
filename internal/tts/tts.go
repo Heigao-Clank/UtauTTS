@@ -59,6 +59,14 @@ type Result struct {
 	PitchPoints     []float64
 }
 
+type ProsodyPreview struct {
+	Reading         string
+	Morae           []frontend.Mora
+	MoraDurationsMS []float64
+	MoraPositionsMS []float64
+	PitchPoints     []float64
+}
+
 func Synthesize(cfg Config) (*Result, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
@@ -251,6 +259,142 @@ func Synthesize(cfg Config) (*Result, error) {
 		MoraPositionsMS: moraPositions,
 		PitchPoints:     pitchPoints,
 	}, nil
+}
+
+// PredictProsody evaluates the selected prosody model without synthesizing
+// audio. Manual mora durations are respected so the preview follows the
+// values currently edited in the GUI.
+func PredictProsody(cfg Config) (*ProsodyPreview, error) {
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+	if cfg.MoraDurationMS <= 0 {
+		cfg.MoraDurationMS = 120
+	}
+	if cfg.PauseDurationMS < 0 {
+		cfg.PauseDurationMS = 180
+	}
+	if cfg.ReleaseMS <= 0 {
+		cfg.ReleaseMS = 20
+	}
+
+	loadedProsody := cfg.ProsodyModel
+	var err error
+	if loadedProsody == nil && cfg.ProsodyModelPath != "" {
+		loadedProsody, err = loadProsodyModelCached(cfg.ProsodyModelPath)
+		if err != nil {
+			return nil, fmt.Errorf("load prosody model: %w", err)
+		}
+	}
+	reading := cfg.Reading
+	if reading == "" {
+		reading, err = frontend.ToKanaWithDictionary(cfg.Text, cfg.Dictionary)
+		if err != nil {
+			return nil, fmt.Errorf("convert text to reading: %w", err)
+		}
+	}
+	morae, err := frontend.ParseKana(reading)
+	if err != nil {
+		return nil, fmt.Errorf("parse reading: %w", err)
+	}
+
+	prosodyFeatures := cfg.ProsodyFeatures
+	if loadedProsody != nil && loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
+		runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
+		if strings.TrimSpace(runtimeText) == "" {
+			runtimeText = reading
+		}
+		runtimeFeatures, analyzeErr := analyzeOpenJTalkCached(runtimeText, openjtalk.Config{
+			HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
+		})
+		if analyzeErr != nil {
+			return nil, fmt.Errorf("analyze runtime prosody features: %w", analyzeErr)
+		}
+		prosodyFeatures, err = alignRuntimeProsodyFeatures(morae, runtimeFeatures)
+		if err != nil {
+			fallbackFeatures, fallbackErr := analyzeOpenJTalkCached(reading, openjtalk.Config{
+				HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
+			})
+			if fallbackErr == nil {
+				prosodyFeatures, fallbackErr = alignRuntimeProsodyFeatures(morae, fallbackFeatures)
+			}
+			if fallbackErr != nil {
+				return nil, fmt.Errorf("align runtime prosody features: %w", err)
+			}
+		}
+	}
+
+	var predictions []prosody.Prediction
+	if loadedProsody != nil {
+		if loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) != len(morae) {
+			return nil, fmt.Errorf("prosody model %d/%s requires %d mora-level accent feature frames, got %d", loadedProsody.Version, loadedProsody.Mode, len(morae), len(prosodyFeatures))
+		}
+		predictions = loadedProsody.PredictWithFeatures(morae, prosodyFeatures)
+	}
+
+	timings := make([]prosody.MoraTiming, len(morae))
+	result := &ProsodyPreview{
+		Reading: reading, Morae: append([]frontend.Mora(nil), morae...),
+		MoraDurationsMS: make([]float64, len(morae)),
+		MoraPositionsMS: make([]float64, len(morae)),
+		PitchPoints:     make([]float64, len(morae)),
+	}
+	cursor := 0.0
+	for index, mora := range morae {
+		duration, manuallySet := previewConfiguredMoraDuration(mora, index, cfg)
+		if !manuallySet {
+			if mora.Pause {
+				duration = cfg.PauseDurationMS
+			} else {
+				duration = previewDurationFor(mora, cfg.MoraDurationMS)
+				if index < len(predictions) && predictions[index].DurationFactor > 0 {
+					duration *= predictions[index].DurationFactor
+				}
+			}
+		}
+		duration = math.Max(0, duration)
+		timings[index] = prosody.MoraTiming{StartMS: cursor, DurationMS: duration}
+		result.MoraDurationsMS[index] = duration
+		result.MoraPositionsMS[index] = cursor + duration/2
+		cursor += duration
+	}
+
+	if shouldPredictFrameContour(cfg, loadedProsody) {
+		question := strings.ContainsAny(cfg.Text, "?？")
+		if contour := loadedProsody.PredictFrameContour(morae, prosodyFeatures, timings, cursor+cfg.ReleaseMS, question); contour != nil {
+			curve := scaleAutomaticPitchCurve(&render.PitchCurve{FrameMS: contour.FrameMS, Cents: contour.Cents}, cfg.IntonationStrength)
+			for index, mora := range morae {
+				if curve != nil && !mora.Pause {
+					result.PitchPoints[index] = pitchCurveCentsAt(curve, result.MoraPositionsMS[index])
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+func previewDurationFor(mora frontend.Mora, base float64) float64 {
+	switch mora.Vowel {
+	case "cl":
+		return base * 0.65
+	case "n":
+		return base * 0.9
+	}
+	if mora.Text == "ー" {
+		return base * 1.2
+	}
+	return base
+}
+
+func previewConfiguredMoraDuration(mora frontend.Mora, position int, cfg Config) (float64, bool) {
+	if mora.Pause || position < 0 || position >= len(cfg.MoraDurationsMS) {
+		return 0, false
+	}
+	duration := cfg.MoraDurationsMS[position]
+	if duration <= 0 {
+		return 0, false
+	}
+	return duration, true
 }
 
 func validateConfig(cfg Config) error {

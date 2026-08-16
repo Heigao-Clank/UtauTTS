@@ -24,6 +24,8 @@ class Backend final : public QObject {
     Q_PROPERTY(QString analysisRequestId READ analysisRequestId NOTIFY analysisChanged)
     Q_PROPERTY(QString analysisSourceText READ analysisSourceText NOTIFY analysisChanged)
     Q_PROPERTY(QString analysisJson READ analysisJson NOTIFY analysisChanged)
+    Q_PROPERTY(QString prosodyRequestId READ prosodyRequestId NOTIFY prosodyChanged)
+    Q_PROPERTY(QString prosodyJson READ prosodyJson NOTIFY prosodyChanged)
     Q_PROPERTY(QString synthesisJson READ synthesisJson NOTIFY synthesisChanged)
     Q_PROPERTY(QUrl previewUrl READ previewUrl NOTIFY previewReady)
     Q_PROPERTY(bool darkMode READ darkMode NOTIFY themeChanged)
@@ -52,6 +54,8 @@ public:
     QString analysisRequestId() const { return m_analysisRequestId; }
     QString analysisSourceText() const { return m_analysisSourceText; }
     QString analysisJson() const { return m_analysisJson; }
+    QString prosodyRequestId() const { return m_prosodyRequestId; }
+    QString prosodyJson() const { return m_prosodyJson; }
     QString synthesisJson() const { return m_synthesisJson; }
     QUrl previewUrl() const { return m_previewUrl; }
     bool darkMode() const { return m_darkMode; }
@@ -69,6 +73,7 @@ public:
     Q_INVOKABLE void initialize();
     Q_INVOKABLE void reloadVoicebanks();
     Q_INVOKABLE void analyze(const QString &text, const QString &requestId);
+    Q_INVOKABLE void predictProsody(const QVariantMap &request);
     Q_INVOKABLE void synthesize(const QVariantMap &request);
     Q_INVOKABLE bool savePreview(const QUrl &destination);
     Q_INVOKABLE bool startFileDrag(const QVariantList &files);
@@ -94,6 +99,7 @@ signals:
     void errorChanged();
     void metadataChanged();
     void analysisChanged();
+    void prosodyChanged();
     void synthesisChanged();
     void previewReady();
     void themeChanged();
@@ -119,6 +125,7 @@ private:
     QString m_defaultRenderer;
     bool m_cudaAvailable = false;
     QString m_analysisRequestId, m_analysisSourceText, m_analysisJson;
+    QString m_prosodyRequestId, m_prosodyJson;
     QString m_synthesisJson;
     QUrl m_previewUrl;
     bool m_darkMode = false;
@@ -134,6 +141,7 @@ private:
     QStringList m_logLines;
     QHash<QString, quint64> m_analysisGenerations;
     quint64 m_nextAnalysisGeneration = 0;
+    quint64 m_nextProsodyGeneration = 0;
 
     void appendLog(const QString &message);
 };

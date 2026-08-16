@@ -54,6 +54,19 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	if !json.Valid(analysis) {
 		t.Fatalf("analysis=%s", analysis)
 	}
+	preview, err := engine.Call("predictProsody", []byte(`{"kana":"\u3042","mora_duration_ms":100,"apply_pitch":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var previewResult struct {
+		MoraDurationsMS []float64 `json:"mora_durations_ms"`
+	}
+	if err := json.Unmarshal(preview, &previewResult); err != nil {
+		t.Fatalf("prosody preview=%s: %v", preview, err)
+	}
+	if len(previewResult.MoraDurationsMS) != 1 || previewResult.MoraDurationsMS[0] != 100 {
+		t.Fatalf("prosody preview=%s", preview)
+	}
 	dictionaryAnalysis, err := engine.Call("analyze", []byte(`{"text":"UtauTTS","dictionary":[{"surface":"UtauTTS","reading":"あ"}]}`))
 	if err != nil {
 		t.Fatal(err)

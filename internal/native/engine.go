@@ -90,6 +90,8 @@ func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
 		result = map[string]any{"cuda_available": render.CUDAAvailable()}
 	case "analyze":
 		result, err = e.analyze(requestJSON)
+	case "predictProsody":
+		result, err = e.predictProsody(requestJSON)
 	case "synthesize":
 		result, err = e.synthesize(requestJSON)
 	default:
@@ -165,6 +167,83 @@ func (e *Engine) analyze(data []byte) (any, error) {
 		items = append(items, map[string]any{"position": index, "mora": mora.Text, "pause": mora.Pause})
 	}
 	return map[string]any{"reading": reading, "morae": items}, nil
+}
+
+type prosodyPreviewRequest struct {
+	RequestID string `json:"request_id"`
+	Text      string `json:"text"`
+	Kana      string `json:"kana"`
+	ModelID   string `json:"model_id"`
+	Renderer  string `json:"renderer"`
+
+	MoraDurationMS     float64           `json:"mora_duration_ms"`
+	PauseDurationMS    float64           `json:"pause_duration_ms"`
+	MoraDurationsMS    []float64         `json:"mora_durations_ms"`
+	IntonationStrength float64           `json:"intonation_strength"`
+	ApplyPitch         bool              `json:"apply_pitch"`
+	Dictionary         []dictionaryEntry `json:"dictionary"`
+}
+
+func (e *Engine) predictProsody(data []byte) (any, error) {
+	var request prosodyPreviewRequest
+	if err := json.Unmarshal(data, &request); err != nil {
+		return nil, fmt.Errorf("decode prosody preview request: %w", err)
+	}
+	if request.Text == "" && request.Kana == "" {
+		return nil, fmt.Errorf("text or kana is required")
+	}
+	dictionary := dictionaryMap(request.Dictionary)
+	reading := request.Kana
+	if reading == "" {
+		var err error
+		reading, err = e.reading(request.Text, dictionary)
+		if err != nil {
+			return nil, err
+		}
+	}
+	modelPath := ""
+	if request.ModelID != "" && request.ModelID != "none" {
+		model, found := e.catalog.Model(request.ModelID)
+		if !found {
+			return nil, fmt.Errorf("prosody model not found")
+		}
+		modelPath = model.Path
+	}
+	rendererID := request.Renderer
+	if rendererID == "" {
+		rendererID = e.config.Renderer
+	}
+	rendererPlugin, found := e.catalog.Renderer(rendererID)
+	if !found {
+		return nil, fmt.Errorf("renderer plugin %q is not installed", rendererID)
+	}
+	if !render.IsKnownRenderer(rendererPlugin.Backend) {
+		return nil, fmt.Errorf("renderer plugin %q requires unavailable backend %q", rendererID, rendererPlugin.Backend)
+	}
+	preview, err := tts.PredictProsody(tts.Config{
+		Text: request.Text, Reading: reading, Dictionary: dictionary,
+		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
+		MoraDurationsMS: request.MoraDurationsMS, ProsodyModelPath: modelPath,
+		IntonationStrength: request.IntonationStrength, ApplyPitch: request.ApplyPitch,
+		Renderer: rendererPlugin.Backend, RendererCapabilities: &rendererPlugin.Capabilities,
+		OpenJTalkPath: e.config.OpenJTalkPath, OpenJTalkDictionaryPath: e.config.OpenJTalkDictionary,
+	})
+	if err != nil {
+		return nil, err
+	}
+	morae := make([]map[string]any, len(preview.Morae))
+	for index, mora := range preview.Morae {
+		morae[index] = map[string]any{"position": index, "mora": mora.Text, "pause": mora.Pause}
+	}
+	return map[string]any{
+		"request_id":            request.RequestID,
+		"reading":               preview.Reading,
+		"morae":                 morae,
+		"mora_durations_ms":     preview.MoraDurationsMS,
+		"mora_positions_ms":     preview.MoraPositionsMS,
+		"pitch_points":          preview.PitchPoints,
+		"prosody_model_applied": modelPath != "",
+	}, nil
 }
 
 type dictionaryEntry struct {
