@@ -14,6 +14,17 @@ GUIを含まないWindows x64向けHTTPサーバーです。.NET 8ランタイ�
 
 起動すると `UTAUTTS_READY=http://127.0.0.1:8080` の形式で待受URLを標準出力へ書き出します。
 
+## コンソールUI
+
+ブラウザで `http://127.0.0.1:8080/` を開くと、`/api/*` を直接呼び出せる簡易クライアントと、エンドポイント・制限の簡単なドキュメントが見れるhtmlを返します
+
+- 稼働状況・音源・モデル・Rendererの一覧表示
+- 文章の解析（`/api/analyze`）と、読み・モーラ列の表示
+- 文章・音源・モデル・Renderer・duration等を指定した合成（`/api/synthesize/audio`）。結果の再生とWAVダウンロード、使用した読み・engineヘッダーの表示
+- `--auth-token` 使用時は、ページ内のトークン入力に保存すると以降のAPI呼び出しへ `Authorization: Bearer <token>` を付加します
+
+コンソールUI（`/` と `/ui`）は公開されます。認証・Origin検査は `/api/*` にのみ適用されます。
+
 ## エンドポイント一覧
 
 | Method | Path | 説明 |
@@ -232,6 +243,6 @@ ID順にソートされた音源一覧です。
 
 `intonation_strength`は`0`〜`2`で、初期値は`0`です。`apply_pitch`の初期値は`false`です。自動イントネーションを適用するには、モデル、frame pitch対応Renderer、`apply_pitch: true`を指定します。直接ピッチ加工は声質と明瞭度を損なう場合があるため、結果を確認しながら使用してください。WORLD系Rendererを使う場合、必要assetはRenderer manifestから解決します。第三者ライセンスは`THIRD_PARTY_NOTICES.txt`を参照してください。
 
-APIは`/api/*`だけを公開します。GUIはHTTPサーバーを使用せず、同梱GUIの音源・辞書設定がServerへ送信されることもありません。
+APIは`/api/*`だけを公開し、コンソールUI（`/`）のみ公開です。GUIはHTTPサーバーを使用せず、同梱GUIの音源・辞書設定がServerへ送信されることもありません。
 
 利用できるRendererは `waveform`、`openutau-classic-worldline-faithful`、CUDA対応時の `openutau-classic-worldline-faithful-gpu` です。実際の一覧とモデルの詳細は、それぞれ `/api/renderers` と `/api/models` で確認してください。
