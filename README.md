@@ -1,4 +1,4 @@
-# UtauTTS
+# UtauTTS （beta）
 
 UTAUボイスバンクの原音接続に、学習ベースのイントネーション調整を加えた日本語TTS
 
