@@ -498,8 +498,8 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 			return nil, "", http.StatusBadRequest, fmt.Errorf("mora duration settings are outside the supported range")
 		}
 	}
-	if request.IntonationStrength < 0 || request.IntonationStrength > 1 {
-		return nil, "", http.StatusBadRequest, fmt.Errorf("intonation_strength must be between 0 and 1")
+	if request.IntonationStrength < 0 || request.IntonationStrength > render.MaxIntonationStrength {
+		return nil, "", http.StatusBadRequest, fmt.Errorf("intonation_strength must be between 0 and %.0f", render.MaxIntonationStrength)
 	}
 	if request.ManualPitch != nil && len(request.ManualPitch.Points) > maxManualPitchPoints {
 		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("manual pitch supports at most %d points", maxManualPitchPoints)

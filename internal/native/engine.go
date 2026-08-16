@@ -300,7 +300,17 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 	if err := audio.WriteWav(outputPath, result.Audio); err != nil {
 		return nil, err
 	}
-	return map[string]any{"output_path": outputPath, "reading": result.Plan.Reading, "duration_ms": float64(len(result.Audio.Data)) * 1000 / float64(result.Audio.SampleRate), "unit_count": len(result.Plan.Units), "engine": rendererID}, nil
+	return map[string]any{
+		"output_path":           outputPath,
+		"reading":               result.Plan.Reading,
+		"duration_ms":           float64(len(result.Audio.Data)) * 1000 / float64(result.Audio.SampleRate),
+		"unit_count":            len(result.Plan.Units),
+		"engine":                rendererID,
+		"mora_durations_ms":     result.MoraDurationsMS,
+		"mora_positions_ms":     result.MoraPositionsMS,
+		"pitch_points":          result.PitchPoints,
+		"prosody_model_applied": modelPath != "",
+	}, nil
 }
 
 func firstConfigured(explicit, fromPlugin string) string {

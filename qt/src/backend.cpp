@@ -372,6 +372,9 @@ void Backend::synthesize(const QVariantMap &input) {
                 } else {
                     m_previewPath = outputPath;
                     m_previewUrl = QUrl::fromLocalFile(outputPath);
+                    m_synthesisJson = QString::fromUtf8(
+                        QJsonDocument::fromVariant(result).toJson(QJsonDocument::Compact));
+                    emit synthesisChanged();
                     appendLog(tr("音声合成が完了しました。"));
                     emit previewReady();
                 }

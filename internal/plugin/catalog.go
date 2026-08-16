@@ -36,16 +36,17 @@ type Renderer struct {
 }
 
 type Model struct {
-	ID                   string   `json:"id"`
-	DisplayName          string   `json:"display_name"`
-	Description          string   `json:"description,omitempty"`
-	Path                 string   `json:"path"`
-	Version              int      `json:"version"`
-	Mode                 string   `json:"mode"`
-	RecommendedRenderers []string `json:"recommended_renderers,omitempty"`
-	DefaultPriority      int      `json:"default_priority,omitempty"`
-	RequiresFeatures     bool     `json:"requires_features,omitempty"`
-	FrameContour         bool     `json:"frame_contour,omitempty"`
+	ID                   string          `json:"id"`
+	DisplayName          string          `json:"display_name"`
+	Description          string          `json:"description,omitempty"`
+	Path                 string          `json:"path"`
+	Version              int             `json:"version"`
+	Mode                 string          `json:"mode"`
+	Outputs              map[string]bool `json:"outputs,omitempty"`
+	RecommendedRenderers []string        `json:"recommended_renderers,omitempty"`
+	DefaultPriority      int             `json:"default_priority,omitempty"`
+	RequiresFeatures     bool            `json:"requires_features,omitempty"`
+	FrameContour         bool            `json:"frame_contour,omitempty"`
 }
 
 type Catalog struct {
@@ -147,6 +148,7 @@ func DiscoverModels(directories []string) ([]Model, error) {
 			result = append(result, Model{
 				ID: id, DisplayName: name, Description: loaded.Description, Path: path,
 				Version: loaded.Version, Mode: loaded.Mode,
+				Outputs:              cloneBoolMap(loaded.Outputs),
 				RecommendedRenderers: append([]string(nil), loaded.RecommendedRenderers...),
 				DefaultPriority:      loaded.DefaultPriority,
 				RequiresFeatures:     loaded.RequiresExternalFeatures(), FrameContour: loaded.HasFrameContour(),
@@ -160,6 +162,17 @@ func DiscoverModels(directories []string) ([]Model, error) {
 		return result[i].DisplayName < result[j].DisplayName
 	})
 	return result, errors.Join(problems...)
+}
+
+func cloneBoolMap(source map[string]bool) map[string]bool {
+	if len(source) == 0 {
+		return nil
+	}
+	result := make(map[string]bool, len(source))
+	for key, value := range source {
+		result[key] = value
+	}
+	return result
 }
 
 func (catalog *Catalog) DefaultRenderer() string {

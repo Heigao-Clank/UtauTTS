@@ -2,6 +2,7 @@ package tts
 
 import (
 	"math"
+	"reflect"
 	"testing"
 
 	"utautts/internal/frontend"
@@ -42,6 +43,32 @@ func TestMergeManualPitchCurveCanReplaceLearnedCurve(t *testing.T) {
 	got := mergeManualPitchCurve(base, manual, "replace")
 	if got.Cents[0] != 0 || got.Cents[1] != -20 {
 		t.Fatalf("replacement curve = %#v", got.Cents)
+	}
+}
+
+func TestScaleAutomaticPitchCurveUsesTheConfiguredStrength(t *testing.T) {
+	base := &render.PitchCurve{FrameMS: 10, Cents: []float64{20, -40}}
+	if got := scaleAutomaticPitchCurve(base, 0); got != nil {
+		t.Fatal("zero intonation strength kept the automatic curve")
+	}
+	if got := scaleAutomaticPitchCurve(base, 1); got != base {
+		t.Fatal("normal intonation strength unnecessarily copied the curve")
+	}
+	got := scaleAutomaticPitchCurve(base, 2)
+	if got == base || !reflect.DeepEqual(got.Cents, []float64{40, -80}) {
+		t.Fatalf("amplified curve = %#v", got)
+	}
+	if !reflect.DeepEqual(base.Cents, []float64{20, -40}) {
+		t.Fatal("amplifying the curve mutated the source")
+	}
+}
+
+func TestIntonationStrengthAcceptsAmplificationRange(t *testing.T) {
+	if err := validateConfig(Config{IntonationStrength: render.MaxIntonationStrength}); err != nil {
+		t.Fatalf("maximum intonation strength rejected: %v", err)
+	}
+	if err := validateConfig(Config{IntonationStrength: render.MaxIntonationStrength + 0.01}); err == nil {
+		t.Fatal("intonation strength above the maximum was accepted")
 	}
 }
 

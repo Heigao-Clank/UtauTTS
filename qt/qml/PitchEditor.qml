@@ -5,6 +5,10 @@ import QtQuick
 Item {
     id: root
     property var points: []
+    // Model-generated pitch is an absolute baseline. `points` remains the
+    // user's manual offset so a later synthesis does not apply the model
+    // contour twice.
+    property var autoPoints: []
     property var morae: []
     property var moraDurations: []
     property var moraPositions: []
@@ -198,7 +202,9 @@ Item {
         const values = root.points.slice();
         const center = canvas.height / 2;
         const scale = Math.max(.05, Math.min(.36, canvas.height / 760));
-        values[index] = Math.round(Math.max(-300, Math.min(300, (center - y) / scale)));
+        const desired = Math.max(-300, Math.min(300, (center - y) / scale));
+        const automatic = index < root.autoPoints.length ? Number(root.autoPoints[index]) : 0;
+        values[index] = Math.round(desired - (Number.isFinite(automatic) ? automatic : 0));
         root.points = values;
         canvas.requestPaint();
     }
@@ -211,6 +217,13 @@ Item {
         root.points = values;
         root.pointsEdited(values.slice());
         canvas.requestPaint();
+    }
+
+    function pitchAt(index) {
+        const automatic = index < root.autoPoints.length ? Number(root.autoPoints[index]) : 0;
+        const manual = index < root.points.length ? Number(root.points[index]) : 0;
+        return (Number.isFinite(automatic) ? automatic : 0)
+                + (Number.isFinite(manual) ? manual : 0);
     }
 
     function nearestEditablePoint(x) {
@@ -287,7 +300,7 @@ Item {
                         if (!root.pointIsEditable(index))
                             continue;
                         const x = root.pointX(index);
-                        const y = center - root.points[index] * scale;
+                        const y = center - root.pitchAt(index) * scale;
                         if (started)
                             ctx.lineTo(x, y);
                         else {
@@ -300,7 +313,7 @@ Item {
                         if (!root.pointIsEditable(index))
                             continue;
                         ctx.beginPath();
-                        ctx.arc(root.pointX(index), center - root.points[index] * scale, 6, 0, Math.PI * 2);
+                        ctx.arc(root.pointX(index), center - root.pitchAt(index) * scale, 6, 0, Math.PI * 2);
                         ctx.fill();
                     }
                 }
@@ -535,6 +548,7 @@ Item {
     }
 
     onPointsChanged: canvas.requestPaint()
+    onAutoPointsChanged: canvas.requestPaint()
     onAccentColorChanged: canvas.requestPaint()
     onAxisColorChanged: canvas.requestPaint()
     onGridColorChanged: canvas.requestPaint()

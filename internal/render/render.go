@@ -24,6 +24,11 @@ type Config struct {
 	PitchCurve              *PitchCurve
 }
 
+// MaxIntonationStrength is the upper bound for the user-facing intonation
+// control.  1.0 keeps the historical strength; values above 1 amplify the
+// generated contour and renderer-side correction.
+const MaxIntonationStrength = 2.0
+
 // rendererImplementations is only an executable dispatch table. Display
 // identity and declared capabilities belong to each renderer's plugin.json.
 var rendererImplementations = map[string]struct{}{
@@ -95,8 +100,8 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	if cfg.ReleaseMS < 0 {
 		return nil, fmt.Errorf("release_ms must be non-negative, got %v", cfg.ReleaseMS)
 	}
-	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > 1 {
-		return nil, fmt.Errorf("intonation_strength must be between 0 and 1, got %v", cfg.IntonationStrength)
+	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > MaxIntonationStrength {
+		return nil, fmt.Errorf("intonation_strength must be between 0 and %.0f, got %v", MaxIntonationStrength, cfg.IntonationStrength)
 	}
 	if !cfg.ApplyPitch {
 		cfg.IntonationStrength = 0
@@ -467,7 +472,7 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 	for i := range factors {
 		factors[i] = 1
 	}
-	strength = math.Max(0, math.Min(1, strength))
+	strength = math.Max(0, math.Min(MaxIntonationStrength, strength))
 	if strength == 0 {
 		return factors
 	}
@@ -541,7 +546,8 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 					effectiveStrength *= math.Max(0.25, timings[i].scale)
 				}
 				factor := math.Pow(target/pitches[i], effectiveStrength)
-				factors[i] = math.Max(0.92, math.Min(1.08, factor))
+				maxShift := 0.08 * math.Max(1, strength)
+				factors[i] = math.Max(1-maxShift, math.Min(1+maxShift, factor))
 				pitchFactor := unit.PitchFactor
 				if pitchFactor <= 0 {
 					pitchFactor = 1

@@ -15,32 +15,38 @@ import (
 const ModelVersion = 3
 
 const (
-	SequenceModelVersion        = 4
-	AccentSequenceModelVersion  = 5
-	BoundedSequenceModelVersion = 6
-	FramePitchModelVersion      = 8
-	StandardAccentModelVersion  = 9
+	SequenceModelVersion         = 4
+	AccentSequenceModelVersion   = 5
+	BoundedSequenceModelVersion  = 6
+	FramePitchModelVersion       = 8
+	StandardAccentModelVersion   = 9
+	ProsodyMultitaskModelVersion = 10
 )
 
 type Model struct {
-	ID                   string               `json:"id,omitempty"`
-	DisplayName          string               `json:"display_name,omitempty"`
-	Description          string               `json:"description,omitempty"`
-	Provenance           *ModelProvenance     `json:"provenance,omitempty"`
-	RecommendedRenderers []string             `json:"recommended_renderers,omitempty"`
-	DefaultPriority      int                  `json:"default_priority,omitempty"`
-	Version              int                  `json:"version"`
-	FeatureVersion       int                  `json:"feature_version"`
-	Mode                 string               `json:"mode"`
-	DurationWeights      map[string]float64   `json:"duration_weights"`
-	PitchWeights         map[string]float64   `json:"pitch_weights,omitempty"`
-	EnergyWeights        map[string]float64   `json:"energy_weights,omitempty"`
-	SequencePitch        *SequencePitchModel  `json:"sequence_pitch,omitempty"`
-	FramePitch           *FramePitchModel     `json:"frame_pitch,omitempty"`
-	PhrasePitch          *PhrasePitchModel    `json:"phrase_pitch,omitempty"`
-	StandardAccent       *StandardAccentModel `json:"standard_accent,omitempty"`
-	Metrics              Metrics              `json:"metrics"`
-	Training             TrainingInfo         `json:"training"`
+	ID                   string             `json:"id,omitempty"`
+	DisplayName          string             `json:"display_name,omitempty"`
+	Description          string             `json:"description,omitempty"`
+	Provenance           *ModelProvenance   `json:"provenance,omitempty"`
+	RecommendedRenderers []string           `json:"recommended_renderers,omitempty"`
+	DefaultPriority      int                `json:"default_priority,omitempty"`
+	Version              int                `json:"version"`
+	FeatureVersion       int                `json:"feature_version"`
+	Mode                 string             `json:"mode"`
+	Outputs              map[string]bool    `json:"outputs,omitempty"`
+	DurationWeights      map[string]float64 `json:"duration_weights"`
+	PitchWeights         map[string]float64 `json:"pitch_weights,omitempty"`
+	EnergyWeights        map[string]float64 `json:"energy_weights,omitempty"`
+	// MoraDuration is the duration head of a multitask model. It uses the
+	// same portable TCN representation as SequencePitch, but its output is a
+	// multiplicative mora-duration factor instead of a pitch factor.
+	MoraDuration   *SequencePitchModel  `json:"mora_duration,omitempty"`
+	SequencePitch  *SequencePitchModel  `json:"sequence_pitch,omitempty"`
+	FramePitch     *FramePitchModel     `json:"frame_pitch,omitempty"`
+	PhrasePitch    *PhrasePitchModel    `json:"phrase_pitch,omitempty"`
+	StandardAccent *StandardAccentModel `json:"standard_accent,omitempty"`
+	Metrics        Metrics              `json:"metrics"`
+	Training       TrainingInfo         `json:"training"`
 }
 
 type ModelProvenance struct {
@@ -153,7 +159,8 @@ func LoadModel(path string) (*Model, error) {
 	phrase := model.FeatureVersion == 1 && model.Version == StandardAccentModelVersion &&
 		(model.Mode == "intonation_phrase_anchor_v9" || model.Mode == "intonation_phrase_anchor_v9_1")
 	standardAccent := model.FeatureVersion == 1 && model.Version == StandardAccentModelVersion && model.Mode == "standard_japanese_accent"
-	if !current && !sequence && !frame && !phrase && !standardAccent {
+	multitask := model.FeatureVersion == 2 && model.Version == ProsodyMultitaskModelVersion && model.Mode == "prosody_multitask_tcn"
+	if !current && !sequence && !frame && !phrase && !standardAccent && !multitask {
 		return nil, fmt.Errorf("unsupported prosody model version %d/%d", model.Version, model.FeatureVersion)
 	}
 	if sequence {
@@ -174,6 +181,14 @@ func LoadModel(path string) (*Model, error) {
 	if standardAccent {
 		if err := validateStandardAccent(model.StandardAccent); err != nil {
 			return nil, fmt.Errorf("invalid standard accent model: %w", err)
+		}
+	}
+	if multitask {
+		if err := validateSequencePitch(model.MoraDuration); err != nil {
+			return nil, fmt.Errorf("invalid mora duration model: %w", err)
+		}
+		if err := validateFramePitch(model.FramePitch); err != nil {
+			return nil, fmt.Errorf("invalid multitask frame pitch model: %w", err)
 		}
 	}
 	return &model, nil
@@ -200,6 +215,9 @@ func (m *Model) Predict(morae []frontend.Mora) []Prediction {
 func (m *Model) PredictWithFeatures(morae []frontend.Mora, frames []FeatureFrame) []Prediction {
 	result := make([]Prediction, len(morae))
 	durations := centeredFactors(m.DurationWeights, morae, 0.8, 1.25)
+	if m.MoraDuration != nil {
+		durations = m.MoraDuration.predict(morae, frames)
+	}
 	pitches := centeredFactors(m.PitchWeights, morae, 0.97, 1.03)
 	if m.SequencePitch != nil {
 		pitches = m.SequencePitch.predict(morae, frames)
@@ -224,16 +242,22 @@ func (m *Model) RequiresExternalFeatures() bool {
 	if m.PhrasePitch != nil {
 		return true
 	}
-	names := []string(nil)
+	featureSets := [][]string(nil)
 	if m.SequencePitch != nil {
-		names = m.SequencePitch.FeatureNames
-	} else if m.FramePitch != nil {
-		names = m.FramePitch.FeatureNames
+		featureSets = append(featureSets, m.SequencePitch.FeatureNames)
 	}
-	for _, name := range names {
-		if strings.HasPrefix(name, "accent_") || strings.HasPrefix(name, "word_") ||
-			strings.HasPrefix(name, "pos=") || strings.HasPrefix(name, "pos_group1=") {
-			return true
+	if m.MoraDuration != nil {
+		featureSets = append(featureSets, m.MoraDuration.FeatureNames)
+	}
+	if m.FramePitch != nil {
+		featureSets = append(featureSets, m.FramePitch.FeatureNames)
+	}
+	for _, names := range featureSets {
+		for _, name := range names {
+			if strings.HasPrefix(name, "accent_") || strings.HasPrefix(name, "word_") ||
+				strings.HasPrefix(name, "pos=") || strings.HasPrefix(name, "pos_group1=") {
+				return true
+			}
 		}
 	}
 	return false

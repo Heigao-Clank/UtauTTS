@@ -24,6 +24,7 @@ class Backend final : public QObject {
     Q_PROPERTY(QString analysisRequestId READ analysisRequestId NOTIFY analysisChanged)
     Q_PROPERTY(QString analysisSourceText READ analysisSourceText NOTIFY analysisChanged)
     Q_PROPERTY(QString analysisJson READ analysisJson NOTIFY analysisChanged)
+    Q_PROPERTY(QString synthesisJson READ synthesisJson NOTIFY synthesisChanged)
     Q_PROPERTY(QUrl previewUrl READ previewUrl NOTIFY previewReady)
     Q_PROPERTY(bool darkMode READ darkMode NOTIFY themeChanged)
     Q_PROPERTY(bool closeLogOnSuccess READ closeLogOnSuccess NOTIFY logSettingsChanged)
@@ -51,6 +52,7 @@ public:
     QString analysisRequestId() const { return m_analysisRequestId; }
     QString analysisSourceText() const { return m_analysisSourceText; }
     QString analysisJson() const { return m_analysisJson; }
+    QString synthesisJson() const { return m_synthesisJson; }
     QUrl previewUrl() const { return m_previewUrl; }
     bool darkMode() const { return m_darkMode; }
     bool closeLogOnSuccess() const { return m_closeLogOnSuccess; }
@@ -92,6 +94,7 @@ signals:
     void errorChanged();
     void metadataChanged();
     void analysisChanged();
+    void synthesisChanged();
     void previewReady();
     void themeChanged();
     void logSettingsChanged();
@@ -116,6 +119,7 @@ private:
     QString m_defaultRenderer;
     bool m_cudaAvailable = false;
     QString m_analysisRequestId, m_analysisSourceText, m_analysisJson;
+    QString m_synthesisJson;
     QUrl m_previewUrl;
     bool m_darkMode = false;
     bool m_closeLogOnSuccess = true;

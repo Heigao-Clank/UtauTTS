@@ -189,6 +189,59 @@ func TestSequencePitchUsesTemporalContext(t *testing.T) {
 	}
 }
 
+func TestProsodyMultitaskModelPredictsMoraDurationAndLoads(t *testing.T) {
+	model := &Model{
+		Version: ProsodyMultitaskModelVersion, FeatureVersion: 2, Mode: "prosody_multitask_tcn",
+		MoraDuration: &SequencePitchModel{
+			FeatureNames: []string{"position"},
+			InputWeights: [][]float64{{1}}, InputBias: []float64{0},
+			OutputWeight: []float64{2}, Low: 0.5, High: 2,
+		},
+		FramePitch: &FramePitchModel{
+			FeatureNames: []string{"frame_position"}, InputWeights: [][]float64{{1}}, InputBias: []float64{0},
+			OutputWeight: []float64{1}, FrameMS: 10, LowCents: -120, HighCents: 120,
+		},
+	}
+	morae := []frontend.Mora{
+		{Text: "a", Vowel: "a"}, {Text: "i", Vowel: "i"}, {Text: "u", Vowel: "u"},
+	}
+	predicted := model.Predict(morae)
+	if predicted[0].DurationFactor >= 1 || predicted[2].DurationFactor <= 1 {
+		t.Fatalf("mora duration head did not produce relative factors: %#v", predicted)
+	}
+	if !model.HasFrameContour() {
+		t.Fatal("multitask model did not report frame contour")
+	}
+	path := filepath.Join(t.TempDir(), "prosody-multitask-v1.json")
+	if err := model.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadModel(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.Predict(morae)[2].DurationFactor; math.Abs(got-predicted[2].DurationFactor) > 1e-9 {
+		t.Fatalf("multitask round trip changed duration prediction: %v != %v", got, predicted[2].DurationFactor)
+	}
+}
+
+func TestProsodyMultitaskModelReportsExternalFeaturesFromEitherHead(t *testing.T) {
+	model := &Model{
+		Version: ProsodyMultitaskModelVersion, FeatureVersion: 2, Mode: "prosody_multitask_tcn",
+		MoraDuration: &SequencePitchModel{
+			FeatureNames: []string{"accent_high"}, InputWeights: [][]float64{{1}}, InputBias: []float64{0},
+			OutputWeight: []float64{1}, Low: 0.5, High: 2,
+		},
+		FramePitch: &FramePitchModel{
+			FeatureNames: []string{"frame_position"}, InputWeights: [][]float64{{1}}, InputBias: []float64{0},
+			OutputWeight: []float64{1}, FrameMS: 10, LowCents: -120, HighCents: 120,
+		},
+	}
+	if !model.RequiresExternalFeatures() {
+		t.Fatal("mora duration accent features were not reported")
+	}
+}
+
 func TestLoadAccentSequenceModelVersions(t *testing.T) {
 	for _, test := range []struct {
 		version int

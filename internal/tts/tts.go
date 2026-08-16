@@ -51,9 +51,12 @@ type Config struct {
 }
 
 type Result struct {
-	Voicebank *voicebank.Bank
-	Plan      *plan.Plan
-	Audio     *audio.PCM
+	Voicebank       *voicebank.Bank
+	Plan            *plan.Plan
+	Audio           *audio.PCM
+	MoraDurationsMS []float64
+	MoraPositionsMS []float64
+	PitchPoints     []float64
 }
 
 func Synthesize(cfg Config) (*Result, error) {
@@ -191,8 +194,10 @@ func Synthesize(cfg Config) (*Result, error) {
 		question := strings.ContainsAny(cfg.Text, "?？")
 		if contour := loadedProsody.PredictFrameContour(morae, prosodyFeatures, timings, synthesisPlan.DurationMS+cfg.ReleaseMS, question); contour != nil {
 			pitchCurve = &render.PitchCurve{FrameMS: contour.FrameMS, Cents: contour.Cents}
+			pitchCurve = scaleAutomaticPitchCurve(pitchCurve, cfg.IntonationStrength)
 		}
 	}
+	automaticPitchCurve := pitchCurve
 	manualPitch := cfg.ManualPitch
 	if manualPitch == nil && cfg.ManualPitchPath != "" {
 		manualPitch, err = prosody.LoadManualPitch(cfg.ManualPitchPath)
@@ -227,7 +232,25 @@ func Synthesize(cfg Config) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
-	return &Result{Voicebank: bank, Plan: synthesisPlan, Audio: pcm}, nil
+	timings := moraTimings(morae, synthesisPlan)
+	moraDurations := make([]float64, len(timings))
+	moraPositions := make([]float64, len(timings))
+	pitchPoints := make([]float64, len(timings))
+	for index, timing := range timings {
+		moraDurations[index] = timing.DurationMS
+		moraPositions[index] = timing.StartMS + timing.DurationMS/2
+		if automaticPitchCurve != nil && !morae[index].Pause {
+			pitchPoints[index] = pitchCurveCentsAt(automaticPitchCurve, moraPositions[index])
+		}
+	}
+	return &Result{
+		Voicebank:       bank,
+		Plan:            synthesisPlan,
+		Audio:           pcm,
+		MoraDurationsMS: moraDurations,
+		MoraPositionsMS: moraPositions,
+		PitchPoints:     pitchPoints,
+	}, nil
 }
 
 func validateConfig(cfg Config) error {
@@ -255,8 +278,8 @@ func validateConfig(cfg Config) error {
 			return fmt.Errorf("mora durations: value %d must be finite, got %v", index, duration)
 		}
 	}
-	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > 1 {
-		return fmt.Errorf("intonation_strength must be between 0 and 1, got %v", cfg.IntonationStrength)
+	if cfg.IntonationStrength < 0 || cfg.IntonationStrength > render.MaxIntonationStrength {
+		return fmt.Errorf("intonation_strength must be between 0 and %.0f, got %v", render.MaxIntonationStrength, cfg.IntonationStrength)
 	}
 	if cfg.ReleaseMS < 0 {
 		return fmt.Errorf("release_ms must be non-negative, got %v", cfg.ReleaseMS)
@@ -558,6 +581,28 @@ func effectiveIntonationStrength(cfg Config) float64 {
 		return 0
 	}
 	return cfg.IntonationStrength
+}
+
+// scaleAutomaticPitchCurve applies the user-facing strength to a model
+// contour.  Zero disables the automatic contour, 1 keeps the model output,
+// and values above 1 emphasize it. Manual pitch offsets are merged after this
+// function and are therefore not unexpectedly amplified by the global
+// control.
+func scaleAutomaticPitchCurve(curve *render.PitchCurve, strength float64) *render.PitchCurve {
+	if curve == nil || len(curve.Cents) == 0 {
+		return curve
+	}
+	if strength <= 0 {
+		return nil
+	}
+	if strength == 1 {
+		return curve
+	}
+	result := &render.PitchCurve{FrameMS: curve.FrameMS, Cents: make([]float64, len(curve.Cents))}
+	for index, cents := range curve.Cents {
+		result.Cents[index] = cents * strength
+	}
+	return result
 }
 
 func joinModelScoreScale(model *connection.LearnedModel) float64 {
