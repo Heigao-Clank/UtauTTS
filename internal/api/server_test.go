@@ -47,6 +47,31 @@ func TestUnknownPathIsNotIndex(t *testing.T) {
 	}
 }
 
+func TestConsoleUIDocsAreServedPublicly(t *testing.T) {
+	server := mustNewServer(t, Config{AuthToken: "secret", VoiceDir: t.TempDir()})
+	handler := server.Handler()
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("console status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if contentType := response.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+		t.Fatalf("content type = %q", contentType)
+	}
+	for _, want := range []string{"UtauTTS Server Console", "/api/synthesize/audio", "/api/analyze"} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Fatalf("console page is missing %q", want)
+		}
+	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/ui", nil))
+	if response.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("/ui status = %d", response.Code)
+	}
+}
+
 func TestVoicebankRegistrationDisabledByDefault(t *testing.T) {
 	response := httptest.NewRecorder()
 	mustNewServer(t, Config{VoiceDir: t.TempDir()}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/voicebanks", bytes.NewBufferString(`{"path":"."}`)))

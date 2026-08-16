@@ -4,15 +4,18 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/subtle"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"utautts/internal/audio"
@@ -25,6 +28,17 @@ import (
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
 )
+
+//go:embed ui/index.html
+var uiFiles embed.FS
+
+var uiFS = func() fs.FS {
+	sub, err := fs.Sub(uiFiles, "ui")
+	if err != nil {
+		panic(err)
+	}
+	return sub
+}()
 
 const (
 	maxJSONRequestBytes    = 1 << 20
@@ -114,11 +128,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/models", s.handleModels)
 	mux.HandleFunc("GET /api/renderers", s.handleRenderers)
 	mux.HandleFunc("POST /api/analyze", s.handleAnalyze)
+	mux.HandleFunc("GET /ui", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+	})
+	mux.Handle("GET /", http.FileServer(http.FS(uiFS)))
 	return s.authenticate(mux)
 }
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host {
 				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
