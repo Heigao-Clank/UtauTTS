@@ -1,17 +1,18 @@
-# UtauTTS （beta）
+# UtauTTS
 
-UTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS
+UTAUボイスバンクの原音接続に、学習ベースのイントネーション調整を加えた日本語TTS
 
-UTAUボイスバンクに収録された原音を選び、自然につなぎ、日本語の文章を音声化するTTSソフトウェアです。声そのものをニューラルネットワークで生成するのではなく、ボイスバンクの声質と発音を保ちながら、原音選択・時間配置・接続・イントネーションを組み合わせます。
+UTAUボイスバンクに収録された原音を選択・配置・接続し、必要に応じて学習したイントネーションやモーラ長を適用します。声そのものをニューラルネットワークで生成する方式ではなく、使用するボイスバンクの声質と発音を利用します。
 
 > **注意:** ボイスバンクを使用する前に、必ず各ボイスバンクに付属する利用規約・ガイドラインを確認してください。UtauTTSおよびその作者は、ボイスバンクの利用に関して生じた問題について責任を負いません。
 
 | 用途 | 構成 | 特徴 |
 |---|---|---|
 | 明瞭度・原音確認 | `waveform` | 原音のピッチを保った決定的な波形接続。CLI／Serverの既定Renderer |
-| GUIの標準プロファイル | `frame-intonation-v8` + `openutau-classic-worldline-faithful` | OpenJTalkのアクセント特徴から10ms単位の相対ピッチを予測し、OpenUTAU Classicに近いtiming・5点envelope・Worldline resamplingで適用 |
+| GUIの標準プロファイル | `frame-intonation-v8` + `openutau-classic-worldline-faithful` | OpenJTalkのアクセント特徴から10ms単位の相対ピッチを予測し、OpenUTAU Classicに近いtiming・5点envelope・Worldline resamplingで適用。CUDA環境ではGPU版も選択可能 |
+| 自動モーラ長 | `prosody-multitask-v1` + faithful系Renderer | v8系のイントネーションに加えて、モーラ長を予測してGUIへ表示 |
 
-v8モデルは音声波形や話者の声を生成しません。必要なモデル・Renderer・runtime assetが揃わない場合は、GUIでエラーの内容を確認してから `waveform` を明瞭度の基準にしてください。現在のRendererは冒頭の3種類だけです。
+モデルは音声波形や話者の声を生成しません。必要なモデル・Renderer・runtime assetが揃わない場合は、GUIでエラーの内容を確認してから `waveform` を明瞭度の基準にしてください。現在のRenderer IDは `waveform`、`openutau-classic-worldline-faithful`、CUDA版の `openutau-classic-worldline-faithful-gpu` です。CUDA版は対応する配布物にのみ含まれます。
 
 対応する音源形式は CV・VCV、複数の `oto.ini`、UTF-8・Shift_JIS、`prefix.map` です。CVVCのVC挿入は未対応です。
 
@@ -27,6 +28,8 @@ v8モデルは音声波形や話者の声を生成しません。必要なモデ
 `UtauTTS-win-x64.zip` を展開し、`utautts.exe` を実行してください。
 
 追加のUTAU音源は、実行ファイルと同じ階層の `voice` ディレクトリへ、音源ごとにフォルダを分けて配置してください。「再読込」で一覧へ反映できます。GUI版には足立レイ UTAU音源 ver3.5.0 を初期音源として同梱しています。利用条件は [docs/voicebank.md](docs/voicebank.md) と音源内の文書を確認してください。
+
+文章入力、プロジェクト保存、ショートカット、イントネーション・モーラ長編集、AviUtl／AviUtl2／YMM4へのドラッグ＆ドロップは [GUIの使い方](docs/gui.md) を参照してください。問題が起きた場合は [トラブルシューティング](docs/troubleshooting.md) を確認してください。
 
 ### CLI
 
@@ -52,7 +55,7 @@ v8モデルを明示する場合は、次のようにモデルIDと互換Rendere
   --text "あらゆる現実をすべて自分のほうへねじ曲げたのだ。"
 ```
 
-モデルやRendererの追加・互換性は [docs/plugins.md](docs/plugins.md)、ピッチ編集は [docs/manual-pitch.md](docs/manual-pitch.md)、辞書設定は [docs/dictionary.md](docs/dictionary.md) を参照してください。
+モデルやRendererの追加・互換性は [docs/plugins.md](docs/plugins.md)、イントネーションとモーラ長の編集は [docs/manual-pitch.md](docs/manual-pitch.md)、辞書設定は [docs/dictionary.md](docs/dictionary.md) を参照してください。
 
 ### HTTP Server
 

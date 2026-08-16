@@ -6,7 +6,7 @@ UtauTTSは、UTAUボイスバンクに収録された原音を選択・配置・
 
 1. `frontend`: 入力文章を読みとモーラへ変換します。イントネーションモデルが必要な場合は、配布物内のOpenJTalk frontendがアクセント句、アクセント核、単語境界、品詞を生成します。
 2. `voicebank`: `oto.ini` と `prefix.map` から各モーラの原音候補を作成します。原音設定との整合性を表すtarget scoreと、隣接原音の境界を表すjoin scoreを使い、フレーズ全体の経路を選択します。
-3. `prosody`: 固定値または自己記述モデルからモーラ長・音量・ピッチを決めます。v8 frame modelは10ms単位の相対ピッチ曲線を出力します。
+3. `prosody`: 固定値または自己記述モデルからモーラ長・音量・ピッチを決めます。`frame-intonation-v8` は10ms単位の相対ピッチ曲線を、`prosody-multitask-v1` はそれに加えてモーラ長を出力します。
 4. `render`: 合成計画に従って原音を時間配置し、波形を生成します。
 
 ## 原音選択
@@ -25,9 +25,13 @@ RendererのID、表示名、説明、対応機能、必要な資産は `plugins/
 
 ### `openutau-classic-worldline-faithful`
 
-GUIのv8イントネーションプロファイルで使用するRendererです。OpenUTAU Classicに近いphoneme timing、Worldline resampling、5点envelopeを使い、frame modelの相対ピッチ曲線を原音へ適用します。`worldline.dll` と専用bridgeが必要です。
+GUIのイントネーションプロファイルで使用するRendererです。OpenUTAU Classicに近いphoneme timing、Worldline resampling、5点envelopeを使い、frame modelの相対ピッチ曲線を原音へ適用します。`worldline.dll` と専用bridgeが必要です。
 
-配布物には比較・診断用のRendererが含まれる場合がありますが、標準構成には使用しません。実験Rendererの互換性や必要資産は各plugin manifestを確認してください。
+### `openutau-classic-worldline-faithful-gpu`
+
+CPU版faithful Rendererと同じ処理をCUDAで実行する任意Rendererです。CUDA対応の配布物でのみ利用できます。利用できない環境ではCPU版を選択してください。
+
+現在の配布対象は `waveform`、CPU版faithful、条件付きのGPU版faithfulです。古い実験Rendererや研究中の方式は配布対象ではありません。
 
 ## GUIとHTTP Server
 
