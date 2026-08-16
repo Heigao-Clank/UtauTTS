@@ -36,14 +36,14 @@ Item {
 
     function baseDurationAt(index) {
         const mora = index < root.morae.length ? root.morae[index] : null;
-        const fallback = mora && mora.pause ? root.defaultPauseDuration : root.defaultMoraDuration;
-        if (!mora || mora.pause)
-            return Math.max(1, fallback);
+        if (!mora)
+            return Math.max(1, root.defaultMoraDuration);
         const values = root.moraDurations || [];
         const value = index < values.length ? Number(values[index]) : 0;
-        if (!Number.isFinite(value) || value <= 0)
-            return Math.max(1, fallback);
-        return Math.max(root.minimumMoraDuration, Math.min(root.maximumMoraDuration, value));
+        if (Number.isFinite(value) && value > 0)
+            return Math.max(root.minimumMoraDuration, Math.min(root.maximumMoraDuration, value));
+        const fallback = mora.pause ? root.defaultPauseDuration : root.defaultMoraDuration;
+        return Math.max(1, fallback);
     }
 
     function hasCompletePositions() {
@@ -64,32 +64,38 @@ Item {
             if (Number.isFinite(value))
                 return Math.max(0, value);
         }
-        return root.durationBefore(index) + root.baseDurationAt(index) / 2;
+        return root.durationBefore(index);
+    }
+
+    function endTime() {
+        const count = root.morae.length;
+        if (!count)
+            return 0;
+        return root.positionAt(count - 1) + root.baseDurationAt(count - 1);
     }
 
     function durationAt(index) {
-        if (!root.hasCompletePositions())
-            return root.baseDurationAt(index);
-        const position = root.positionAt(index);
-        const left = index > 0
-                     ? (root.positionAt(index - 1) + position) / 2
-                     : Math.max(0, position - root.baseDurationAt(index) / 2);
-        const right = index + 1 < root.morae.length
-                      ? (position + root.positionAt(index + 1)) / 2
-                      : position + root.baseDurationAt(index) / 2;
+        if (root.hasCompletePositions())
+            return root.durationFromPositions(index);
+        return root.baseDurationAt(index);
+    }
+
+    function durationFromPositions(index) {
+        const count = root.morae.length;
+        if (index < 0 || index >= count)
+            return 0;
+        const start = root.positionAt(index);
+        const end = index + 1 < count ? root.positionAt(index + 1) : root.endTime();
         return Math.max(root.minimumMoraDuration,
-                        Math.min(root.maximumMoraDuration, right - left));
+                        Math.min(root.maximumMoraDuration, end - start));
     }
 
     function totalDuration() {
-        const count = Math.max(root.points.length, root.morae.length);
+        if (root.hasCompletePositions() && root.morae.length)
+            return root.endTime();
         let total = 0;
-        for (let index = 0; index < count; ++index)
+        for (let index = 0; index < root.morae.length; ++index)
             total += root.baseDurationAt(index);
-        if (root.hasCompletePositions() && root.morae.length) {
-            const last = root.morae.length - 1;
-            total = Math.max(total, root.positionAt(last) + root.baseDurationAt(last) / 2);
-        }
         return total;
     }
 
@@ -111,13 +117,13 @@ Item {
     }
 
     function pointX(index) {
-        return root.sidePadding + root.positionAt(index) * root.durationScale;
+        return root.sidePadding + (root.positionAt(index) + root.durationAt(index) / 2) * root.durationScale;
     }
 
     function durationValuesFromPositions() {
         const values = [];
         for (let index = 0; index < root.morae.length; ++index)
-            values.push(Math.round(root.durationAt(index)));
+            values.push(Math.round(root.durationFromPositions(index)));
         return values;
     }
 
@@ -129,67 +135,68 @@ Item {
         for (let position = 0; position < count; ++position)
             positions[position] = root.positionAt(position);
         const minimumGap = root.minimumMoraDuration;
-        const lower = index > 0 ? positions[index - 1] + minimumGap : 0;
-        const upper = index + 1 < count
-                      ? positions[index + 1] - minimumGap
-                      : Math.max(root.totalDuration() + root.maximumMoraDuration / 2,
-                                 positions[index] + minimumGap);
-        const rawTarget = (x - root.sidePadding) / root.durationScale;
-        const target = moveFollowing
-                       ? Math.max(lower, rawTarget)
-                       : Math.max(lower, Math.min(upper, rawTarget));
-        const delta = target - positions[index];
+        const targetCenter = (x - root.sidePadding) / root.durationScale;
+        const currentCenter = root.positionAt(index) + root.durationAt(index) / 2;
+        const delta = targetCenter - currentCenter;
         if (moveFollowing) {
             for (let position = index; position < count; ++position)
                 positions[position] += delta;
         } else {
-            positions[index] = target;
+            const start = positions[index];
+            const end = index + 1 < count ? positions[index + 1] : root.endTime();
+            const lowerStart = index > 0 ? positions[index - 1] + minimumGap : 0;
+            const upperEnd = index + 2 < count
+                             ? positions[index + 2] - minimumGap
+                             : Math.max(end, root.endTime() + root.maximumMoraDuration / 2);
+            const clamped = Math.max(lowerStart - start, Math.min(upperEnd - end, delta));
+            positions[index] = start + clamped;
+            if (index + 1 < count)
+                positions[index + 1] = end + clamped;
         }
         root.moraPositions = positions;
-
         root.moraDurations = root.durationValuesFromPositions();
         canvas.requestPaint();
     }
 
     function resetSingleDurationAt(index) {
         if (!root.durationIsEditable(index))
-            return;
+            return false;
         const count = root.morae.length;
         const positions = (root.moraPositions || []).slice();
         for (let position = 0; position < count; ++position)
             positions[position] = root.positionAt(position);
-        const currentDuration = root.durationAt(index);
         const targetDuration = root.defaultMoraDuration;
-        const delta = targetDuration - currentDuration;
-        if (Math.abs(delta) < 0.5)
-            return;
-
+        const current = root.durationFromPositions(index);
+        if (Math.abs(current - targetDuration) < 0.5)
+            return false;
         if (index + 1 < count) {
-            const boundaryIndex = index + 1;
             const lower = positions[index] + root.minimumMoraDuration;
-            const upper = boundaryIndex + 1 < count
-                          ? positions[boundaryIndex + 1] - root.minimumMoraDuration
-                          : Math.max(root.totalDuration() + root.maximumMoraDuration / 2,
-                                     positions[boundaryIndex] + root.minimumMoraDuration);
-            positions[boundaryIndex] = Math.max(lower,
-                                                 Math.min(upper, positions[boundaryIndex] + delta * 2));
+            const upper = index + 2 < count
+                          ? positions[index + 2] - root.minimumMoraDuration
+                          : Math.max(positions[index] + targetDuration,
+                                     root.endTime() + root.maximumMoraDuration);
+            positions[index + 1] = Math.max(lower, Math.min(upper, positions[index] + targetDuration));
         } else {
-            const lower = index > 0 ? positions[index - 1] + root.minimumMoraDuration : 0;
-            const upper = Math.max(root.totalDuration() + root.maximumMoraDuration / 2,
-                                  positions[index] + root.minimumMoraDuration);
-            positions[index] = Math.max(lower,
-                                        Math.min(upper, positions[index] + delta * 2));
+            root.moraDurations[index] = targetDuration;
         }
         root.moraPositions = positions;
+        return true;
     }
 
     function resetDurationAt(index) {
         if (!root.durationIsEditable(index))
             return;
-        const first = Math.max(0, index - 1);
-        const last = Math.min(root.morae.length - 1, index + 1);
-        for (let target = first; target <= last; ++target)
-            root.resetSingleDurationAt(target);
+        const start = Math.max(0, index - 1);
+        const end = Math.min(root.morae.length - 1, index + 1);
+        let changed = false;
+        for (let position = start; position <= end; ++position) {
+            if (!root.durationIsEditable(position))
+                continue;
+            if (root.resetSingleDurationAt(position))
+                changed = true;
+        }
+        if (!changed)
+            return;
         root.moraDurations = root.durationValuesFromPositions();
         root.moraDurationsEdited(root.moraDurations.slice());
         root.moraPositionsEdited(root.moraPositions.slice());

@@ -1578,7 +1578,7 @@ ApplicationWindow {
         }
         return {
             format: "utautts-project",
-            format_version: 1,
+            format_version: 2,
             app_version: Qt.application.version,
             utterances: savedUtterances,
             selected_index: utterances.count ? selectedIndex : 0
@@ -1642,6 +1642,7 @@ ApplicationWindow {
         utterances.clear();
         window.nextUtteranceId = 1;
         let migratedRenderer = false;
+        const projectFormatVersion = Number(project.format_version) || 1;
         for (let index = 0; index < loadedUtterances.length; ++index) {
             const saved = loadedUtterances[index] || {};
             const voicebankId = String(saved.voicebank_id || "");
@@ -1651,17 +1652,25 @@ ApplicationWindow {
             const rendererId = window.normalizeRendererId(saved.renderer_id);
             if (String(saved.renderer_id || "") !== rendererId)
                 migratedRenderer = true;
+            const manualDurations = window.copySequence(saved.mora_durations_ms);
+            const automaticDurations = window.copySequence(saved.automatic_mora_durations_ms);
+            let manualPositions = window.copySequence(saved.mora_positions_ms);
+            let automaticPositions = window.copySequence(saved.automatic_mora_positions_ms);
+            if (projectFormatVersion < 2) {
+                manualPositions = window.moraStartsFromCenters(manualPositions, manualDurations);
+                automaticPositions = window.moraStartsFromCenters(automaticPositions, automaticDurations);
+            }
             utterances.append({
                 utteranceId: "utterance-" + window.nextUtteranceId++,
                 content: content,
                 reading: "",
                 moraeJson: "[]",
                 pointsJson: JSON.stringify(points),
-                moraDurationsJson: JSON.stringify(window.copySequence(saved.mora_durations_ms)),
-                moraPositionsJson: JSON.stringify(window.copySequence(saved.mora_positions_ms)),
+                moraDurationsJson: JSON.stringify(manualDurations),
+                moraPositionsJson: JSON.stringify(manualPositions),
                 autoPointsJson: JSON.stringify(window.copySequence(saved.automatic_pitch_points)),
-                autoMoraDurationsJson: JSON.stringify(window.copySequence(saved.automatic_mora_durations_ms)),
-                autoMoraPositionsJson: JSON.stringify(window.copySequence(saved.automatic_mora_positions_ms)),
+                autoMoraDurationsJson: JSON.stringify(automaticDurations),
+                autoMoraPositionsJson: JSON.stringify(automaticPositions),
                 manualPitchEdited: saved.manual_pitch_edited === undefined
                         ? points.some(value => Math.abs(Number(value)) > .1) : !!saved.manual_pitch_edited,
                 manualMoraDurationEdited: saved.manual_mora_duration_edited === undefined
@@ -1959,6 +1968,19 @@ ApplicationWindow {
         return automaticSequence(item, "autoMoraPositionsJson");
     }
 
+    function moraStartsFromCenters(centers, durations) {
+        const starts = [];
+        const size = centers ? centers.length : 0;
+        for (let index = 0; index < size; ++index) {
+            const center = Number(centers[index]);
+            const duration = index < (durations ? durations.length : 0) ? Number(durations[index]) : 0;
+            const start = Number.isFinite(center) && Number.isFinite(duration) && duration > 0
+                    ? center - duration / 2 : null;
+            starts.push(start !== null && start >= 0 ? start : null);
+        }
+        return starts;
+    }
+
     function clearAutomaticArrays(index) {
         if (index < 0 || index >= utterances.count)
             return;
@@ -1970,16 +1992,17 @@ ApplicationWindow {
     function applyAutomaticProsody(index, automaticPoints, automaticDurations, automaticPositions) {
         if (index < 0 || index >= utterances.count)
             return;
+        const automaticStarts = window.moraStartsFromCenters(automaticPositions, automaticDurations);
         utterances.setProperty(index, "autoPointsJson", JSON.stringify(automaticPoints));
         utterances.setProperty(index, "autoMoraDurationsJson", JSON.stringify(automaticDurations));
-        utterances.setProperty(index, "autoMoraPositionsJson", JSON.stringify(automaticPositions));
+        utterances.setProperty(index, "autoMoraPositionsJson", JSON.stringify(automaticStarts));
         if (index === window.selectedIndex) {
             const item = utterances.get(index);
             pitchEditor.autoPoints = automaticPoints.slice();
             pitchEditor.moraDurations = hasManualMoraDurations(item)
                     ? decodeSequence(item.moraDurationsJson) : automaticDurations.slice();
             pitchEditor.moraPositions = hasManualMoraDurations(item)
-                    ? decodeSequence(item.moraPositionsJson) : automaticPositions.slice();
+                    ? decodeSequence(item.moraPositionsJson) : automaticStarts.slice();
         }
     }
 
