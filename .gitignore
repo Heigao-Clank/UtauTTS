@@ -16,3 +16,5 @@ tools/worldline-bridge/obj/
 .codex/
 .qt/
 aqtinstall.log
+/cmd/utautts-launcher/utautts.ico
+/cmd/utautts-launcher/utautts.syso

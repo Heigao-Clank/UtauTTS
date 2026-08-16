@@ -19,6 +19,18 @@ qt_policy(SET QTP0004 NEW)
 
 set(UTAUTTS_NATIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../build/native" CACHE PATH "Directory containing utautts_native shared library")
 
+set(UTAUTTS_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../icons/utautts.ico")
+if(WIN32)
+    if(NOT EXISTS "${UTAUTTS_ICON_FILE}")
+        message(WARNING "${UTAUTTS_ICON_FILE} was not found. Add the Windows application icon to the icons directory.")
+    endif()
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/utautts.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/utautts.rc"
+        @ONLY
+    )
+endif()
+
 qt_add_executable(utautts
     src/main.cpp
     src/backend.cpp
@@ -27,6 +39,7 @@ qt_add_executable(utautts
 )
 
 if(WIN32)
+    target_sources(utautts PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/utautts.rc")
     set_target_properties(utautts PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 

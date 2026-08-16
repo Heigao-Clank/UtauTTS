@@ -36,13 +36,14 @@ $toolsRoot = [IO.Path]::GetFullPath((Join-Path $QtRoot '../../Tools'))
 $compilerDirectory = Join-Path $toolsRoot 'mingw1310_64/bin'
 $cc = Join-Path $compilerDirectory 'gcc.exe'
 $cxx = Join-Path $compilerDirectory 'g++.exe'
+$windres = Join-Path $compilerDirectory 'windres.exe'
 $goCC = 'C:\msys64\mingw64\bin\clang.exe'
 $goCXX = 'C:\msys64\mingw64\bin\clang++.exe'
 $gendef = Join-Path $compilerDirectory 'gendef.exe'
 $dlltool = Join-Path $compilerDirectory 'dlltool.exe'
 $cmake = Join-Path $toolsRoot 'CMake_64/bin/cmake.exe'
 $ninjaDirectory = Join-Path $toolsRoot 'Ninja'
-foreach ($tool in @($cc,$cxx,$goCC,$goCXX,$gendef,$dlltool,$cmake,(Join-Path $ninjaDirectory 'ninja.exe'))) { if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Required Qt build tool was not found: $tool" } }
+foreach ($tool in @($cc,$cxx,$windres,$goCC,$goCXX,$gendef,$dlltool,$cmake,(Join-Path $ninjaDirectory 'ninja.exe'))) { if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Required Qt build tool was not found: $tool" } }
 
 New-Item -ItemType Directory -Force -Path $nativeDir, $qtBuildDir, $OutputDirectory | Out-Null
 if (Test-Path -LiteralPath $appDirectory) { Remove-Item -LiteralPath $appDirectory -Recurse -Force }
@@ -79,6 +80,17 @@ Copy-Item -LiteralPath (Join-Path $nativeDir 'utautts_native.dll') -Destination 
 if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
 $previousLauncherGoCache = $env:GOCACHE
 $env:GOCACHE = Join-Path $root '.tmp-go-cache'
+$launcherDirectory = Join-Path $root 'cmd/utautts-launcher'
+$launcherIcon = Join-Path $launcherDirectory 'utautts.ico'
+$launcherResource = Join-Path $launcherDirectory 'utautts.syso'
+Copy-Item -LiteralPath (Join-Path $root 'icons/utautts.ico') -Destination $launcherIcon -Force
+Push-Location $launcherDirectory
+try {
+    & $windres 'utautts.rc' '--output-format=coff' '--target=pe-x86-64' '--output=utautts.syso'
+    if ($LASTEXITCODE -ne 0) { throw 'Windows launcher icon resource generation failed' }
+} finally {
+    Pop-Location
+}
 Push-Location $root
 try {
     & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $OutputDirectory 'utautts.exe') ./cmd/utautts-launcher
@@ -86,6 +98,7 @@ try {
 } finally {
     Pop-Location
     $env:GOCACHE = $previousLauncherGoCache
+    Remove-Item -LiteralPath $launcherIcon, $launcherResource -Force -ErrorAction SilentlyContinue
 }
 $staleDeployDirectories = @('generic','iconengines','imageformats','multimedia','networkinformation','platforms','qml','qmltooling','tls','translations')
 foreach ($name in $staleDeployDirectories) {
