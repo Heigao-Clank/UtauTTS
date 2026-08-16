@@ -1,6 +1,7 @@
 package tts
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -27,6 +28,7 @@ type Config struct {
 	PauseDurationMS         float64
 	MoraDurationsMS         []float64
 	ReleaseMS               float64
+	ReleaseSet              bool
 	ProsodyModelPath        string
 	ProsodyModel            *prosody.Model
 	ManualPitchPath         string
@@ -67,6 +69,114 @@ type ProsodyPreview struct {
 	PitchPoints     []float64
 }
 
+// ConvertToReading converts Japanese text to kana, falling back to Open JTalk
+// when the built-in tokenizer cannot produce a reading for a token (for
+// example numerals or Latin letters).
+func ConvertToReading(text string, dictionary map[string]string, openJTalk openjtalk.Config) (string, error) {
+	reading, frontendErr := frontend.ToKanaWithDictionary(text, dictionary)
+	if frontendErr == nil {
+		return reading, nil
+	}
+	analysis, openJTalkErr := analyzeOpenJTalkCached(frontend.ApplyDictionary(text, dictionary), openJTalk)
+	if openJTalkErr != nil {
+		return "", fmt.Errorf("convert text to reading: %v; Open JTalk fallback: %w", frontendErr, openJTalkErr)
+	}
+	return analysis.Reading, nil
+}
+
+func resolveReading(cfg Config) (string, error) {
+	if cfg.Reading != "" {
+		return cfg.Reading, nil
+	}
+	return ConvertToReading(cfg.Text, cfg.Dictionary, openjtalk.Config{
+		HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
+	})
+}
+
+func resolveProsodyModel(cfg Config) (*prosody.Model, error) {
+	if cfg.ProsodyModel != nil {
+		return cfg.ProsodyModel, nil
+	}
+	if cfg.ProsodyModelPath == "" {
+		return nil, nil
+	}
+	return loadProsodyModelCached(cfg.ProsodyModelPath)
+}
+
+// resolveProsodyFeatures supplies the mora-level accent features a model needs
+// when the caller did not precompute them. Open JTalk analyzes the runtime
+// text; if alignment fails, the reading is analyzed instead so kana-only
+// requests still work.
+func resolveProsodyFeatures(cfg Config, model *prosody.Model, morae []frontend.Mora, reading string) ([]prosody.FeatureFrame, error) {
+	if model == nil || !model.RequiresExternalFeatures() || len(cfg.ProsodyFeatures) > 0 {
+		return cfg.ProsodyFeatures, nil
+	}
+	runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
+	if strings.TrimSpace(runtimeText) == "" {
+		// Kana-only requests do not have a surface text. Open JTalk can
+		// still analyze the supplied reading, and passing an empty string
+		// here would otherwise fail before synthesis starts.
+		runtimeText = reading
+	}
+	runtimeConfig := openjtalk.Config{
+		HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
+	}
+	aligned, alignmentErr := analyzeAndAlignRuntimeFeatures(morae, runtimeText, runtimeConfig)
+	if alignmentErr == nil {
+		return aligned, nil
+	}
+	fallback, fallbackErr := analyzeAndAlignRuntimeFeatures(morae, reading, runtimeConfig)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("align runtime prosody features: %v; Open JTalk fallback: %w", alignmentErr, fallbackErr)
+	}
+	return fallback, nil
+}
+
+func analyzeAndAlignRuntimeFeatures(morae []frontend.Mora, text string, cfg openjtalk.Config) ([]prosody.FeatureFrame, error) {
+	analysis, err := analyzeOpenJTalkCached(text, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("analyze runtime prosody features: %w", err)
+	}
+	return alignRuntimeProsodyFeatures(morae, analysis)
+}
+
+// ApplyRenderer resolves rendererID against the catalog (defaulting to the
+// catalog default) and fills the renderer-dependent fields of cfg. A
+// user-configured worldline path wins over the renderer manifest asset.
+func ApplyRenderer(cfg *Config, catalog *plugin.Catalog, rendererID, worldlinePath, worldlineBridgePath string) error {
+	if catalog == nil {
+		return errors.New("renderer catalog is not initialized")
+	}
+	if rendererID == "" {
+		rendererID = catalog.DefaultRenderer()
+	}
+	renderer, found := catalog.Renderer(rendererID)
+	if !found {
+		return fmt.Errorf("renderer plugin %q is not installed", rendererID)
+	}
+	if !render.IsKnownRenderer(renderer.Backend) {
+		return fmt.Errorf("renderer plugin %q requires unavailable backend %q", rendererID, renderer.Backend)
+	}
+	ApplyResolvedRenderer(cfg, renderer, worldlinePath, worldlineBridgePath)
+	return nil
+}
+
+// ApplyResolvedRenderer fills the renderer-dependent fields of cfg from an
+// already resolved renderer plugin.
+func ApplyResolvedRenderer(cfg *Config, renderer plugin.Renderer, worldlinePath, worldlineBridgePath string) {
+	cfg.Renderer = renderer.Backend
+	cfg.RendererCapabilities = &renderer.Capabilities
+	cfg.WorldlinePath = preferExplicit(worldlinePath, renderer.Asset("worldline"))
+	cfg.WorldlineBridgePath = preferExplicit(worldlineBridgePath, renderer.Asset("worldline_bridge"))
+}
+
+func preferExplicit(explicit, manifestValue string) string {
+	if explicit != "" {
+		return explicit
+	}
+	return manifestValue
+}
+
 func Synthesize(cfg Config) (*Result, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
@@ -79,52 +189,21 @@ func Synthesize(cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("load voicebank: %w", err)
 		}
 	}
-	loadedProsody := cfg.ProsodyModel
-	prosodyFeatures := cfg.ProsodyFeatures
-	var runtimeFeatures *openjtalk.Analysis
-	if loadedProsody == nil && cfg.ProsodyModelPath != "" {
-		loadedProsody, err = loadProsodyModelCached(cfg.ProsodyModelPath)
-		if err != nil {
-			return nil, fmt.Errorf("load prosody model: %w", err)
-		}
+	loadedProsody, err := resolveProsodyModel(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("load prosody model: %w", err)
 	}
-	reading := cfg.Reading
-	if reading == "" {
-		reading, err = frontend.ToKanaWithDictionary(cfg.Text, cfg.Dictionary)
-		if err != nil {
-			return nil, fmt.Errorf("convert text to reading: %w", err)
-		}
+	reading, err := resolveReading(cfg)
+	if err != nil {
+		return nil, err
 	}
 	morae, err := frontend.ParseKana(reading)
 	if err != nil {
 		return nil, fmt.Errorf("parse reading: %w", err)
 	}
-	if loadedProsody != nil && loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
-		runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
-		if strings.TrimSpace(runtimeText) == "" {
-			// Kana-only requests do not have a surface text. Open JTalk can
-			// still analyze the supplied reading, and passing an empty string
-			// here would otherwise fail before synthesis starts.
-			runtimeText = reading
-		}
-		runtimeConfig := openjtalk.Config{
-			HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
-		}
-		runtimeFeatures, err = analyzeOpenJTalkCached(runtimeText, runtimeConfig)
-		if err != nil {
-			return nil, fmt.Errorf("analyze runtime prosody features: %w", err)
-		}
-		alignedFeatures, alignmentErr := alignRuntimeProsodyFeatures(morae, runtimeFeatures)
-		if alignmentErr != nil {
-			fallbackFeatures, fallbackErr := analyzeOpenJTalkCached(reading, runtimeConfig)
-			if fallbackErr == nil {
-				alignedFeatures, fallbackErr = alignRuntimeProsodyFeatures(morae, fallbackFeatures)
-			}
-			if fallbackErr != nil {
-				return nil, fmt.Errorf("align runtime prosody features: %w", alignmentErr)
-			}
-		}
-		prosodyFeatures = alignedFeatures
+	prosodyFeatures, err := resolveProsodyFeatures(cfg, loadedProsody, morae, reading)
+	if err != nil {
+		return nil, err
 	}
 	var joinModel *connection.LearnedModel
 	joinCostMode := "handcrafted"
@@ -228,6 +307,7 @@ func Synthesize(cfg Config) (*Result, error) {
 	intonationStrength := effectiveIntonationStrength(cfg)
 	pcm, err := render.Render(synthesisPlan, render.Config{
 		ReleaseMS:               cfg.ReleaseMS,
+		ReleaseSet:              cfg.ReleaseSet,
 		IntonationStrength:      intonationStrength,
 		ApplyPitch:              applyPitch,
 		Backend:                 cfg.Renderer,
@@ -274,54 +354,26 @@ func PredictProsody(cfg Config) (*ProsodyPreview, error) {
 	if cfg.PauseDurationMS < 0 {
 		cfg.PauseDurationMS = 180
 	}
-	if cfg.ReleaseMS <= 0 {
+	if cfg.ReleaseMS <= 0 && !cfg.ReleaseSet {
 		cfg.ReleaseMS = 20
 	}
 
-	loadedProsody := cfg.ProsodyModel
-	var err error
-	if loadedProsody == nil && cfg.ProsodyModelPath != "" {
-		loadedProsody, err = loadProsodyModelCached(cfg.ProsodyModelPath)
-		if err != nil {
-			return nil, fmt.Errorf("load prosody model: %w", err)
-		}
+	loadedProsody, err := resolveProsodyModel(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("load prosody model: %w", err)
 	}
-	reading := cfg.Reading
-	if reading == "" {
-		reading, err = frontend.ToKanaWithDictionary(cfg.Text, cfg.Dictionary)
-		if err != nil {
-			return nil, fmt.Errorf("convert text to reading: %w", err)
-		}
+	reading, err := resolveReading(cfg)
+	if err != nil {
+		return nil, err
 	}
 	morae, err := frontend.ParseKana(reading)
 	if err != nil {
 		return nil, fmt.Errorf("parse reading: %w", err)
 	}
 
-	prosodyFeatures := cfg.ProsodyFeatures
-	if loadedProsody != nil && loadedProsody.RequiresExternalFeatures() && len(prosodyFeatures) == 0 {
-		runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
-		if strings.TrimSpace(runtimeText) == "" {
-			runtimeText = reading
-		}
-		runtimeFeatures, analyzeErr := analyzeOpenJTalkCached(runtimeText, openjtalk.Config{
-			HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
-		})
-		if analyzeErr != nil {
-			return nil, fmt.Errorf("analyze runtime prosody features: %w", analyzeErr)
-		}
-		prosodyFeatures, err = alignRuntimeProsodyFeatures(morae, runtimeFeatures)
-		if err != nil {
-			fallbackFeatures, fallbackErr := analyzeOpenJTalkCached(reading, openjtalk.Config{
-				HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
-			})
-			if fallbackErr == nil {
-				prosodyFeatures, fallbackErr = alignRuntimeProsodyFeatures(morae, fallbackFeatures)
-			}
-			if fallbackErr != nil {
-				return nil, fmt.Errorf("align runtime prosody features: %w", err)
-			}
-		}
+	prosodyFeatures, err := resolveProsodyFeatures(cfg, loadedProsody, morae, reading)
+	if err != nil {
+		return nil, err
 	}
 
 	var predictions []prosody.Prediction

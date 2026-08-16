@@ -2,7 +2,10 @@ package tts
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"utautts/internal/frontend"
@@ -244,5 +247,56 @@ func TestValidateConfigRejectsNonFiniteValues(t *testing.T) {
 		if err := validateConfig(cfg); err == nil {
 			t.Fatalf("accepted invalid config: %#v", cfg)
 		}
+	}
+}
+
+func TestConvertToReadingUsesBuiltInTokenizer(t *testing.T) {
+	reading, err := ConvertToReading("こんにちは。", nil, openjtalk.Config{})
+	if err != nil || reading == "" {
+		t.Fatalf("kana text failed: %v", err)
+	}
+}
+
+func TestConvertToReadingReportsOpenJTalkFallback(t *testing.T) {
+	// Numerals cannot be tokenized by the built-in frontend. Point the fallback
+	// at a missing helper so the combined error is deterministic regardless of
+	// whether a packaged Open JTalk helper is present in this checkout.
+	_, err := ConvertToReading("2024年です。", nil, openjtalk.Config{
+		HelperPath: filepath.Join(t.TempDir(), "missing-helper"),
+	})
+	if err == nil {
+		t.Fatal("text the tokenizer cannot read was silently accepted")
+	}
+	if !strings.Contains(err.Error(), "convert text to reading") || !strings.Contains(err.Error(), "Open JTalk fallback") {
+		t.Fatalf("combined fallback error missing context: %v", err)
+	}
+}
+
+func TestVoicebankCacheInvalidatedByClearCaches(t *testing.T) {
+	bankDir := t.TempDir()
+	if err := os.MkdirAll(bankDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := loadVoicebankCached(bankDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := loadVoicebankCached(bankDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("voicebank was loaded more than once")
+	}
+	ClearCaches()
+	third, err := loadVoicebankCached(bankDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == third {
+		t.Fatal("voicebank cache survived ClearCaches")
 	}
 }
