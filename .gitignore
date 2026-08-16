@@ -11,9 +11,12 @@ dist/
 .tmp-*/
 tools/worldline-bridge/bin/
 tools/worldline-bridge/obj/
+tools/openjtalk-feature-bridge/bin/
+/runtime/
 /notes/
 /listening-results*.json
 .codex/
+.env
 .qt/
 aqtinstall.log
 /cmd/utautts-launcher/utautts.ico

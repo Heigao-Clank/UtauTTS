@@ -41,6 +41,8 @@ qt_add_executable(utautts
 if(WIN32)
     target_sources(utautts PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/utautts.rc")
     set_target_properties(utautts PROPERTIES WIN32_EXECUTABLE TRUE)
+else()
+    set_target_properties(utautts PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/app")
 endif()
 
 qt_add_qml_module(utautts
