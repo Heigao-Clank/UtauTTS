@@ -1674,7 +1674,7 @@ ApplicationWindow {
                 tone: String(saved.tone || "C4"),
                 moraDuration: window.projectNumber(saved.mora_duration_ms, window.appBackend.defaultMoraDuration, 20, 1000, true),
                 pauseDuration: window.projectNumber(saved.pause_duration_ms, window.appBackend.defaultPauseDuration, 0, 3000, true),
-                intonation: window.projectNumber(saved.intonation, 0, 0, 2, false),
+                intonation: window.projectNumber(saved.intonation, 1, 0, 2, false),
                 applyPitch: saved.apply_pitch === undefined ? window.appBackend.defaultApplyPitch : !!saved.apply_pitch,
                 revision: 0
             });
@@ -2002,9 +2002,9 @@ ApplicationWindow {
     }
 
     function resetIntonation() {
-        intonationSlider.value = 0;
-        intonationInput.value = 0;
-        window.updateSetting("intonation", 0);
+        intonationSlider.value = 1;
+        intonationInput.value = 100;
+        window.updateSetting("intonation", 1);
     }
 
     function resetPauseDuration() {
@@ -2035,7 +2035,7 @@ ApplicationWindow {
             tone: "C4",
             moraDuration: window.appBackend.defaultMoraDuration,
             pauseDuration: window.appBackend.defaultPauseDuration,
-            intonation: 0,
+            intonation: 1,
             applyPitch: window.appBackend.defaultApplyPitch,
             revision: 0
         });
