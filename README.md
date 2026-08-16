@@ -1,9 +1,4 @@
-# UtauTTS
-
-Current renderer set: `waveform`, `openutau-classic-worldline-faithful`, and
-the optional CUDA `openutau-classic-worldline-faithful-gpu`. The old
-WORLDLINE-R2, DirectML/ONNX, UTAU Classic, hybrid, and long-waveform
-experimental renderers are not included in current releases.
+# UtauTTS （beta）
 
 UTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS
 
