@@ -117,7 +117,7 @@ Item {
     }
 
     function pointX(index) {
-        return root.sidePadding + (root.positionAt(index) + root.durationAt(index) / 2) * root.durationScale;
+        return root.sidePadding + root.positionAt(index) * root.durationScale;
     }
 
     function durationValuesFromPositions() {
@@ -135,26 +135,55 @@ Item {
         for (let position = 0; position < count; ++position)
             positions[position] = root.positionAt(position);
         const minimumGap = root.minimumMoraDuration;
-        const targetCenter = (x - root.sidePadding) / root.durationScale;
-        const currentCenter = root.positionAt(index) + root.durationAt(index) / 2;
-        const delta = targetCenter - currentCenter;
+        const maximumGap = root.maximumMoraDuration;
+        const cursor = (x - root.sidePadding) / root.durationScale;
         if (moveFollowing) {
+            /*
+             * Shift: the operated word slides together with everything
+             * after it, so the tail keeps its shape and only the gap
+             * opened in front of the operated word changes.
+             */
+            const lower = index > 0
+                          ? positions[index - 1] + minimumGap - positions[index]
+                          : -positions[index];
+            const upper = index > 0
+                          ? positions[index - 1] + maximumGap - positions[index]
+                          : Number.POSITIVE_INFINITY;
+            const delta = cursor - positions[index];
+            const clamped = Math.max(Math.max(-positions[index], lower),
+                                     Math.min(upper, delta));
             for (let position = index; position < count; ++position)
-                positions[position] += delta;
+                positions[position] += clamped;
         } else {
-            const start = positions[index];
-            const end = index + 1 < count ? positions[index + 1] : root.endTime();
-            const lowerStart = index > 0 ? positions[index - 1] + minimumGap : 0;
-            const upperEnd = index + 2 < count
-                             ? positions[index + 2] - minimumGap
-                             : Math.max(end, root.endTime() + root.maximumMoraDuration / 2);
-            const clamped = Math.max(lowerStart - start, Math.min(upperEnd - end, delta));
-            positions[index] = start + clamped;
-            if (index + 1 < count)
-                positions[index + 1] = end + clamped;
+            /*
+             * Normal: the vertical line marks the word's reading start, so
+             * dragging moves that line alone; the gaps on either side of
+             * it change and every other word stays in place.
+             */
+            const following = index + 1 < count ? positions[index + 1] : root.endTime();
+            const lower = Math.max(index > 0 ? positions[index - 1] + minimumGap : 0,
+                                   following - maximumGap);
+            const upper = Math.min(index > 0 ? positions[index - 1] + maximumGap
+                                             : Number.POSITIVE_INFINITY,
+                                   following - minimumGap);
+            positions[index] = Math.max(lower, Math.min(upper, cursor));
         }
         root.moraPositions = positions;
         root.moraDurations = root.durationValuesFromPositions();
+        canvas.requestPaint();
+    }
+
+    function updateEndPositionAt(x) {
+        const count = root.morae.length;
+        if (!count || !root.durationIsEditable(count - 1))
+            return;
+        const start = root.positionAt(count - 1);
+        const cursor = (x - root.sidePadding) / root.durationScale;
+        const durations = root.moraDurations.slice();
+        durations[count - 1] = Math.max(root.minimumMoraDuration,
+                                        Math.min(root.maximumMoraDuration,
+                                                 cursor - start));
+        root.moraDurations = durations;
         canvas.requestPaint();
     }
 
@@ -293,6 +322,13 @@ Item {
                         ctx.beginPath();
                         ctx.moveTo(x, 0);
                         ctx.lineTo(x, height);
+                        ctx.stroke();
+                    }
+                    if (root.durationIsEditable(root.morae.length - 1)) {
+                        const endX = root.sidePadding + root.endTime() * root.durationScale;
+                        ctx.beginPath();
+                        ctx.moveTo(endX, 0);
+                        ctx.lineTo(endX, height);
                         ctx.stroke();
                     }
                     ctx.globalAlpha = 1;
@@ -448,6 +484,46 @@ Item {
                         }
                         onDoubleClicked: root.resetPitchAt(index)
                     }
+                }
+            }
+
+            /*
+             * The empty point at the very end: it carries no mora or pitch
+             * value, and dragging it resizes the last word's duration.
+             */
+            Item {
+                visible: root.morae.length > 0 && root.durationIsEditable(root.morae.length - 1)
+                x: root.sidePadding + root.endTime() * root.durationScale - width / 2
+                width: 14
+                height: parent.height - 64
+                z: 2
+
+                MouseArea {
+                    anchors.fill: parent
+                    property real pressX: 0
+                    property bool dragging: false
+                    cursorShape: Qt.SizeHorCursor
+                    onPressed: mouse => {
+                        pressX = mapToItem(graph, mouse.x, mouse.y).x;
+                        dragging = false;
+                    }
+                    onPositionChanged: mouse => {
+                        if (!pressed)
+                            return;
+                        const point = mapToItem(graph, mouse.x, mouse.y);
+                        if (!dragging && Math.abs(point.x - pressX) < 3)
+                            return;
+                        dragging = true;
+                        root.updateEndPositionAt(point.x);
+                    }
+                    onReleased: {
+                        if (dragging) {
+                            root.moraDurationsEdited(root.moraDurations.slice());
+                            root.moraPositionsEdited(root.moraPositions.slice());
+                        }
+                        dragging = false;
+                    }
+                    onCanceled: dragging = false;
                 }
             }
 
