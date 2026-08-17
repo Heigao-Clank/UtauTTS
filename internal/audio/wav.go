@@ -96,6 +96,11 @@ func ReadWav(path string) (*PCM, error) {
 				if _, err := io.CopyN(io.Discard, reader, int64(chunkSize)); err != nil {
 					return nil, err
 				}
+				if chunkSize%2 == 1 {
+					if _, err := reader.ReadByte(); err != nil {
+						return nil, err
+					}
+				}
 				continue
 			}
 			if bitsPerSample != 16 {
@@ -122,6 +127,12 @@ func ReadWav(path string) (*PCM, error) {
 
 	if !fmtFound || !dataFound {
 		return nil, errors.New("missing fmt or data chunk")
+	}
+	if sampleRate <= 0 || channels <= 0 {
+		return nil, errors.New("invalid wav header: sample rate and channels must be positive")
+	}
+	if len(pcmData)%int(channels) != 0 {
+		return nil, errors.New("invalid wav header: sample data is not aligned to channels")
 	}
 
 	return &PCM{

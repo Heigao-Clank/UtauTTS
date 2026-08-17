@@ -115,6 +115,10 @@ ApplicationWindow {
         interval: 250
         onTriggered: {
             if (utterances.count && window.current().content.trim()) {
+                if (window.appBackend.busy) {
+                    analyzeTimer.restart();
+                    return;
+                }
                 const item = window.current();
                 window.appBackend.analyze(item.content, item.utteranceId);
             }

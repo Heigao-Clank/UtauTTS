@@ -108,10 +108,22 @@ mkdir -p "${staging_dir}"
 dotnet publish "${root_dir}/tools/worldline-bridge/worldline-bridge.csproj" \
   -c Release -r linux-x64 --self-contained true --ignore-failed-sources \
   -o "${staging_dir}"
+worldline_url="https://raw.githubusercontent.com/openutau/OpenUtau/0.1.565/runtimes/linux-x64/native/libworldline.so"
+worldline_sha256="33A4123188BCF7B0B8FEC4AE6C5BF882FB16B1AAA5AEC6CD3391ECCB5A69C490"
+worldline_tmp="${root_dir}/.tmp-worldline-linux/libworldline.so"
+curl -fsSLo "${worldline_tmp}" "${worldline_url}"
+if ! command -v sha256sum >/dev/null 2>&1; then
+  echo "sha256sum is required" >&2
+  exit 1
+fi
+actual_worldline_hash="$(sha256sum "${worldline_tmp}" | awk '{print $1}')"
+if [ "${actual_worldline_hash}" != "${worldline_sha256}" ]; then
+  echo "libworldline.so SHA-256 mismatch: ${actual_worldline_hash}" >&2
+  exit 1
+fi
 for runtime_dir in "${gui_dir}/runtime" "${server_dir}/runtime"; do
   cp -R "${staging_dir}/." "${runtime_dir}/"
-  curl -sSLo "${runtime_dir}/libworldline.so" \
-    "https://raw.githubusercontent.com/openutau/OpenUtau/0.1.565/runtimes/linux-x64/native/libworldline.so"
+  cp "${worldline_tmp}" "${runtime_dir}/libworldline.so"
 done
 
 echo '=== Python and PyInstaller licenses ==='
@@ -133,7 +145,7 @@ for package_dir in "${gui_dir}" "${server_dir}"; do
   license_dir="${package_dir}/licenses/Go"
   mkdir -p "${license_dir}"
   cp "$(go env GOROOT)/LICENSE" "${license_dir}/GO-LICENSE.txt"
-  for module in golang.org/x/text github.com/ikawaha/kagome/v2 github.com/ikawaha/kagome-dict/ipa; do
+  for module in golang.org/x/text github.com/ikawaha/kagome/v2 github.com/ikawaha/kagome-dict github.com/ikawaha/kagome-dict/ipa; do
     module_info="$(go list -m -f '{{.Dir}}|{{.Version}}' "${module}")"
     module_dir="${module_info%%|*}"
     module_version="${module_info#*|}"
@@ -144,6 +156,31 @@ for package_dir in "${gui_dir}" "${server_dir}"; do
       cp "${module_dir}/NOTICE.txt" "${license_dir}/${module_name}-${module_version}-NOTICE.txt"
     fi
   done
+done
+
+echo '=== OpenJTalk and dataset licenses ==='
+for package_dir in "${gui_dir}" "${server_dir}"; do
+  license_root="${package_dir}/licenses"
+  mkdir -p "${license_root}/OpenJTalk"
+  cp "${root_dir}/licenses/openjtalk/"*.txt "${license_root}/OpenJTalk/"
+  cp "${root_dir}/licenses/JSUT-DATA-AND-LABELS.txt" "${license_root}/"
+  dict_copying="${package_dir}/runtime/open_jtalk_dic_utf_8-1.11/COPYING"
+  if [[ -f "${dict_copying}" ]]; then
+    cp "${dict_copying}" "${license_root}/OpenJTalk/DICTIONARY_COPYING.txt"
+  fi
+done
+
+echo '=== License manifest ==='
+for package_dir in "${gui_dir}" "${server_dir}"; do
+  license_root="${package_dir}/licenses"
+  manifest="${license_root}/README.txt"
+  {
+    echo 'This directory contains license and notice files copied from the exact'
+    echo 'SDK/package/toolchain versions used to assemble this release.'
+    echo ''
+    echo 'The project-wide summary is ../THIRD_PARTY_NOTICES.txt.'
+  } > "${manifest}"
+  find "${license_root}" -type f | sort | sed "s#${package_dir}/##" >> "${manifest}"
 done
 
 echo '=== Models and plugins ==='

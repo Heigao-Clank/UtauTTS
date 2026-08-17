@@ -23,26 +23,31 @@ QVariantList legalDocuments() {
 
     const QString notices = readTextResource(":/legal/THIRD_PARTY_NOTICES.txt");
     const QStringList lines = notices.split('\n');
-    int sectionStart = 0;
+    QString sectionName;
+    int contentStart = 0;
     for (int index = 1; index < lines.size(); ++index) {
         const QString underline = lines.at(index).trimmed();
         if (underline.size() < 3 || underline.count('=') != underline.size()) {
             continue;
         }
         const int headingIndex = index - 1;
-        if (headingIndex > sectionStart) {
-            const QString text = lines.mid(sectionStart, headingIndex - sectionStart).join('\n').trimmed();
-            if (!text.isEmpty()) {
-                documents.append(QVariantMap{{"name", lines.at(sectionStart).trimmed()},
-                                             {"text", text}});
-            }
+        if (sectionName.isEmpty()) {
+            sectionName = lines.at(headingIndex).trimmed();
+            contentStart = index + 1;
+            continue;
         }
-        sectionStart = headingIndex;
+        const QString text = lines.mid(contentStart, headingIndex - contentStart).join('\n').trimmed();
+        if (!text.isEmpty()) {
+            documents.append(QVariantMap{{"name", sectionName}, {"text", text}});
+        }
+        sectionName = lines.at(headingIndex).trimmed();
+        contentStart = index + 1;
     }
-    const QString finalSection = lines.mid(sectionStart).join('\n').trimmed();
-    if (!finalSection.isEmpty()) {
-        documents.append(QVariantMap{{"name", lines.at(sectionStart).trimmed()},
-                                     {"text", finalSection}});
+    if (!sectionName.isEmpty()) {
+        const QString finalSection = lines.mid(contentStart).join('\n').trimmed();
+        if (!finalSection.isEmpty()) {
+            documents.append(QVariantMap{{"name", sectionName}, {"text", finalSection}});
+        }
     }
     return documents;
 }

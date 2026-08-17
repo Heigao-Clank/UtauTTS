@@ -43,6 +43,7 @@ if(WIN32)
     set_target_properties(utautts PROPERTIES WIN32_EXECUTABLE TRUE)
 else()
     set_target_properties(utautts PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/app")
+    set_target_properties(utautts PROPERTIES BUILD_RPATH "$ORIGIN;${UTAUTTS_NATIVE_DIR}" INSTALL_RPATH "$ORIGIN")
 endif()
 
 qt_add_qml_module(utautts

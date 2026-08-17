@@ -132,11 +132,11 @@ void Backend::setShortcutSequences(const QString &synthesize,
                                    const QString &reloadVoicebanks,
                                    const QString &addUtterance,
                                    const QString &removeUtterance) {
-    if (m_synthesizeShortcut == synthesize
-            && m_saveProjectShortcut == saveProject
-            && m_reloadVoicebanksShortcut == reloadVoicebanks
-            && m_addUtteranceShortcut == addUtterance
-            && m_removeUtteranceShortcut == removeUtterance) {
+    if (m_synthesizeShortcut == synthesize.trimmed()
+            && m_saveProjectShortcut == saveProject.trimmed()
+            && m_reloadVoicebanksShortcut == reloadVoicebanks.trimmed()
+            && m_addUtteranceShortcut == addUtterance.trimmed()
+            && m_removeUtteranceShortcut == removeUtterance.trimmed()) {
         return;
     }
     m_synthesizeShortcut = synthesize.trimmed();
@@ -255,7 +255,11 @@ QVariantMap Backend::call(const QByteArray &method, const QVariantMap &request) 
     if (!object.value("ok").toBool()) {
         throw std::runtime_error(object.value("error").toString().toStdString());
     }
-    return object.value("result").toObject().toVariantMap();
+    const QJsonValue result = object.value("result");
+    if (!result.isObject()) {
+        throw std::runtime_error("native backend returned no result");
+    }
+    return result.toObject().toVariantMap();
 }
 
 void Backend::refreshMetadata() {
@@ -305,6 +309,9 @@ void Backend::reloadVoicebanks() {
 }
 
 void Backend::analyze(const QString &text, const QString &requestId) {
+    if (m_busy) {
+        return;
+    }
     const quint64 generation = ++m_nextAnalysisGeneration;
     m_analysisGenerations.insert(requestId, generation);
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
@@ -343,6 +350,9 @@ void Backend::analyze(const QString &text, const QString &requestId) {
 }
 
 void Backend::predictProsody(const QVariantMap &request) {
+    if (m_busy) {
+        return;
+    }
     QString requestId = request.value("request_id").toString();
     if (requestId.isEmpty()) {
         requestId = QUuid::createUuid().toString(QUuid::WithoutBraces);

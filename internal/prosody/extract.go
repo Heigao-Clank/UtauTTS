@@ -57,7 +57,13 @@ func ExtractRecord(id, text, audioPath string, cfg ExtractConfig) (Record, error
 		}
 		start, end = segments[0].start, segments[len(segments)-1].end
 	} else {
-		if end-start < len(morae)*msFrames(cfg.MinDurationMS, pcm.SampleRate) {
+		voicedCount := 0
+		for _, mora := range morae {
+			if !mora.Pause {
+				voicedCount++
+			}
+		}
+		if end-start < voicedCount*msFrames(cfg.MinDurationMS, pcm.SampleRate) {
 			return Record{}, fmt.Errorf("voiced range is too short for %d tokens", len(morae))
 		}
 		boundaries := alignBoundaries(wave, pcm.SampleRate, start, end, len(morae), cfg.MinDurationMS)

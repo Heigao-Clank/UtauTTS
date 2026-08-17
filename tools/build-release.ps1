@@ -100,7 +100,7 @@ try {
     try {
         Invoke-Checked 'dotnet' @(
             'publish', 'tools/worldline-bridge/worldline-bridge.csproj',
-            '-c', 'Release', '-r', 'win-x64', '--self-contained', 'false', '--ignore-failed-sources', '-o', $guiRuntimePath
+            '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--ignore-failed-sources', '-o', $guiRuntimePath
         )
     } finally {
         $env:NUGET_PACKAGES = $previousNugetPackages

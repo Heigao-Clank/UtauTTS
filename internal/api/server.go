@@ -141,7 +141,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if s.authToken != "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host {
 				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 				return

@@ -75,7 +75,7 @@ func (file *ManualPitchFile) Validate() error {
 // Missing positions are zero, so a sparse file can correct only selected
 // morae. Pauses are represented by their timing but do not receive a point.
 func (file *ManualPitchFile) Curve(morae []frontend.Mora, timings []MoraTiming, durationMS float64) (*PitchContour, error) {
-	if file == nil {
+	if file == nil || len(file.Points) == 0 {
 		return nil, nil
 	}
 	if len(timings) != len(morae) {
