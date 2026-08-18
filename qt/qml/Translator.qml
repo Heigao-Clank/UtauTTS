@@ -10,7 +10,7 @@ Item {
     property var translations: ({})
 
     function load(lang) {
-        const code = lang === "en" ? "en" : "ja";
+        const code = String(lang);
         let content = "";
         if (root.backend && root.backend.loadLanguageFile)
             content = root.backend.loadLanguageFile(code);
