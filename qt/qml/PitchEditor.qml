@@ -4,10 +4,8 @@ import QtQuick
 
 Item {
     id: root
+    property var translator: ({})
     property var points: []
-    // Model-generated pitch is an absolute baseline. `points` remains the
-    // user's manual offset so a later synthesis does not apply the model
-    // contour twice.
     property var autoPoints: []
     property var morae: []
     property var moraDurations: []
@@ -380,7 +378,7 @@ Item {
 
                         Text {
                             width: parent.width
-                            text: pointColumn.modelData.mora || "・"
+                            text: pointColumn.modelData.mora || root.translator.tr("pitch.emptyMora")
                             horizontalAlignment: Text.AlignHCenter
                             color: root.labelColor
                             elide: Text.ElideRight
@@ -487,10 +485,6 @@ Item {
                 }
             }
 
-            /*
-             * The empty point at the very end: it carries no mora or pitch
-             * value, and dragging it resizes the last word's duration.
-             */
             Item {
                 visible: root.morae.length > 0 && root.durationIsEditable(root.morae.length - 1)
                 x: root.sidePadding + root.endTime() * root.durationScale - width / 2
@@ -528,11 +522,6 @@ Item {
             }
 
             /*
-             * The duration handles sit on the pitch points.  The pitch editor
-             * remains vertically draggable in the rest of the graph, while
-             * dragging a handle changes that point's horizontal position.
-             */
-            /*
             Row {
                 anchors.left: parent.left
                 anchors.leftMargin: root.sidePadding
@@ -550,7 +539,7 @@ Item {
 
                         Text {
                             width: parent.width
-                            text: pointColumn.modelData.mora || "・"
+                            text: pointColumn.modelData.mora || root.translator.tr("pitch.emptyMora")
                             horizontalAlignment: Text.AlignHCenter
                             color: root.labelColor
                             elide: Text.ElideRight

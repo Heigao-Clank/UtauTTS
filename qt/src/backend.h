@@ -29,6 +29,7 @@ class Backend final : public QObject {
     Q_PROPERTY(QString synthesisJson READ synthesisJson NOTIFY synthesisChanged)
     Q_PROPERTY(QUrl previewUrl READ previewUrl NOTIFY previewReady)
     Q_PROPERTY(bool darkMode READ darkMode NOTIFY themeChanged)
+    Q_PROPERTY(QString language READ language NOTIFY languageChanged)
     Q_PROPERTY(bool closeLogOnSuccess READ closeLogOnSuccess NOTIFY logSettingsChanged)
     Q_PROPERTY(int defaultMoraDuration READ defaultMoraDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(int defaultPauseDuration READ defaultPauseDuration NOTIFY synthesisDefaultsChanged)
@@ -59,6 +60,7 @@ public:
     QString synthesisJson() const { return m_synthesisJson; }
     QUrl previewUrl() const { return m_previewUrl; }
     bool darkMode() const { return m_darkMode; }
+    QString language() const { return m_language; }
     bool closeLogOnSuccess() const { return m_closeLogOnSuccess; }
     int defaultMoraDuration() const { return m_defaultMoraDuration; }
     int defaultPauseDuration() const { return m_defaultPauseDuration; }
@@ -83,6 +85,10 @@ public:
     Q_INVOKABLE bool saveProject(const QUrl &destination, const QVariantMap &project);
     Q_INVOKABLE QVariantMap loadProject(const QUrl &source);
     Q_INVOKABLE void setDarkMode(bool value);
+    Q_INVOKABLE void setLanguage(const QString &value);
+    Q_INVOKABLE QString loadLanguageFile(const QString &code) const;
+    Q_INVOKABLE QStringList languageCodes() const;
+    Q_INVOKABLE QString languageDisplayName(const QString &code) const;
     Q_INVOKABLE bool showNativeAboutDialog();
     Q_INVOKABLE void clearLogs();
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
@@ -104,6 +110,7 @@ signals:
     void synthesisChanged();
     void previewReady();
     void themeChanged();
+    void languageChanged();
     void logSettingsChanged();
     void synthesisDefaultsChanged();
     void shortcutSettingsChanged();
@@ -130,6 +137,9 @@ private:
     QString m_synthesisJson;
     QUrl m_previewUrl;
     bool m_darkMode = false;
+    QString m_language;
+    mutable QHash<QString, QString> m_languageNames;
+    mutable bool m_languageNamesLoaded = false;
     bool m_closeLogOnSuccess = true;
     int m_defaultMoraDuration = 120;
     int m_defaultPauseDuration = 180;
@@ -145,4 +155,5 @@ private:
     quint64 m_nextProsodyGeneration = 0;
 
     void appendLog(const QString &message);
+    QHash<QString, QString> languageDisplayNames() const;
 };

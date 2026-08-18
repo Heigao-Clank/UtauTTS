@@ -9,10 +9,11 @@ ApplicationWindow {
     required property var hostWindow
     required property var hostPalette
     required property var backend
+    required property var translator
     property alias currentIndex: voicebankDetailsList.currentIndex
     property var selectedVoicebank: root.backend.voicebanks.length && voicebankDetailsList.currentIndex >= 0 && voicebankDetailsList.currentIndex < root.backend.voicebanks.length ? root.backend.voicebanks[voicebankDetailsList.currentIndex] : null
 
-    title: "ボイスバンクの詳細"
+    title: root.translator.tr("voicebankDetails.title")
     visible: false
     width: 860
     height: 620
@@ -70,7 +71,7 @@ ApplicationWindow {
                 contentWidth: availableWidth
                 Label {
                     width: voicebankReadmeScroll.availableWidth
-                    text: root.selectedVoicebank ? (root.selectedVoicebank.readme_text || "READMEがありません") : ""
+                    text: root.selectedVoicebank ? (root.selectedVoicebank.readme_text || root.translator.tr("voicebankDetails.noReadme")) : ""
                     wrapMode: Text.Wrap
                     padding: 4
                 }

@@ -8,6 +8,7 @@ Window {
     id: root
     required property var hostPalette
     required property var backend
+    required property var translator
     required property var files
     required property url exportDirectory
     required property bool ready
@@ -15,7 +16,7 @@ Window {
     required property color mutedText
     signal dragError()
 
-    title: "exoをドラッグ"
+    title: root.translator.tr("drag.title")
     visible: false
     width: 720
     height: 420
@@ -36,8 +37,8 @@ Window {
         Label {
             Layout.fillWidth: true
             text: root.exoDrag
-                  ? "AviUtlの拡張編集にドラッグ＆ドロップしてください。"
-                  : "下の領域をドラッグして、タイムライン上で離してください。"
+                  ? root.translator.tr("drag.aviutlHint")
+                  : root.translator.tr("drag.timelineHint")
             wrapMode: Text.WordWrap
         }
 
@@ -52,7 +53,7 @@ Window {
 
             Label {
                 anchors.centerIn: parent
-                text: "タイムラインへドラッグ"
+                text: root.translator.tr("drag.timelineLabel")
                 horizontalAlignment: Text.AlignHCenter
                 color: palette.text
             }
@@ -86,7 +87,7 @@ Window {
 
         Label {
             Layout.fillWidth: true
-            text: "保存先: " + root.exportDirectory.toString()
+            text: root.translator.tr("drag.saveDestination", root.exportDirectory.toString())
             elide: Text.ElideMiddle
             color: root.mutedText
         }
@@ -97,7 +98,7 @@ Window {
             Item { Layout.fillWidth: true }
 
             Button {
-                text: "閉じる"
+                text: root.translator.tr("common.close")
                 onClicked: root.close()
             }
         }

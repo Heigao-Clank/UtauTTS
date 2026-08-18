@@ -57,7 +57,9 @@ qt_add_qml_module(utautts
         qml/SettingsWindow.qml
         qml/DictionaryWindow.qml
         qml/LicenseWindow.qml
+        qml/UsageWindow.qml
         qml/VoicebankDetailsWindow.qml
+        qml/Translator.qml
 )
 
 set_source_files_properties(
@@ -103,6 +105,21 @@ qt_add_resources(utautts "legal"
     FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE"
         "${CMAKE_CURRENT_SOURCE_DIR}/../THIRD_PARTY_NOTICES.txt"
+)
+
+# UI language files (JSON). Translator.qml loads qrc:/lang/<code>.json.
+# Adding a new <code>.json here automatically makes it a selectable language.
+file(GLOB lang_files CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/lang/*.json"
+)
+foreach(lang_file ${lang_files})
+    get_filename_component(lang_name "${lang_file}" NAME)
+    set_source_files_properties("${lang_file}" PROPERTIES QT_RESOURCE_ALIAS "${lang_name}")
+endforeach()
+qt_add_resources(utautts "lang"
+    PREFIX "/lang"
+    FILES
+        ${lang_files}
 )
 
 if(WIN32)

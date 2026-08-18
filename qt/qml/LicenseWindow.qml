@@ -8,9 +8,10 @@ ApplicationWindow {
     id: root
     required property var hostWindow
     required property var hostPalette
+    required property var translator
     property var documents: []
 
-    title: "ライセンス"
+    title: root.translator.tr("license.title")
     visible: false
     width: 860
     height: 620

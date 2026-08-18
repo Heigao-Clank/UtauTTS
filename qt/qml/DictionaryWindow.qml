@@ -9,8 +9,9 @@ ApplicationWindow {
     required property var hostWindow
     required property var hostPalette
     required property var backend
+    required property var translator
 
-    title: "辞書設定"
+    title: root.translator.tr("dictionary.title")
     visible: false
     width: 760
     height: 560
@@ -65,7 +66,7 @@ ApplicationWindow {
 
         Label {
             Layout.fillWidth: true
-            text: "文章中の表記を、指定した読みへ置き換えます。読みはひらがなまたはカタカナで入力してください。"
+            text: root.translator.tr("dictionary.description")
             wrapMode: Text.WordWrap
         }
 
@@ -75,12 +76,12 @@ ApplicationWindow {
 
             Label {
                 Layout.preferredWidth: 280
-                text: "表記"
+                text: root.translator.tr("dictionary.surface")
                 font.bold: true
             }
             Label {
                 Layout.fillWidth: true
-                text: "読み"
+                text: root.translator.tr("dictionary.reading")
                 font.bold: true
             }
             Item {
@@ -112,7 +113,7 @@ ApplicationWindow {
 
                 TextField {
                     Layout.preferredWidth: 280
-                    placeholderText: "例: UtauTTS"
+                    placeholderText: root.translator.tr("dictionary.surfaceExample")
                     text: dictionaryEntryRow.surface
                     selectByMouse: true
                     onTextEdited: dictionaryEntriesModel.setProperty(dictionaryEntryRow.index, "surface", text)
@@ -120,7 +121,7 @@ ApplicationWindow {
 
                 TextField {
                     Layout.fillWidth: true
-                    placeholderText: "例: うたうてぃーてぃーえす"
+                    placeholderText: root.translator.tr("dictionary.readingExample")
                     text: dictionaryEntryRow.reading
                     selectByMouse: true
                     onTextEdited: dictionaryEntriesModel.setProperty(dictionaryEntryRow.index, "reading", text)
@@ -161,7 +162,7 @@ ApplicationWindow {
                     }
                     onClicked: dictionaryEntriesModel.remove(dictionaryEntryRow.index)
                     ToolTip.visible: hovered
-                    ToolTip.text: "削除"
+                    ToolTip.text: root.translator.tr("dictionary.delete")
                 }
             }
         }
@@ -170,7 +171,7 @@ ApplicationWindow {
             Layout.fillWidth: true
 
             Button {
-                text: "項目を追加"
+                text: root.translator.tr("dictionary.addEntry")
                 onClicked: root.addEntry()
             }
 
@@ -179,7 +180,7 @@ ApplicationWindow {
             }
 
             Button {
-                text: "キャンセル"
+                text: root.translator.tr("common.cancel")
                 onClicked: {
                     root.close();
                     root.visible = false;
@@ -187,7 +188,7 @@ ApplicationWindow {
             }
 
             Button {
-                text: "保存"
+                text: root.translator.tr("common.save")
                 highlighted: true
                 onClicked: root.saveCurrent()
             }

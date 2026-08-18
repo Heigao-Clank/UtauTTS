@@ -40,6 +40,14 @@ ApplicationWindow {
     readonly property var appBackend: injectedBackend
     readonly property bool darkMode: appBackend.darkMode
     readonly property var licenseDocuments: injectedLegalDocuments
+
+    property var translator: translatorInstance
+
+    Translator {
+        id: translatorInstance
+        backend: window.appBackend
+    }
+
     property int selectedIndex: 0
     property int nextUtteranceId: 1
     property int draggedUtteranceIndex: -1
@@ -152,7 +160,7 @@ ApplicationWindow {
     FileDialog {
         id: saveDialog
         fileMode: FileDialog.SaveFile
-        nameFilters: ["WAV音声 (*.wav)"]
+        nameFilters: [window.translator.tr("main.wavFilter")]
         defaultSuffix: "wav"
         onAccepted: window.appBackend.savePreview(selectedFile)
     }
@@ -169,7 +177,7 @@ ApplicationWindow {
 
     Dialog {
         id: frameRateDialog
-        title: "exoのフレームレート"
+        title: window.translator.tr("main.exoFrameRateTitle")
         modal: true
         width: Math.min(window.width - 40, 400)
         anchors.centerIn: Overlay.overlay
@@ -185,7 +193,7 @@ ApplicationWindow {
 
             Label {
                 Layout.fillWidth: true
-                text: "exoのフレームレートを指定してください。"
+                text: window.translator.tr("main.exoFrameRateMessage")
                 wrapMode: Text.WordWrap
             }
 
@@ -194,7 +202,7 @@ ApplicationWindow {
                 spacing: 8
 
                 Label {
-                    text: "フレームレート"
+                    text: window.translator.tr("main.frameRate")
                 }
                 SpinBox {
                     id: frameRateSpin
@@ -206,7 +214,7 @@ ApplicationWindow {
                     editable: true
                 }
                 Label {
-                    text: "fps"
+                    text: window.translator.tr("main.fps")
                     color: window.mutedText
                 }
                 Item {
@@ -220,6 +228,7 @@ ApplicationWindow {
         id: dragTargetWindow
         hostPalette: window.palette
         backend: window.appBackend
+        translator: window.translator
         files: window.dragExportFiles
         exportDirectory: window.batchExportDirectory
         ready: window.dragExportReady
@@ -232,6 +241,7 @@ ApplicationWindow {
         id: synthesisLogWindow
         hostPalette: window.palette
         backend: window.appBackend
+        translator: window.translator
     }
 
     SettingsWindow {
@@ -239,6 +249,7 @@ ApplicationWindow {
         hostWindow: window
         hostPalette: window.palette
         backend: window.appBackend
+        translator: window.translator
         onSaveRequested: window.saveSettings()
     }
 
@@ -247,13 +258,22 @@ ApplicationWindow {
         hostWindow: window
         hostPalette: window.palette
         backend: window.appBackend
+        translator: window.translator
     }
 
     LicenseWindow {
         id: licenseWindow
         hostWindow: window
         hostPalette: window.palette
+        translator: window.translator
         documents: window.licenseDocuments
+    }
+
+    UsageWindow {
+        id: usageWindow
+        hostWindow: window
+        hostPalette: window.palette
+        translator: window.translator
     }
 
     VoicebankDetailsWindow {
@@ -261,12 +281,13 @@ ApplicationWindow {
         hostWindow: window
         hostPalette: window.palette
         backend: window.appBackend
+        translator: window.translator
     }
 
     FileDialog {
         id: projectSaveDialog
         fileMode: FileDialog.SaveFile
-        nameFilters: ["UtauTTSプロジェクト (*.utautts)"]
+        nameFilters: [window.translator.tr("main.projectFilter")]
         defaultSuffix: "utautts"
         onAccepted: window.saveProjectTo(selectedFile)
         onRejected: window.closeAfterProjectSave = false
@@ -275,13 +296,13 @@ ApplicationWindow {
     FileDialog {
         id: projectOpenDialog
         fileMode: FileDialog.OpenFile
-        nameFilters: ["UtauTTSプロジェクト (*.utautts)"]
+        nameFilters: [window.translator.tr("main.projectFilter")]
         onAccepted: window.loadProjectFrom(selectedFile)
     }
 
     Dialog {
         id: closeWarningDialog
-        title: "終了の確認"
+        title: window.translator.tr("main.closeConfirmTitle")
         modal: true
         width: Math.min(window.width - 40, 460)
         anchors.centerIn: Overlay.overlay
@@ -293,8 +314,8 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 text: window.appBackend.busy || window.batchExportActive
-                      ? "音声合成が実行中です。終了しますか？"
-                      : "未保存の変更があります。保存せずに終了しますか？"
+                      ? window.translator.tr("main.closeWhileBusy")
+                      : window.translator.tr("main.closeUnsaved")
                 wrapMode: Text.WordWrap
             }
 
@@ -307,12 +328,12 @@ ApplicationWindow {
                 }
 
                 Button {
-                    text: "キャンセル"
+                    text: window.translator.tr("main.cancel")
                     onClicked: closeWarningDialog.close()
                 }
 
                 Button {
-                    text: "保存して終了"
+                    text: window.translator.tr("main.saveAndQuit")
                     enabled: window.projectDirty && !window.appBackend.busy && !window.batchExportActive
                     onClicked: {
                         closeWarningDialog.close();
@@ -322,7 +343,7 @@ ApplicationWindow {
                 }
 
                 Button {
-                    text: "保存せずに終了"
+                    text: window.translator.tr("main.quitWithoutSaving")
                     onClicked: {
                         closeWarningDialog.close();
                         window.quitWithoutWarning();
@@ -334,27 +355,31 @@ ApplicationWindow {
 
     MessageDialog {
         id: shortcutConflictDialog
-        title: "ショートカット設定"
-        text: "同じショートカットが複数の機能に割り当てられています。別のキーを設定してください。"
+        title: window.translator.tr("main.shortcutConflictTitle")
+        text: window.translator.tr("main.shortcutConflictText")
         buttons: MessageDialog.Ok
     }
 
     MessageDialog {
         id: projectLoadErrorDialog
-        title: "プロジェクトを開けません"
+        title: window.translator.tr("main.projectOpenErrorTitle")
         buttons: MessageDialog.Ok
     }
 
     MessageDialog {
         id: aboutDialog
-        title: "UtauTTSについて"
-        text: "UtauTTS " + Qt.application.version + "\n\nDeveloped by yh（@2237yh）\nTesting by アアアアアアア（@a7_riri）"
-        informativeText: "UTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS"
+        title: window.translator.tr("main.aboutTitle")
+        text: window.translator.tr("main.aboutText", Qt.application.version)
+        informativeText: window.translator.tr("main.aboutInformative")
         buttons: MessageDialog.Ok
     }
 
     Connections {
         target: window.appBackend
+
+        function onLanguageChanged() {
+window.translator.load(window.appBackend.language);
+        }
 
         function onMetadataChanged() {
             const suppressDirty = !window.metadataInitialized;
@@ -531,7 +556,10 @@ ApplicationWindow {
         }
     }
 
-    Component.onCompleted: addUtterance(false)
+    Component.onCompleted: {
+        window.translator.load(window.appBackend.language);
+        addUtterance(false);
+    }
 
     onClosing: close => {
         if (window.closeBypass) {
@@ -546,111 +574,115 @@ ApplicationWindow {
 
     menuBar: MenuBar {
         Menu {
-            title: "ファイル"
+            title: window.translator.tr("menu.file")
             MenuItem {
-                text: "プロジェクトを開く..."
+                text: window.translator.tr("menu.file.open")
                 enabled: !window.appBackend.busy && !window.batchExportActive
                 onTriggered: projectOpenDialog.open()
             }
             MenuItem {
-                text: "プロジェクトを保存..."
+                text: window.translator.tr("menu.file.save")
                 enabled: !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openProjectSaveDialog()
             }
             MenuSeparator {}
             MenuItem {
-                text: "WAVを保存..."
+                text: window.translator.tr("menu.file.saveWav")
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive && window.current().content.trim().length > 0
                 onTriggered: window.saveCurrentAudio()
             }
             MenuItem {
-                text: "WAVをすべて保存..."
+                text: window.translator.tr("menu.file.saveAllWav")
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openSaveAllDialog()
             }
             MenuSeparator {}
             MenuItem {
-                text: "選択テキストをexoに出力..."
+                text: window.translator.tr("menu.file.exportExo")
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive && window.current().content.trim().length > 0
                 onTriggered: window.openDragExportDialog(true)
             }
             MenuItem {
-                text: "全テキストをexoに出力..."
+                text: window.translator.tr("menu.file.exportAllExo")
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openDragExportDialog(false)
             }
             MenuItem {
-                text: "音源を再読込"
+                text: window.translator.tr("menu.file.reloadVoicebanks")
                 enabled: !window.appBackend.busy
                 onTriggered: window.appBackend.reloadVoicebanks()
             }
             MenuSeparator {}
             MenuItem {
-                text: "終了"
+                text: window.translator.tr("menu.file.quit")
                 onTriggered: Qt.quit()
             }
         }
         Menu {
-            title: "再生"
+            title: window.translator.tr("menu.playback")
             MenuItem {
-                text: "選択中のテキストを再生"
+                text: window.translator.tr("menu.playback.current")
                 enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
                          && !window.playbackQueueActive && window.current().content.trim().length > 0
                 onTriggered: window.synthesizeCurrent()
             }
             MenuItem {
-                text: "全テキストを再生"
+                text: window.translator.tr("menu.playback.all")
                 enabled: !window.appBackend.busy && !window.batchExportActive && !window.playbackQueueActive
                          && window.hasPlayableTextFrom(0)
                 onTriggered: window.startPlaybackQueue(0)
             }
             MenuItem {
-                text: "選択中のテキストより先全てを再生"
+                text: window.translator.tr("menu.playback.fromSelected")
                 enabled: !window.appBackend.busy && !window.batchExportActive && !window.playbackQueueActive
                          && window.hasPlayableTextFrom(window.selectedIndex)
                 onTriggered: window.startPlaybackQueue(window.selectedIndex)
             }
             MenuSeparator {}
             MenuItem {
-                text: "もう一度再生"
+                text: window.translator.tr("menu.playback.replay")
                 enabled: !window.appBackend.busy && !window.batchExportActive && !window.playbackQueueActive
                          && window.hasCachedAudio()
                 onTriggered: window.replayCachedAudio()
             }
         }
         Menu {
-            title: "設定"
+            title: window.translator.tr("menu.settings")
             MenuItem {
-                text: "設定..."
+                text: window.translator.tr("menu.settings.settings")
                 onTriggered: {
                     window.showAuxiliaryWindow(settingsWindow);
                     settingsWindow.loadCurrent();
                 }
             }
             MenuItem {
-                text: "辞書設定..."
+                text: window.translator.tr("menu.settings.dictionary")
                 onTriggered: window.openDictionarySettings()
             }
         }
         Menu {
-            title: "ヘルプ"
+            title: window.translator.tr("menu.help")
             MenuItem {
-                text: "UtauTTSについて..."
+                text: window.translator.tr("menu.help.about")
                 onTriggered: {
                     if (!window.appBackend.showNativeAboutDialog())
                         aboutDialog.open();
                 }
             }
             MenuItem {
-                text: "GitHubリポジトリ"
+                text: window.translator.tr("menu.help.repository")
                 onTriggered: Qt.openUrlExternally(window.repositoryUrl)
             }
             MenuItem {
-                text: "ライセンス..."
+                text: window.translator.tr("menu.help.license")
                 onTriggered: window.showAuxiliaryWindow(licenseWindow)
             }
             MenuItem {
-                text: "ボイスバンクの詳細..."
+                text: window.translator.tr("menu.help.usage")
+                onTriggered: window.showAuxiliaryWindow(usageWindow)
+            }
+            MenuItem {
+                text: window.translator.tr("menu.help.voicebankDetails")
                 enabled: window.appBackend.voicebanks.length > 0
                 onTriggered: window.showVoicebankDetails()
             }
@@ -719,7 +751,7 @@ ApplicationWindow {
                                 Label {
                                     anchors.centerIn: parent
                                     visible: !card.imagePath
-                                    text: "音源"
+                                    text: window.translator.tr("main.card.icon")
                                     color: window.mutedText
                                     font.pixelSize: 9
                                 }
@@ -738,7 +770,7 @@ ApplicationWindow {
                                     }
                                 }
                                 ToolTip.visible: imageHover.hovered && !imageDrag.active
-                                ToolTip.text: window.voicebankName(card.voicebankId) + "\nドラッグして並べ替え"
+                                ToolTip.text: window.voicebankName(card.voicebankId) + "\n" + window.translator.tr("main.card.dragReorder")
                                 HoverHandler {
                                     id: imageHover
                                 }
@@ -750,7 +782,7 @@ ApplicationWindow {
                                 Layout.preferredHeight: 42
                                 text: card.content
                                 font.pixelSize: 16
-                                placeholderText: "文章を入力"
+                                placeholderText: window.translator.tr("main.textPlaceholder")
                                 selectByMouse: true
 
                                 onActiveFocusChanged: {
@@ -786,7 +818,7 @@ ApplicationWindow {
                                     id: cardMenu
                                     y: parent.height
                                     MenuItem {
-                                        text: "上へ移動"
+                                        text: window.translator.tr("main.card.moveUp")
                                         enabled: card.index > 0
                                         onTriggered: {
                                             window.selectUtterance(card.index);
@@ -794,7 +826,7 @@ ApplicationWindow {
                                         }
                                     }
                                     MenuItem {
-                                        text: "下へ移動"
+                                        text: window.translator.tr("main.card.moveDown")
                                         enabled: card.index < utterances.count - 1
                                         onTriggered: {
                                             window.selectUtterance(card.index);
@@ -803,7 +835,7 @@ ApplicationWindow {
                                     }
                                     MenuSeparator {}
                                     MenuItem {
-                                        text: "削除"
+                                        text: window.translator.tr("main.card.delete")
                                         enabled: true
                                         onTriggered: {
                                             window.selectUtterance(card.index);
@@ -889,7 +921,7 @@ ApplicationWindow {
                     }
                     onClicked: window.addUtterance()
                     ToolTip.visible: hovered
-                    ToolTip.text: "追加"
+                    ToolTip.text: window.translator.tr("main.addTooltip")
                 }
             }
 
@@ -914,7 +946,7 @@ ApplicationWindow {
                         spacing: 12
 
                         Label {
-                            text: "音源"
+                            text: window.translator.tr("main.param.voicebank")
                             font.pixelSize: 12
                             color: window.mutedText
                         }
@@ -932,7 +964,7 @@ ApplicationWindow {
                         }
 
                         Label {
-                            text: "抑揚モデル"
+                            text: window.translator.tr("main.param.intonationModel")
                             font.pixelSize: 12
                             color: window.mutedText
                         }
@@ -942,7 +974,7 @@ ApplicationWindow {
                             model: [
                                 {
                                     id: "none",
-                                    display_name: "なし"
+                                    display_name: window.translator.tr("main.modelNone")
                                 }
                             ].concat(window.appBackend.models)
                             textRole: "display_name"
@@ -959,7 +991,7 @@ ApplicationWindow {
                         }
 
                         Label {
-                            text: "Renderer"
+                            text: window.translator.tr("main.param.renderer")
                             font.pixelSize: 12
                             color: window.mutedText
                         }
@@ -973,7 +1005,7 @@ ApplicationWindow {
                         }
                         Label {
                             Layout.fillWidth: true
-                            text: window.appBackend.cudaAvailable ? "CUDA GPUを検出しました" : "CPUモード"
+                            text: window.appBackend.cudaAvailable ? window.translator.tr("main.cudaAvailable") : window.translator.tr("main.cpuMode")
                             color: window.mutedText
                             font.pixelSize: 11
                         }
@@ -989,7 +1021,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: "音高"
+                                text: window.translator.tr("main.param.tone")
                                 Layout.fillWidth: true
                             }
                             TextField {
@@ -1004,7 +1036,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: "抑揚"
+                                text: window.translator.tr("main.param.intonation")
                                 Layout.fillWidth: true
                             }
                             SpinBox {
@@ -1059,7 +1091,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: "モーラ長"
+                                text: window.translator.tr("main.param.moraDuration")
                                 Layout.fillWidth: true
                             }
                             SpinBox {
@@ -1114,7 +1146,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: "休止長"
+                                text: window.translator.tr("main.param.pauseDuration")
                                 Layout.fillWidth: true
                             }
                             SpinBox {
@@ -1193,14 +1225,14 @@ ApplicationWindow {
                     Layout.leftMargin: 12
                     Layout.rightMargin: 10
                     Label {
-                        text: "イントネーション"
+                        text: window.translator.tr("main.pitch.title")
                         font.pixelSize: 12
                     }
                     Item {
                         Layout.fillWidth: true
                     }
                     Label {
-                        text: "±300 cent"
+                        text: window.translator.tr("main.pitch.range")
                         color: window.mutedText
                         font.pixelSize: 11
                     }
@@ -1216,6 +1248,7 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
+                    translator: window.translator
                     accentColor: window.accent
                     axisColor: window.palette.mid
                     gridColor: window.palette.alternateBase
@@ -1324,7 +1357,7 @@ ApplicationWindow {
                                 window.synthesizeCurrent();
                         }
                         ToolTip.visible: hovered
-                        ToolTip.text: window.appBackend.error.length ? window.appBackend.error : window.playbackError.length ? window.playbackError : player.playbackState === MediaPlayer.PlayingState ? "一時停止" : "生成して再生"
+                        ToolTip.text: window.appBackend.error.length ? window.appBackend.error : window.playbackError.length ? window.playbackError : player.playbackState === MediaPlayer.PlayingState ? window.translator.tr("main.playback.paused") : window.translator.tr("main.playback.generateAndPlay")
                     }
                     Slider {
                         Layout.fillWidth: true
@@ -1388,6 +1421,7 @@ ApplicationWindow {
         }
         window.appBackend.setSynthesisDefaults(settingsWindow.pendingMoraDuration, settingsWindow.pendingPauseDuration, settingsWindow.pendingApplyPitch);
         window.appBackend.setDarkMode(settingsWindow.pendingDarkMode);
+        window.appBackend.setLanguage(settingsWindow.pendingLanguage);
         window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
         window.appBackend.setShortcutSequences(settingsWindow.pendingSynthesizeShortcut,
                                                settingsWindow.pendingSaveProjectShortcut,
@@ -1437,14 +1471,14 @@ ApplicationWindow {
 
     function modelDescription(id) {
         if (!id || id === "none")
-            return "モデルを使わず、原音のピッチを維持します。";
+            return window.translator.tr("main.modelDescriptionNone");
         const model = modelById(id);
         return model ? model.description || "" : "";
     }
 
     function rendererDescription(id) {
         if (!id)
-            return "既定Rendererはplugin manifestの優先度から選択されます。";
+            return window.translator.tr("main.rendererDescriptionDefault");
         const renderer = rendererById(id);
         return renderer ? renderer.description || "" : "";
     }
@@ -1492,7 +1526,7 @@ ApplicationWindow {
 
     function voicebankName(id) {
         const voice = voicebankById(id);
-        return voice ? voice.name : "音源未選択";
+        return voice ? voice.name : window.translator.tr("main.voicebankNone");
     }
 
     function fileNamePart(value, fallback) {
@@ -1630,12 +1664,12 @@ ApplicationWindow {
         const project = window.appBackend.loadProject(source);
         if (!project || project._error !== undefined) {
             projectLoadErrorDialog.text = project && project._error !== undefined
-                    ? String(project._error) : "プロジェクトファイルを読み込めませんでした";
+                    ? String(project._error) : window.translator.tr("main.projectLoadError");
             projectLoadErrorDialog.open();
             return;
         }
         if (project.utterances === undefined || project.utterances === null) {
-            projectLoadErrorDialog.text = "プロジェクトファイルに発話データがありません";
+            projectLoadErrorDialog.text = window.translator.tr("main.projectNoUtterances");
             projectLoadErrorDialog.open();
             return;
         }

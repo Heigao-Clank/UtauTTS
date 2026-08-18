@@ -25,6 +25,11 @@
 #endif
 
 namespace {
+QString sanitizeLanguageCode(const QString &code) {
+    const QString lower = code.trimmed().toLower();
+    return lower.isEmpty() ? QStringLiteral("ja") : lower;
+}
+
 bool hasResourceLayout(const QDir &root) {
     return root.exists("plugins/renderers") || root.exists("models") || root.exists("voice");
 }
@@ -54,6 +59,7 @@ QDir resourceRoot() {
 Backend::Backend(QObject *parent)
     : QObject(parent),
       m_darkMode(QSettings().value("appearance/darkMode", false).toBool()),
+      m_language(QSettings().value("appearance/language", QStringLiteral("ja")).toString()),
       m_closeLogOnSuccess(QSettings().value("logging/closeOnSuccess", true).toBool()),
       m_defaultMoraDuration(QSettings().value("synthesis/defaultMoraDuration", 120).toInt()),
       m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
@@ -95,6 +101,67 @@ void Backend::setDarkMode(bool value) {
     settings.setValue("appearance/darkMode", value);
     settings.sync();
     emit themeChanged();
+}
+
+void Backend::setLanguage(const QString &value) {
+    const QString normalized = sanitizeLanguageCode(value);
+    if (m_language == normalized) {
+        return;
+    }
+    m_language = normalized;
+    QSettings settings;
+    settings.setValue("appearance/language", normalized);
+    settings.sync();
+    emit languageChanged();
+}
+
+QString Backend::loadLanguageFile(const QString &code) const {
+    const QString cleaned = sanitizeLanguageCode(code);
+    QFile file(QStringLiteral(":/lang/%1.json").arg(cleaned));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QFile fallback(QStringLiteral(":/lang/ja.json"));
+        if (!fallback.open(QIODevice::ReadOnly | QIODevice::Text))
+            return QString();
+        return QString::fromUtf8(fallback.readAll());
+    }
+    return QString::fromUtf8(file.readAll());
+}
+
+QStringList Backend::languageCodes() const {
+    const QStringList files = QDir(QStringLiteral(":/lang"))
+            .entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name);
+    QStringList codes;
+    for (const QString &file : files) {
+        if (file.compare(QLatin1String("lang.json"), Qt::CaseInsensitive) == 0)
+            continue;
+        codes.append(file.left(file.size() - QStringLiteral(".json").size()));
+    }
+    if (codes.isEmpty()) {
+        codes = languageDisplayNames().keys();
+        codes.sort();
+    }
+    return codes;
+}
+
+QHash<QString, QString> Backend::languageDisplayNames() const {
+    if (!m_languageNamesLoaded) {
+        m_languageNamesLoaded = true;
+        QFile file(QStringLiteral(":/lang/lang.json"));
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+            if (document.isObject()) {
+                const QJsonObject object = document.object();
+                for (auto it = object.begin(); it != object.end(); ++it)
+                    m_languageNames.insert(it.key(), it.value().toString());
+            }
+        }
+    }
+    return m_languageNames;
+}
+
+QString Backend::languageDisplayName(const QString &code) const {
+    const QString cleaned = sanitizeLanguageCode(code);
+    return languageDisplayNames().value(cleaned, cleaned);
 }
 
 void Backend::setCloseLogOnSuccess(bool value) {

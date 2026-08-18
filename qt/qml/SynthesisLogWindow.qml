@@ -8,8 +8,9 @@ Window {
     id: root
     required property var hostPalette
     required property var backend
+    required property var translator
 
-    title: "音声合成ログ"
+    title: root.translator.tr("log.title")
     visible: false
     width: 720
     height: 420
@@ -25,7 +26,7 @@ Window {
 
         Label {
             Layout.fillWidth: true
-            text: root.backend.busy ? "音声合成を実行中です…" : "音声合成ログ"
+            text: root.backend.busy ? root.translator.tr("log.synthesizing") : root.translator.tr("log.title")
             font.bold: true
         }
 
@@ -49,7 +50,7 @@ Window {
                 Layout.fillWidth: true
             }
             Button {
-                text: "閉じる"
+                text: root.translator.tr("common.close")
                 onClicked: root.close()
             }
         }

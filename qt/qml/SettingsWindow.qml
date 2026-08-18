@@ -9,9 +9,10 @@ ApplicationWindow {
     required property var hostWindow
     required property var hostPalette
     required property var backend
+    required property var translator
     signal saveRequested()
 
-    title: "設定"
+    title: root.translator.tr("settings.title")
     visible: false
     width: 720
     height: 540
@@ -28,6 +29,8 @@ ApplicationWindow {
     property int pendingPauseDuration: 180
     property bool pendingApplyPitch: true
     property bool pendingDarkMode: false
+    property string pendingLanguage: "ja"
+    property var languageCodes: root.backend.languageCodes()
     property bool pendingCloseLogOnSuccess: true
     property string pendingSynthesizeShortcut: "Ctrl+Enter"
     property string pendingSaveProjectShortcut: "Ctrl+S"
@@ -35,11 +38,19 @@ ApplicationWindow {
     property string pendingAddUtteranceShortcut: "Ctrl+D"
     property string pendingRemoveUtteranceShortcut: "Delete"
 
+    function languageLabels() {
+        const labels = [];
+        for (let index = 0; index < root.languageCodes.length; ++index)
+            labels.push(root.backend.languageDisplayName(root.languageCodes[index]));
+        return labels;
+    }
+
     function loadCurrent() {
         pendingMoraDuration = root.backend.defaultMoraDuration;
         pendingPauseDuration = root.backend.defaultPauseDuration;
         pendingApplyPitch = root.backend.defaultApplyPitch;
         pendingDarkMode = root.backend.darkMode;
+        pendingLanguage = root.backend.language;
         pendingCloseLogOnSuccess = root.backend.closeLogOnSuccess;
         pendingSynthesizeShortcut = root.backend.synthesizeShortcut;
         pendingSaveProjectShortcut = root.backend.saveProjectShortcut;
@@ -47,6 +58,7 @@ ApplicationWindow {
         pendingAddUtteranceShortcut = root.backend.addUtteranceShortcut;
         pendingRemoveUtteranceShortcut = root.backend.removeUtteranceShortcut;
         themeCombo.currentIndex = pendingDarkMode ? 1 : 0;
+        languageCombo.currentIndex = root.languageCodes.indexOf(pendingLanguage);
     }
 
     function shortcutFromEvent(event) {
@@ -108,7 +120,10 @@ ApplicationWindow {
             Layout.preferredWidth: 170
             Layout.fillHeight: true
             clip: true
-            model: ["音声合成", "表示", "ログ", "ショートカット"]
+            model: [root.translator.tr("settings.page.synthesis"),
+                root.translator.tr("settings.page.appearance"),
+                root.translator.tr("settings.page.log"),
+                root.translator.tr("settings.page.shortcuts")]
             currentIndex: root.currentPage
 
             delegate: ItemDelegate {
@@ -152,7 +167,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label {
-                                    text: "デフォルトモーラ長"
+                                    text: root.translator.tr("settings.defaultMoraDuration")
                                     Layout.fillWidth: true
                                 }
                                 SpinBox {
@@ -176,7 +191,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label {
-                                    text: "デフォルト休止長"
+                                    text: root.translator.tr("settings.defaultPauseDuration")
                                     Layout.fillWidth: true
                                 }
                                 SpinBox {
@@ -200,7 +215,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Label {
-                                    text: "手動ピッチ変更の許可"
+                                    text: root.translator.tr("settings.allowManualPitch")
                                     Layout.fillWidth: true
                                 }
                                 Switch {
@@ -226,14 +241,29 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true
-                                text: "テーマ"
+                                text: root.translator.tr("settings.theme")
                             }
                             ComboBox {
                                 id: themeCombo
                                 Layout.preferredWidth: 180
-                                model: ["ライト", "ダーク"]
+                                model: [root.translator.tr("settings.theme.light"), root.translator.tr("settings.theme.dark")]
                                 currentIndex: root.pendingDarkMode ? 1 : 0
                                 onActivated: root.pendingDarkMode = currentIndex === 1
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.language")
+                            }
+                            ComboBox {
+                                id: languageCombo
+                                Layout.preferredWidth: 180
+                                model: root.languageLabels()
+                                currentIndex: root.languageCodes.indexOf(root.pendingLanguage)
+                                onActivated: root.pendingLanguage = root.languageCodes[currentIndex]
                             }
                         }
                     }
@@ -251,7 +281,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true
-                                text: "成功時にログを閉じる"
+                                text: root.translator.tr("settings.closeLogOnSuccess")
                             }
                             Switch {
                                 Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
@@ -272,7 +302,7 @@ ApplicationWindow {
 
                         Label {
                             Layout.fillWidth: true
-                            text: "変更したい欄を選択して、割り当てるキーを押してください。Backspaceで無効にできます。"
+                            text: root.translator.tr("settings.shortcutHint")
                             wrapMode: Text.WordWrap
                         }
 
@@ -280,7 +310,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true
-                                text: "音声合成"
+                                text: root.translator.tr("settings.shortcut.synthesize")
                             }
                             TextField {
                                 id: synthesizeShortcutField
@@ -308,7 +338,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true
-                                text: "プロジェクト保存"
+                                text: root.translator.tr("settings.shortcut.saveProject")
                             }
                             TextField {
                                 id: saveProjectShortcutField
@@ -336,7 +366,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true
-                                text: "ボイスバンク再読み込み"
+                                text: root.translator.tr("settings.shortcut.reloadVoicebanks")
                             }
                             TextField {
                                 id: reloadVoicebanksShortcutField
@@ -364,7 +394,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true
-                                text: "テキスト追加"
+                                text: root.translator.tr("settings.shortcut.addUtterance")
                             }
                             TextField {
                                 id: addUtteranceShortcutField
@@ -392,7 +422,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true
-                                text: "テキスト削除"
+                                text: root.translator.tr("settings.shortcut.removeUtterance")
                             }
                             TextField {
                                 id: removeUtteranceShortcutField
@@ -425,7 +455,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 Button {
-                    text: "保存"
+                    text: root.translator.tr("common.save")
                     onClicked: root.saveRequested()
                 }
             }
