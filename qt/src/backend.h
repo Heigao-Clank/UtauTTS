@@ -10,6 +10,10 @@
 #include <QVariantMap>
 #include <cstdint>
 
+class QFile;
+class QNetworkAccessManager;
+class QNetworkReply;
+
 class Backend final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
@@ -31,6 +35,7 @@ class Backend final : public QObject {
     Q_PROPERTY(bool darkMode READ darkMode NOTIFY themeChanged)
     Q_PROPERTY(QString language READ language NOTIFY languageChanged)
     Q_PROPERTY(bool closeLogOnSuccess READ closeLogOnSuccess NOTIFY logSettingsChanged)
+    Q_PROPERTY(bool updateCheckEnabled READ updateCheckEnabled NOTIFY updateSettingsChanged)
     Q_PROPERTY(int defaultMoraDuration READ defaultMoraDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(int defaultPauseDuration READ defaultPauseDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(bool defaultApplyPitch READ defaultApplyPitch NOTIFY synthesisDefaultsChanged)
@@ -62,6 +67,7 @@ public:
     bool darkMode() const { return m_darkMode; }
     QString language() const { return m_language; }
     bool closeLogOnSuccess() const { return m_closeLogOnSuccess; }
+    bool updateCheckEnabled() const { return m_updateCheckEnabled; }
     int defaultMoraDuration() const { return m_defaultMoraDuration; }
     int defaultPauseDuration() const { return m_defaultPauseDuration; }
     bool defaultApplyPitch() const { return m_defaultApplyPitch; }
@@ -92,9 +98,13 @@ public:
     Q_INVOKABLE QString suppressedUpdateVersion() const;
     Q_INVOKABLE void setSuppressedUpdateVersion(const QString &version);
     Q_INVOKABLE bool showNativeAboutDialog();
-    Q_INVOKABLE bool launchUpdater(const QString &downloadUrl, const QString &version);
+    Q_INVOKABLE bool startUpdateDownload(const QString &downloadUrl, const QString &version);
+    Q_INVOKABLE bool installUpdate(const QString &localZip, const QString &version);
+    Q_INVOKABLE void cancelUpdateDownload();
+    void showUpdateError(const QString &title, const QString &text);
     Q_INVOKABLE void clearLogs();
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
+    Q_INVOKABLE void setUpdateCheckEnabled(bool value);
     Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);
     Q_INVOKABLE void setShortcutSequences(const QString &synthesize,
                                           const QString &saveProject,
@@ -115,10 +125,13 @@ signals:
     void themeChanged();
     void languageChanged();
     void logSettingsChanged();
+    void updateSettingsChanged();
     void synthesisDefaultsChanged();
     void shortcutSettingsChanged();
     void dictionaryChanged();
     void logsChanged();
+    void updateDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
+    void updateDownloadFinished(bool success, const QString &localZip);
 
 private:
     QVariantMap call(const QByteArray &method, const QVariantMap &request = {});
@@ -144,6 +157,7 @@ private:
     mutable QHash<QString, QString> m_languageNames;
     mutable bool m_languageNamesLoaded = false;
     bool m_closeLogOnSuccess = true;
+    bool m_updateCheckEnabled = true;
     int m_defaultMoraDuration = 120;
     int m_defaultPauseDuration = 180;
     bool m_defaultApplyPitch = true;
@@ -153,6 +167,10 @@ private:
     QString m_addUtteranceShortcut;
     QString m_removeUtteranceShortcut;
     QStringList m_logLines;
+    QNetworkAccessManager *m_updateNetwork = nullptr;
+    QNetworkReply *m_updateReply = nullptr;
+    QFile *m_updateFile = nullptr;
+    bool m_updateCancelled = false;
     QHash<QString, quint64> m_analysisGenerations;
     quint64 m_nextAnalysisGeneration = 0;
     quint64 m_nextProsodyGeneration = 0;

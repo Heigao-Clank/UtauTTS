@@ -32,6 +32,7 @@ ApplicationWindow {
     property string pendingLanguage: "ja"
     property var languageCodes: root.backend.languageCodes()
     property bool pendingCloseLogOnSuccess: true
+    property bool pendingUpdateCheckEnabled: true
     property string pendingSynthesizeShortcut: "Ctrl+Enter"
     property string pendingSaveProjectShortcut: "Ctrl+S"
     property string pendingReloadVoicebanksShortcut: "Ctrl+O"
@@ -52,6 +53,7 @@ ApplicationWindow {
         pendingDarkMode = root.backend.darkMode;
         pendingLanguage = root.backend.language;
         pendingCloseLogOnSuccess = root.backend.closeLogOnSuccess;
+        pendingUpdateCheckEnabled = root.backend.updateCheckEnabled;
         pendingSynthesizeShortcut = root.backend.synthesizeShortcut;
         pendingSaveProjectShortcut = root.backend.saveProjectShortcut;
         pendingReloadVoicebanksShortcut = root.backend.reloadVoicebanksShortcut;
@@ -264,6 +266,19 @@ ApplicationWindow {
                                 model: root.languageLabels()
                                 currentIndex: root.languageCodes.indexOf(root.pendingLanguage)
                                 onActivated: root.pendingLanguage = root.languageCodes[currentIndex]
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.updateCheckEnabled")
+                            }
+                            Switch {
+                                Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                checked: root.pendingUpdateCheckEnabled
+                                onToggled: root.pendingUpdateCheckEnabled = checked
                             }
                         }
                     }

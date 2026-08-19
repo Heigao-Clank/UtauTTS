@@ -91,11 +91,13 @@ try {
 } finally {
     Pop-Location
 }
+$guiToolsDirectory = Join-Path $OutputDirectory 'tools'
+New-Item -ItemType Directory -Force -Path $guiToolsDirectory | Out-Null
 Push-Location $root
 try {
     & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $OutputDirectory 'utautts.exe') ./cmd/utautts-launcher
     if ($LASTEXITCODE -ne 0) { throw 'Qt launcher build failed' }
-    & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $OutputDirectory 'utautts-updater.exe') ./cmd/utautts-updater
+    & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $guiToolsDirectory 'utautts-updater.exe') ./cmd/utautts-updater
     if ($LASTEXITCODE -ne 0) { throw 'Qt updater build failed' }
 } finally {
     Pop-Location

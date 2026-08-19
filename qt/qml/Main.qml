@@ -46,6 +46,8 @@ ApplicationWindow {
     property string updateReleaseNotes: ""
     property url updateReleaseUrl: ""
     property url updateDownloadUrl: ""
+    property double updateDownloadReceived: 0
+    property double updateDownloadTotal: 0
 
     property alias utterancesModel: utterances
     property alias playerMedia: player
@@ -440,11 +442,71 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: updateProgressDialog
+        title: window.translator.tr("update.title")
+        modal: true
+        width: Math.min(window.width - 40, 440)
+        anchors.centerIn: Overlay.overlay
+        closePolicy: Popup.NoAutoClose
+        standardButtons: Dialog.NoButton
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: window.translator.tr("update.downloading")
+                wrapMode: Text.WordWrap
+            }
+
+            ProgressBar {
+                Layout.fillWidth: true
+                from: 0
+                to: 1
+                value: window.updateDownloadTotal > 0 ? window.updateDownloadReceived / window.updateDownloadTotal : 0
+                indeterminate: window.updateDownloadTotal <= 0
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: window.updateDownloadTotal > 0
+                    ? Math.floor(window.updateDownloadReceived / 1048576) + " / "
+                      + Math.floor(window.updateDownloadTotal / 1048576) + " MB"
+                    : ""
+                color: window.mutedText
+                font.pixelSize: 11
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Button {
+                Layout.alignment: Qt.AlignHCenter
+                text: window.translator.tr("common.cancel")
+                onClicked: {
+                    window.appBackend.cancelUpdateDownload();
+                    updateProgressDialog.close();
+                }
+            }
+        }
+    }
+
     Connections {
         target: window.appBackend
 
         function onLanguageChanged() {
 window.translator.load(window.appBackend.language);
+        }
+
+        function onUpdateDownloadProgress(bytesReceived, bytesTotal) {
+            window.updateDownloadReceived = bytesReceived;
+            window.updateDownloadTotal = bytesTotal;
+        }
+
+        function onUpdateDownloadFinished(success, localZip) {
+            updateProgressDialog.close();
+            if (success && localZip.length
+                    && window.appBackend.installUpdate(localZip, window.updateAvailableVersion))
+                Qt.quit();
         }
 
         function onMetadataChanged() {
@@ -625,7 +687,8 @@ window.translator.load(window.appBackend.language);
     Component.onCompleted: {
         window.translator.load(window.appBackend.language);
         addUtterance(false);
-        window.checkForUpdates();
+        if (window.appBackend.updateCheckEnabled)
+            window.checkForUpdates();
     }
 
     onClosing: close => {
@@ -808,6 +871,7 @@ window.translator.load(window.appBackend.language);
         window.appBackend.setDarkMode(settingsWindow.pendingDarkMode);
         window.appBackend.setLanguage(settingsWindow.pendingLanguage);
         window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
+        window.appBackend.setUpdateCheckEnabled(settingsWindow.pendingUpdateCheckEnabled);
         window.appBackend.setShortcutSequences(settingsWindow.pendingSynthesizeShortcut,
                                                settingsWindow.pendingSaveProjectShortcut,
                                                settingsWindow.pendingReloadVoicebanksShortcut,
@@ -901,10 +965,13 @@ window.translator.load(window.appBackend.language);
             Qt.openUrlExternally(window.updateReleaseUrl);
             return;
         }
-        if (window.appBackend.launchUpdater(window.updateDownloadUrl, window.updateAvailableVersion)) {
+        window.updateDownloadReceived = 0;
+        window.updateDownloadTotal = 0;
+        if (window.appBackend.startUpdateDownload(window.updateDownloadUrl, window.updateAvailableVersion)) {
             updateDialog.close();
-            Qt.quit();
-        } else if (window.appBackend.error.length) {
+            updateProgressDialog.open();
+        } else {
+            updateDialog.close();
             Qt.openUrlExternally(window.updateReleaseUrl);
         }
     }

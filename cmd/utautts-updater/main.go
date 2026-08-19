@@ -28,13 +28,14 @@ func logf(format string, args ...any) {
 func main() {
 	target := flag.String("target", "", "package root directory to update")
 	downloadURL := flag.String("url", "", "zip download URL")
+	zipFlag := flag.String("zip", "", "local zip file to install; skips download when set")
 	pid := flag.Int("pid", 0, "PID of the running GUI to wait for before replacing files")
 	version := flag.String("version", "", "incoming release tag (diagnostics)")
 	preserveFlag := flag.String("preserve", "voice", "comma-separated relative paths kept from the old install")
 	flag.Parse()
 
-	if *target == "" || *downloadURL == "" {
-		logf("usage: utautts-updater -target <dir> -url <zip-url> [-pid <pid>] [-version <tag>]")
+	if *target == "" || (*downloadURL == "" && *zipFlag == "") {
+		logf("usage: utautts-updater -target <dir> (-url <zip-url> | -zip <file>) [-pid <pid>] [-version <tag>]")
 		os.Exit(2)
 	}
 	var preserve []string
@@ -45,25 +46,47 @@ func main() {
 	}
 
 	ok := true
-	if err := run(*target, *downloadURL, *pid, *version, preserve); err != nil {
+	if err := run(*target, *downloadURL, *zipFlag, *pid, *version, preserve); err != nil {
 		ok = false
 		logf("update failed: %v", err)
 	}
-	// Always relaunch: on success the new build, on failure the untouched old
-	// build, so a failed update never strands the user without an app.
 	launchApp(*target)
 	if !ok {
 		os.Exit(1)
 	}
 }
 
-func run(target, url string, pid int, version string, preserve []string) error {
+
+func detachFromTarget(target string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	cwd = filepath.Clean(cwd)
+	target = filepath.Clean(target)
+	if cwd != target && !strings.HasPrefix(cwd, target+string(os.PathSeparator)) {
+		return nil
+	}
+	if err := os.Chdir(filepath.Dir(target)); err != nil {
+		return fmt.Errorf("cannot detach working directory from target: %w", err)
+	}
+	logf("working directory moved to %s", filepath.Dir(target))
+	return nil
+}
+
+func run(target, url, zipPath string, pid int, version string, preserve []string) error {
 	logf("utautts-updater start: target=%s version=%s", target, version)
 	absolute, err := filepath.Abs(target)
 	if err != nil {
 		return err
 	}
 	target = absolute
+	if cwd, err := os.Getwd(); err == nil {
+		logf("working directory: %s", cwd)
+	}
+	if err := detachFromTarget(target); err != nil {
+		return err
+	}
 
 	if info, err := os.Stat(target); err != nil || !info.IsDir() {
 		return fmt.Errorf("target directory is not a directory: %s", target)
@@ -76,9 +99,16 @@ func run(target, url string, pid int, version string, preserve []string) error {
 	stage := target + ".stage"
 	old := target + ".old"
 
-	zipPath := filepath.Join(os.TempDir(), "utautts-update-"+sanitizeToken(version)+".zip")
-	if err := download(url, zipPath); err != nil {
-		return err
+	if zipPath == "" {
+		zipPath = filepath.Join(os.TempDir(), "utautts-update-"+sanitizeToken(version)+".zip")
+		if err := download(url, zipPath); err != nil {
+			return err
+		}
+	} else {
+		logf("using local archive: %s", zipPath)
+		if info, err := os.Stat(zipPath); err != nil || info.IsDir() {
+			return fmt.Errorf("local archive is not a file: %s", zipPath)
+		}
 	}
 
 	if err := os.RemoveAll(stage); err != nil {
@@ -103,18 +133,37 @@ func run(target, url string, pid int, version string, preserve []string) error {
 	if err := os.RemoveAll(old); err != nil {
 		return err
 	}
-	if err := os.Rename(target, old); err != nil {
+	if err := retry(20, 500*time.Millisecond, func() error {
+		return os.Rename(target, old)
+	}); err != nil {
 		return fmt.Errorf("move current install aside: %w", err)
 	}
-	if err := os.Rename(stage, target); err != nil {
+	if err := retry(20, 500*time.Millisecond, func() error {
+		return os.Rename(stage, target)
+	}); err != nil {
 		_ = os.Rename(old, target)
 		return fmt.Errorf("move new install into place: %w", err)
 	}
-	if err := os.RemoveAll(old); err != nil {
+	if err := retry(20, 500*time.Millisecond, func() error {
+		return os.RemoveAll(old)
+	}); err != nil {
 		logf("removing old install backup failed (left at %s): %v", old, err)
 	}
 	logf("update applied to %s", target)
 	return nil
+}
+
+func retry(attempts int, delay time.Duration, fn func() error) error {
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if err = fn(); err == nil {
+			return nil
+		}
+		if attempt+1 < attempts {
+			time.Sleep(delay)
+		}
+	}
+	return err
 }
 
 func waitForExit(pid int, timeout time.Duration) bool {
@@ -168,18 +217,24 @@ func extractZip(zipPath, dest string) error {
 	defer reader.Close()
 	dest = filepath.Clean(dest)
 	for _, file := range reader.File {
-		path := filepath.Join(dest, file.Name)
+		name := strings.ReplaceAll(file.Name, "\\", "/")
+		path := filepath.Join(dest, name)
 		if path != dest && !strings.HasPrefix(path, dest+string(os.PathSeparator)) {
-			return fmt.Errorf("zip entry escapes destination: %s", file.Name)
+			return fmt.Errorf("zip entry escapes destination: %s", name)
 		}
-		if file.FileInfo().IsDir() {
-			if err := os.MkdirAll(path, 0o755); err != nil {
+		if file.FileInfo().IsDir() || strings.HasSuffix(name, "/") {
+			if err := ensureDir(path); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := ensureDir(filepath.Dir(path)); err != nil {
 			return err
+		}
+		if info, err := os.Lstat(path); err == nil && info.IsDir() {
+			if err := os.RemoveAll(path); err != nil {
+				return err
+			}
 		}
 		in, err := file.Open()
 		if err != nil {
@@ -201,6 +256,18 @@ func extractZip(zipPath, dest string) error {
 		}
 	}
 	return nil
+}
+
+func ensureDir(path string) error {
+	if info, err := os.Lstat(path); err == nil {
+		if info.IsDir() {
+			return nil
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+	}
+	return os.MkdirAll(path, 0o755)
 }
 
 func normalizeStage(stage string) error {

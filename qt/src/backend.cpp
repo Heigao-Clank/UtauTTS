@@ -12,7 +12,11 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSettings>
@@ -62,6 +66,7 @@ Backend::Backend(QObject *parent)
       m_darkMode(QSettings().value("appearance/darkMode", false).toBool()),
       m_language(QSettings().value("appearance/language", QStringLiteral("ja")).toString()),
       m_closeLogOnSuccess(QSettings().value("logging/closeOnSuccess", true).toBool()),
+      m_updateCheckEnabled(QSettings().value("appearance/updateCheckEnabled", true).toBool()),
       m_defaultMoraDuration(QSettings().value("synthesis/defaultMoraDuration", 120).toInt()),
       m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
       m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()),
@@ -69,7 +74,8 @@ Backend::Backend(QObject *parent)
       m_saveProjectShortcut(QSettings().value("shortcuts/saveProject", QStringLiteral("Ctrl+S")).toString()),
       m_reloadVoicebanksShortcut(QSettings().value("shortcuts/reloadVoicebanks", QStringLiteral("Ctrl+O")).toString()),
       m_addUtteranceShortcut(QSettings().value("shortcuts/addUtterance", QStringLiteral("Ctrl+D")).toString()),
-      m_removeUtteranceShortcut(QSettings().value("shortcuts/removeUtterance", QStringLiteral("Delete")).toString()) {
+      m_removeUtteranceShortcut(QSettings().value("shortcuts/removeUtterance", QStringLiteral("Delete")).toString()),
+      m_updateNetwork(new QNetworkAccessManager(this)) {
     m_defaultMoraDuration = qBound(20, m_defaultMoraDuration, 1000);
     m_defaultPauseDuration = qBound(0, m_defaultPauseDuration, 3000);
     const QByteArray dictionaryJSON = QSettings().value("dictionary/entries").toByteArray();
@@ -87,6 +93,9 @@ Backend::Backend(QObject *parent)
     }
 }
 Backend::~Backend() {
+    if (m_updateReply) {
+        m_updateReply->abort();
+    }
     m_activeCalls.waitForFinished();
     if (m_handle) {
         UtauTTSDestroy(m_handle);
@@ -186,6 +195,17 @@ void Backend::setCloseLogOnSuccess(bool value) {
     emit logSettingsChanged();
 }
 
+void Backend::setUpdateCheckEnabled(bool value) {
+    if (m_updateCheckEnabled == value) {
+        return;
+    }
+    m_updateCheckEnabled = value;
+    QSettings settings;
+    settings.setValue("appearance/updateCheckEnabled", value);
+    settings.sync();
+    emit updateSettingsChanged();
+}
+
 void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch) {
     const int boundedMoraDuration = qBound(20, moraDuration, 1000);
     const int boundedPauseDuration = qBound(0, pauseDuration, 3000);
@@ -276,7 +296,7 @@ void Backend::clearLogs() {
 bool Backend::showNativeAboutDialog() {
 #ifdef Q_OS_WIN
     const QString title = tr("UtauTTSについて");
-    const QString text = QStringLiteral("UtauTTS %1 \n\nDeveloped by yh（@2237yh）\nTesting by アアアアアアア（@a7_riri）\n\nUTAUボイスバンクの原音接続と、深層学習による日本語イントネーションを組み合わせたTTS").arg(QCoreApplication::applicationVersion());
+    const QString text = QStringLiteral("UtauTTS %1 \n\nDeveloped by yh（@2237yh）\nTesting by アアアアアアア（@a7_riri）\n\nUTAUボイスバンクの原音接続に、学習ベースのイントネーション調整を加えた日本語TTS").arg(QCoreApplication::applicationVersion());
     MessageBoxW(GetActiveWindow(),
                 reinterpret_cast<LPCWSTR>(text.utf16()),
                 reinterpret_cast<LPCWSTR>(title.utf16()),
@@ -287,36 +307,140 @@ bool Backend::showNativeAboutDialog() {
 #endif
 }
 
-bool Backend::launchUpdater(const QString &downloadUrl, const QString &version) {
-    const QDir root = resourceRoot();
-    const QString updaterPath = root.filePath(QStringLiteral("utautts-updater.exe"));
-    if (!QFileInfo::exists(updaterPath)) {
-        setError(tr("アップデータが同梱されていません。リリースページから手動で更新してください。"));
+bool Backend::startUpdateDownload(const QString &downloadUrl, const QString &version) {
+    if (downloadUrl.isEmpty()) {
+        const QString message = tr("ダウンロードURLを取得できませんでした。");
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
         return false;
     }
-    if (downloadUrl.isEmpty()) {
-        setError(tr("ダウンロードURLを取得できませんでした。"));
+    QString safeVersion = version.trimmed();
+    safeVersion.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]")), QStringLiteral("_"));
+    const QString fileName = safeVersion.isEmpty()
+        ? QStringLiteral("utautts-update.zip")
+        : QStringLiteral("utautts-update-%1.zip").arg(safeVersion);
+    const QString zipPath = QDir(QDir::tempPath()).filePath(fileName);
+
+    if (m_updateReply) {
+        m_updateReply->abort();
+        m_updateReply->deleteLater();
+        m_updateReply = nullptr;
+    }
+    delete m_updateFile;
+    m_updateFile = nullptr;
+    m_updateCancelled = false;
+    QFile::remove(zipPath);
+    m_updateFile = new QFile(zipPath, this);
+    if (!m_updateFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        delete m_updateFile;
+        m_updateFile = nullptr;
+        const QString message = tr("ダウンロード先の一時ファイルを開けませんでした。");
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
+        return false;
+    }
+
+    QNetworkRequest request{QUrl(downloadUrl)};
+    request.setTransferTimeout(10 * 60 * 1000);
+    QNetworkReply *reply = m_updateNetwork->get(request);
+    m_updateReply = reply;
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
+        if (m_updateReply == reply && m_updateFile) {
+            m_updateFile->write(reply->readAll());
+        }
+    });
+    connect(reply, &QNetworkReply::downloadProgress, this, [this, reply](qint64 received, qint64 total) {
+        if (m_updateReply == reply) {
+            emit updateDownloadProgress(received, total);
+        }
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        if (m_updateReply != reply || !m_updateFile) {
+            return;
+        }
+        const QNetworkReply::NetworkError networkError = reply->error();
+        const bool cancelled = m_updateCancelled && networkError == QNetworkReply::OperationCanceledError;
+        const QString errorText = reply->errorString();
+        const QString path = m_updateFile->fileName();
+        m_updateFile->flush();
+        delete m_updateFile;
+        m_updateFile = nullptr;
+        m_updateReply = nullptr;
+        m_updateCancelled = false;
+        reply->deleteLater();
+        if (cancelled) {
+            QFile::remove(path);
+            return;
+        }
+        if (networkError == QNetworkReply::NoError) {
+            emit updateDownloadFinished(true, path);
+            return;
+        }
+        QFile::remove(path);
+        const QString detail = networkError == QNetworkReply::OperationCanceledError
+            ? tr("タイムアウトしました。通信環境を確認して、再度お試しください。")
+            : errorText;
+        setError(tr("更新ファイルのダウンロードに失敗しました: %1").arg(detail));
+        showUpdateError(tr("更新に失敗しました"), tr("更新ファイルのダウンロードに失敗しました。\n%1\n\nリリースページから手動で更新するか、時間をおいて再度お試しください。").arg(detail));
+        emit updateDownloadFinished(false, QString());
+    });
+    return true;
+}
+
+bool Backend::installUpdate(const QString &localZip, const QString &version) {
+    const QDir root = resourceRoot();
+    const QString updaterPath = root.filePath(QStringLiteral("tools/utautts-updater.exe"));
+    if (!QFileInfo::exists(updaterPath)) {
+        const QString message = tr("アップデータが同梱されていません。リリースページから手動で更新してください。");
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
+        return false;
+    }
+    if (localZip.isEmpty() || !QFileInfo::exists(localZip)) {
+        const QString message = tr("ダウンロードした更新ファイルが見つかりません。");
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
         return false;
     }
     const QString tempUpdater = QDir(QDir::tempPath()).filePath(
         QStringLiteral("utautts-updater-%1.exe").arg(QCoreApplication::applicationPid()));
     QFile::remove(tempUpdater);
     if (!QFile::copy(updaterPath, tempUpdater)) {
-        setError(tr("アップデータを一時ディレクトリに配置できませんでした。"));
+        const QString message = tr("アップデータを一時ディレクトリに配置できませんでした。");
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
         return false;
     }
     const QStringList arguments{
         QStringLiteral("-target"), QDir::toNativeSeparators(root.absolutePath()),
-        QStringLiteral("-url"), downloadUrl,
+        QStringLiteral("-zip"), QDir::toNativeSeparators(localZip),
         QStringLiteral("-pid"), QString::number(QCoreApplication::applicationPid()),
         QStringLiteral("-version"), version,
     };
-    if (!QProcess::startDetached(tempUpdater, arguments, root.absolutePath())) {
-        setError(tr("アップデータを起動できませんでした。"));
+    if (!QProcess::startDetached(tempUpdater, arguments, QDir::tempPath())) {
+        const QString message = tr("アップデータを起動できませんでした。");
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
         return false;
     }
     setError({});
     return true;
+}
+
+void Backend::cancelUpdateDownload() {
+    m_updateCancelled = true;
+    if (m_updateReply) {
+        m_updateReply->abort();
+    }
+}
+
+void Backend::showUpdateError(const QString &title, const QString &text) {
+#ifdef Q_OS_WIN
+    MessageBoxW(GetActiveWindow(),
+                reinterpret_cast<LPCWSTR>(text.utf16()),
+                reinterpret_cast<LPCWSTR>(title.utf16()),
+                MB_OK | MB_ICONWARNING);
+#endif
 }
 
 void Backend::initialize() {
