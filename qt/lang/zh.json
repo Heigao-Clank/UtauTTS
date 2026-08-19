@@ -148,6 +148,8 @@
     "usage.step.utterance.3": "拖放卡片上的图片即可重新排序。",
     "usage.step.utterance.4": "按 Delete 键（或所设置的快捷键）可删除所选台词。",
     "usage.title": "使用说明",
+    "update.message": "新版本 {0} 已发布。\n\n\nRelease Notes",
+    "update.title": "有新版本",
     "voicebankDetails.noReadme": "没有 README",
     "voicebankDetails.title": "音源详情"
 }

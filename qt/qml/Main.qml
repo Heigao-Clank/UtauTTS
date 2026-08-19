@@ -42,6 +42,9 @@ ApplicationWindow {
     readonly property var licenseDocuments: injectedLegalDocuments
 
     property var translator: translatorInstance
+    property string updateAvailableVersion: ""
+    property string updateReleaseNotes: ""
+    property url updateReleaseUrl: ""
 
     Translator {
         id: translatorInstance
@@ -374,6 +377,18 @@ ApplicationWindow {
         buttons: MessageDialog.Ok
     }
 
+    MessageDialog {
+        id: updateDialog
+        title: window.translator.tr("update.title")
+        text: window.translator.tr("update.message", window.updateAvailableVersion)
+        informativeText: window.updateReleaseNotes + (window.updateReleaseNotes.length ? "\n\n" : "") + window.updateReleaseUrl
+        buttons: MessageDialog.Open
+        onButtonClicked: (button, role) => {
+            if (button === MessageDialog.Open)
+                Qt.openUrlExternally(window.updateReleaseUrl);
+        }
+    }
+
     Connections {
         target: window.appBackend
 
@@ -559,6 +574,7 @@ window.translator.load(window.appBackend.language);
     Component.onCompleted: {
         window.translator.load(window.appBackend.language);
         addUtterance(false);
+        window.checkForUpdates();
     }
 
     onClosing: close => {
@@ -1436,6 +1452,62 @@ window.translator.load(window.appBackend.language);
         auxiliaryWindow.visible = true;
         auxiliaryWindow.raise();
         auxiliaryWindow.requestActivate();
+    }
+
+    function versionParts(version) {
+        const match = /(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(String(version));
+        if (!match)
+            return null;
+        const parts = [];
+        for (let index = 1; index <= 3; ++index)
+            parts.push(match[index] ? parseInt(match[index], 10) : 0);
+        return parts;
+    }
+
+    function compareVersions(a, b) {
+        const partsA = window.versionParts(a);
+        const partsB = window.versionParts(b);
+        if (!partsA || !partsB)
+            return 0;
+        const length = Math.max(partsA.length, partsB.length);
+        for (let index = 0; index < length; ++index) {
+            const valueA = partsA[index] || 0;
+            const valueB = partsB[index] || 0;
+            if (valueA !== valueB)
+                return valueA < valueB ? -1 : 1;
+        }
+        return 0;
+    }
+
+    function checkForUpdates() {
+        const request = new XMLHttpRequest();
+        request.timeout = 10000;
+        request.open("GET", "https://api.github.com/repos/yh2237/UtauTTS/releases/latest");
+        request.onreadystatechange = function() {
+            if (request.readyState !== XMLHttpRequest.DONE)
+                return;
+            if (request.status !== 200)
+                return;
+            let data;
+            try {
+                data = JSON.parse(request.responseText);
+            } catch (error) {
+                return;
+            }
+            if (!data || !data.tag_name)
+                return;
+            const latest = String(data.tag_name);
+            if (window.compareVersions(latest, Qt.application.version) > 0) {
+                const suppressed = window.appBackend.suppressedUpdateVersion();
+                if (suppressed && window.compareVersions(latest, suppressed) <= 0)
+                    return;
+                window.updateAvailableVersion = latest;
+                window.updateReleaseNotes = data.body ? String(data.body) : "";
+                window.updateReleaseUrl = data.html_url ? String(data.html_url) : "";
+                updateDialog.open();
+            }
+        };
+        request.send();
     }
 
     function openSettings() {

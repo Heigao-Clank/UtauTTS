@@ -164,6 +164,16 @@ QString Backend::languageDisplayName(const QString &code) const {
     return languageDisplayNames().value(cleaned, cleaned);
 }
 
+QString Backend::suppressedUpdateVersion() const {
+    return QSettings().value(QStringLiteral("appearance/suppressedUpdateVersion"), QString()).toString();
+}
+
+void Backend::setSuppressedUpdateVersion(const QString &version) {
+    QSettings settings;
+    settings.setValue(QStringLiteral("appearance/suppressedUpdateVersion"), version);
+    settings.sync();
+}
+
 void Backend::setCloseLogOnSuccess(bool value) {
     if (m_closeLogOnSuccess == value) {
         return;

@@ -148,6 +148,8 @@
     "usage.step.utterance.3": "カードの画像をドラッグ＆ドロップすると並べ替えられます。",
     "usage.step.utterance.4": "Delete キー（または設定したショートカット）で選択中のセリフを削除できます。",
     "usage.title": "使い方",
+    "update.message": "新しいバージョン {0} が公開されています。\n\n\nリリースノート",
+    "update.title": "アップデートのお知らせ",
     "voicebankDetails.noReadme": "READMEがありません",
     "voicebankDetails.title": "ボイスバンクの詳細"
 }
