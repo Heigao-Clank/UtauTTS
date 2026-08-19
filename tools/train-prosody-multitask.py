@@ -270,7 +270,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError("Open JTalk alignment removed every utterance from a train or validation split")
 
     all_records = train_raw + validation_raw
-    feature_index = frame_training.build_feature_index(all_records, frame_model.get("frame_pitch", {}).get("frame_ms", 10.0))
+    feature_index = frame_training.mora_feature_index(all_records)
     train = duration_prepare(train_raw, feature_index, args.base_duration_ms, args.pause_duration_ms)
     validation = duration_prepare(validation_raw, feature_index, args.base_duration_ms, args.pause_duration_ms)
     if not train or not validation:

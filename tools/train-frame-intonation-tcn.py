@@ -684,6 +684,24 @@ def build_feature_index(records: Sequence[dict], frame_ms: float = FRAME_MS) -> 
     return {name: index for index, name in enumerate(sorted(names))}
 
 
+def mora_feature_index(records: Sequence[dict]) -> dict[str, int]:
+    """Index only the mora-level token features (no frame/mora-progress names).
+
+    ``build_feature_index`` additionally collects the frame-only columns that
+    ``frame_features`` appends (mora_progress, frame_position, ...).  Those are
+    never produced by ``token_features`` and are always zero for a mora-level
+    head, so heads like the prosody multitask duration predictor should train
+    and export against this smaller index instead.
+    """
+
+    names: set[str] = set()
+    for record in records:
+        tokens = record["tokens"]
+        for position in range(len(tokens)):
+            names.update(token_features(tokens, position))
+    return {name: index for index, name in enumerate(sorted(names))}
+
+
 def _record_target_cents(f0: np.ndarray, mask: np.ndarray, low_cents: float, high_cents: float, fallback: float = 200.0) -> np.ndarray:
     voiced = f0[mask & (f0 > 0)]
     baseline = float(np.median(voiced)) if len(voiced) else fallback
