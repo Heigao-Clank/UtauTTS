@@ -45,6 +45,7 @@ ApplicationWindow {
     property string updateAvailableVersion: ""
     property string updateReleaseNotes: ""
     property url updateReleaseUrl: ""
+    property url updateDownloadUrl: ""
 
     property alias utterancesModel: utterances
     property alias playerMedia: player
@@ -381,15 +382,61 @@ ApplicationWindow {
         buttons: MessageDialog.Ok
     }
 
-    MessageDialog {
+    Dialog {
         id: updateDialog
         title: window.translator.tr("update.title")
-        text: window.translator.tr("update.message", window.updateAvailableVersion)
-        informativeText: window.updateReleaseNotes + (window.updateReleaseNotes.length ? "\n\n" : "") + window.updateReleaseUrl
-        buttons: MessageDialog.Open
-        onButtonClicked: (button, role) => {
-            if (button === MessageDialog.Open)
-                Qt.openUrlExternally(window.updateReleaseUrl);
+        modal: true
+        width: Math.min(window.width - 40, 480)
+        anchors.centerIn: Overlay.overlay
+        closePolicy: Popup.CloseOnEscape
+        standardButtons: Dialog.NoButton
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: window.translator.tr("update.message", window.updateAvailableVersion)
+                wrapMode: Text.WordWrap
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 150
+                clip: true
+                TextArea {
+                    readOnly: true
+                    wrapMode: Text.WordWrap
+                    text: window.updateReleaseNotes + (window.updateReleaseNotes.length ? "\n\n" : "") + window.updateReleaseUrl
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: window.translator.tr("update.preserveNote")
+                wrapMode: Text.WordWrap
+                color: window.mutedText
+                font.pixelSize: 11
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Button {
+                    text: window.translator.tr("update.button")
+                    highlighted: true
+                    onClicked: window.performUpdate()
+                }
+                Button {
+                    text: window.translator.tr("update.openRelease")
+                    onClicked: Qt.openUrlExternally(window.updateReleaseUrl)
+                }
+                Button {
+                    text: window.translator.tr("update.later")
+                    onClicked: updateDialog.close()
+                }
+            }
         }
     }
 
@@ -826,10 +873,40 @@ window.translator.load(window.appBackend.language);
                 window.updateAvailableVersion = latest;
                 window.updateReleaseNotes = data.body ? String(data.body) : "";
                 window.updateReleaseUrl = data.html_url ? String(data.html_url) : "";
+                let downloadUrl = "";
+                const assets = Array.isArray(data.assets) ? data.assets : [];
+                for (const asset of assets) {
+                    if (asset && asset.name === "UtauTTS-win-x64.zip" && asset.browser_download_url) {
+                        downloadUrl = String(asset.browser_download_url);
+                        break;
+                    }
+                }
+                if (!downloadUrl) {
+                    for (const asset of assets) {
+                        if (asset && String(asset.name).endsWith(".zip") && asset.browser_download_url) {
+                            downloadUrl = String(asset.browser_download_url);
+                            break;
+                        }
+                    }
+                }
+                window.updateDownloadUrl = downloadUrl;
                 updateDialog.open();
             }
         };
         request.send();
+    }
+
+    function performUpdate() {
+        if (!window.updateDownloadUrl) {
+            Qt.openUrlExternally(window.updateReleaseUrl);
+            return;
+        }
+        if (window.appBackend.launchUpdater(window.updateDownloadUrl, window.updateAvailableVersion)) {
+            updateDialog.close();
+            Qt.quit();
+        } else if (window.appBackend.error.length) {
+            Qt.openUrlExternally(window.updateReleaseUrl);
+        }
     }
 
     function openSettings() {

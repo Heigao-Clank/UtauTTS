@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QProcess>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSettings>
@@ -284,6 +285,38 @@ bool Backend::showNativeAboutDialog() {
 #else
     return false;
 #endif
+}
+
+bool Backend::launchUpdater(const QString &downloadUrl, const QString &version) {
+    const QDir root = resourceRoot();
+    const QString updaterPath = root.filePath(QStringLiteral("utautts-updater.exe"));
+    if (!QFileInfo::exists(updaterPath)) {
+        setError(tr("アップデータが同梱されていません。リリースページから手動で更新してください。"));
+        return false;
+    }
+    if (downloadUrl.isEmpty()) {
+        setError(tr("ダウンロードURLを取得できませんでした。"));
+        return false;
+    }
+    const QString tempUpdater = QDir(QDir::tempPath()).filePath(
+        QStringLiteral("utautts-updater-%1.exe").arg(QCoreApplication::applicationPid()));
+    QFile::remove(tempUpdater);
+    if (!QFile::copy(updaterPath, tempUpdater)) {
+        setError(tr("アップデータを一時ディレクトリに配置できませんでした。"));
+        return false;
+    }
+    const QStringList arguments{
+        QStringLiteral("-target"), QDir::toNativeSeparators(root.absolutePath()),
+        QStringLiteral("-url"), downloadUrl,
+        QStringLiteral("-pid"), QString::number(QCoreApplication::applicationPid()),
+        QStringLiteral("-version"), version,
+    };
+    if (!QProcess::startDetached(tempUpdater, arguments, root.absolutePath())) {
+        setError(tr("アップデータを起動できませんでした。"));
+        return false;
+    }
+    setError({});
+    return true;
 }
 
 void Backend::initialize() {

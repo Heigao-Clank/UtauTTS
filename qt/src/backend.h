@@ -92,6 +92,7 @@ public:
     Q_INVOKABLE QString suppressedUpdateVersion() const;
     Q_INVOKABLE void setSuppressedUpdateVersion(const QString &version);
     Q_INVOKABLE bool showNativeAboutDialog();
+    Q_INVOKABLE bool launchUpdater(const QString &downloadUrl, const QString &version);
     Q_INVOKABLE void clearLogs();
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
     Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);

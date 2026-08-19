@@ -95,6 +95,8 @@ Push-Location $root
 try {
     & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $OutputDirectory 'utautts.exe') ./cmd/utautts-launcher
     if ($LASTEXITCODE -ne 0) { throw 'Qt launcher build failed' }
+    & go build -trimpath -ldflags '-H windowsgui' -o (Join-Path $OutputDirectory 'utautts-updater.exe') ./cmd/utautts-updater
+    if ($LASTEXITCODE -ne 0) { throw 'Qt updater build failed' }
 } finally {
     Pop-Location
     $env:GOCACHE = $previousLauncherGoCache

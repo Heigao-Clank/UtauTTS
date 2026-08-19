@@ -148,7 +148,11 @@
     "usage.step.utterance.3": "Drag and drop a card's image to reorder it.",
     "usage.step.utterance.4": "Press Delete (or your configured shortcut) to remove the selected utterance.",
     "usage.title": "Usage",
-    "update.message": "A new version {0} is available.\n\n\nRelease Notes",
+    "update.button": "Update",
+    "update.later": "Later",
+    "update.message": "A new version {0} is available.",
+    "update.openRelease": "Open Release Page",
+    "update.preserveNote": "Your voicebanks and settings will be preserved.",
     "update.title": "Update Available",
     "voicebankDetails.noReadme": "No README available",
     "voicebankDetails.title": "Voicebank Details"
