@@ -8,9 +8,9 @@ UTAUボイスバンクに収録された原音を選択・配置・接続し、�
 
 | 用途 | 構成 | 特徴 |
 |---|---|---|
-| 明瞭度・原音確認 | `waveform` | 原音のピッチを保った決定的な波形接続。CLI／Serverの既定Renderer |
+| 明瞭度・原音確認 | `waveform` | 原音のピッチを保った決定的な波形接続。frameピッチ曲線も可変レートリサンプリングで適用可能。CLI／Serverの既定Renderer |
 | GUIの標準プロファイル | `frame-intonation-v8` + `openutau-classic-worldline-faithful` | OpenJTalkのアクセント特徴から10ms単位の相対ピッチを予測し、OpenUTAU Classicに近いtiming・5点envelope・Worldline resamplingで適用。CUDA環境ではGPU版も選択可能 |
-| 自動モーラ長 | `prosody-multitask-v1` + faithful系Renderer | v8系のイントネーションに加えて、モーラ長を予測してGUIへ表示 |
+| 自動モーラ長 | `prosody-multitask-v1` + faithful系Renderer | v8系のイントネーションに加えて、モーラ長を予測して合成タイミングへ適用し、結果をGUIへ表示。`--prosody-pitch-only` を付けるとモーラ長予測を無効化 |
 
 モデルは音声波形や話者の声を生成しません。必要なモデル・Renderer・runtime assetが揃わない場合は、GUIでエラーの内容を確認してから `waveform` を明瞭度の基準にしてください。現在のRenderer IDは `waveform`、`openutau-classic-worldline-faithful`、CUDA版の `openutau-classic-worldline-faithful-gpu` です。CUDA版は対応する配布物にのみ含まれます。
 
