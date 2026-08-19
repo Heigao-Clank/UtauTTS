@@ -51,6 +51,7 @@ qt_add_qml_module(utautts
     VERSION 1.0
     QML_FILES
         qml/Main.qml
+        qml/EditorContent.qml
         qml/PitchEditor.qml
         qml/DragSourceWindow.qml
         qml/SynthesisLogWindow.qml
