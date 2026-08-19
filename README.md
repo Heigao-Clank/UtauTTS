@@ -20,10 +20,12 @@ UTAUボイスバンクに収録された原音を選択・配置・接続し、�
 
 [リリース](https://github.com/yh2237/UtauTTS/releases) から最新版をダウンロードしてください。
 
+Linux版は面倒くさいので正式リリースになったらリリースに追加します。
+
 - `UtauTTS-win-x64.zip`: GUI、CLI、診断・学習ツール、runtime、モデル、Renderer、同梱音源
 - `UtauTTS-Server-win-x64.zip`: GUIを含まないHTTPサーバー
-- `UtauTTS-linux-x64.zip`: Linux GUI版
-- `UtauTTS-Server-linux-x64.zip`: Linux HTTPサーバー版
+- ~~`UtauTTS-linux-x64.zip`: Linux GUI版~~
+- ~~`UtauTTS-Server-linux-x64.zip`: Linux HTTPサーバー版~~
 
 ### GUI
 
