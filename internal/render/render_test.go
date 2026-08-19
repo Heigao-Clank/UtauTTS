@@ -139,10 +139,61 @@ func TestOpenUtauEnvelopeUsesNextPhoneTailTiming(t *testing.T) {
 	}
 }
 
-func TestWaveformRendererRejectsFramePitchCurve(t *testing.T) {
+func TestWaveformRendererAcceptsFramePitchCurve(t *testing.T) {
 	_, err := Render(&plan.Plan{Units: []plan.Unit{{}}}, Config{Backend: "waveform", ApplyPitch: true, PitchCurve: &PitchCurve{FrameMS: 5, Cents: []float64{0}}})
-	if err == nil || !strings.Contains(err.Error(), "not supported by waveform") {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("empty plan unit was accepted")
+	}
+	if strings.Contains(err.Error(), "frame pitch curve is not supported by waveform renderer") {
+		t.Fatalf("waveform still rejects frame pitch curves: %v", err)
+	}
+}
+
+func TestResampleForPitchCurveFlatMatchesConstantResample(t *testing.T) {
+	source := make([]float64, 256)
+	for i := range source {
+		source[i] = math.Sin(float64(i) * 0.1)
+	}
+	flat := &PitchCurve{FrameMS: 10, Cents: []float64{100, 100}}
+	factor := 1.2 * math.Pow(2, 100.0/1200)
+	varying := resampleForPitchCurve(source, 1.2, flat, 0, 256)
+	if got := len(varying); got != max(16, int(math.Round(256/factor))) {
+		t.Fatalf("length %d, want %d", got, int(math.Round(256/factor)))
+	}
+	for k := range varying {
+		position := math.Min(float64(len(source)-1), float64(k)*factor)
+		left := int(math.Floor(position))
+		fraction := position - float64(left)
+		want := source[left] + (source[min(left+1, len(source)-1)]-source[left])*fraction
+		if math.Abs(varying[k]-want) > 1e-9 {
+			t.Fatalf("sample %d = %f, want %f", k, varying[k], want)
+		}
+	}
+}
+
+func TestResampleForPitchCurveStretchesUnevenly(t *testing.T) {
+	source := make([]float64, 512)
+	for i := range source {
+		source[i] = float64(i) / 511
+	}
+	curve := &PitchCurve{FrameMS: 10, Cents: []float64{0, 100}}
+	result := resampleForPitchCurve(source, 1, curve, 0, 256)
+	flat := resampleForPitch(source, math.Pow(2, 100.0/1200))
+	if len(result) <= len(flat) {
+		t.Fatalf("raising pitch should stretch beyond the flat resample, got %d vs %d", len(result), len(flat))
+	}
+	if result[0] != 0 || result[len(result)-1] != 1 {
+		t.Fatalf("ramp endpoints not preserved: %f .. %f", result[0], result[len(result)-1])
+	}
+	lagged := false
+	for index := 1; index < len(flat); index++ {
+		if result[index] < flat[index]-1e-9 {
+			lagged = true
+			break
+		}
+	}
+	if !lagged {
+		t.Fatal("curved resample never lags the flat resample in the stretched region")
 	}
 }
 
@@ -299,7 +350,10 @@ func TestRetimeCompressedPrefixRetainsVowelTail(t *testing.T) {
 	for i := 439; i < len(source); i++ {
 		source[i] = 1
 	}
-	got := retimeWithCompressedPrefix(source, 265, 439, 128, 1000)
+	got, err := retimeWithCompressedPrefixUsing(source, 265, 439, 128, 1000, wsolaStretch)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 265 {
 		t.Fatalf("length = %d", len(got))
 	}
@@ -517,7 +571,10 @@ func TestStretchPreservesPrefixAndLength(t *testing.T) {
 	for i := range source {
 		source[i] = float64(i) / 200
 	}
-	got := stretchPreservingPrefix(source, 350, 50, 1000)
+	got, err := stretchPreservingPrefixUsing(source, 350, 50, 1000, wsolaStretch)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 350 {
 		t.Fatalf("length = %d", len(got))
 	}
@@ -598,8 +655,8 @@ func TestChooseBoundaryRepairKeepsNormalOrImprovesPeak(t *testing.T) {
 	for index := range previousWave {
 		previousWave[index] = 0.2 * math.Sin(2*math.Pi*float64(index)/20)
 	}
-	// A local impulse represents a boundary transient. The aligned source tail
-	// should reduce it; otherwise normal connection remains the fallback.
+	// 局所的なインパルスが境界の過渡応答を表す。整列した音源テールがこれを低減する
+	// はずであり、そうでない場合は通常接続がフォールバックとなる。
 	mix[110] += 0.8
 	previous := renderedUnit{
 		unit: plan.Unit{DurationMS: 80}, timing: effectiveTiming{preutteranceMS: 20}, wave: previousWave,

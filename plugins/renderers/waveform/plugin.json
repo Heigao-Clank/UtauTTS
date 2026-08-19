@@ -7,5 +7,5 @@
   "backend": "waveform",
   "version": "1",
   "default_priority": 100,
-  "capabilities": { "boundary_bridge": true }
+  "capabilities": { "boundary_bridge": true, "frame_pitch": true }
 }

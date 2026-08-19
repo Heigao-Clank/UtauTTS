@@ -143,6 +143,12 @@ func TestFaithfulGPUSupportsFramePitch(t *testing.T) {
 	}
 }
 
+func TestWaveformRendererSupportsFramePitch(t *testing.T) {
+	if !rendererSupportsFramePitch("waveform", nil) {
+		t.Fatal("waveform renderer rejected a frame pitch contour")
+	}
+}
+
 func TestAlignRuntimeProsodyFeaturesAcceptsAlternatePronunciations(t *testing.T) {
 	morae := []frontend.Mora{
 		{Text: "\u3044", Vowel: "i"},
@@ -258,9 +264,9 @@ func TestConvertToReadingUsesBuiltInTokenizer(t *testing.T) {
 }
 
 func TestConvertToReadingReportsOpenJTalkFallback(t *testing.T) {
-	// Numerals cannot be tokenized by the built-in frontend. Point the fallback
-	// at a missing helper so the combined error is deterministic regardless of
-	// whether a packaged Open JTalk helper is present in this checkout.
+	// 数字は内蔵フロントエンドではトークナイズできない。フォールバック先を存在しないヘルパーに
+	// 向けることで、このチェックアウトに同梱のOpen JTalkヘルパーの有無にかかわらず、
+	// 合成エラーを決定的にする。
 	_, err := ConvertToReading("2024年です。", nil, openjtalk.Config{
 		HelperPath: filepath.Join(t.TempDir(), "missing-helper"),
 	})

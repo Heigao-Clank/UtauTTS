@@ -142,6 +142,41 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	for frame := range manifest.F0Curve {
 		manifest.F0Curve[frame] *= pitchCurveFactorAt(cfg.PitchCurve, float64(frame)*frameMS)
 	}
+	tempDir, err := os.MkdirTemp("", "utautts-worldline-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Worldlineは全ユニットを1つの出力にミックスし、各サンプル位置をフレーズの
+	// サンプルレートで解釈する。そのため、異なるレートの録音はここでフレーズの
+	// レートにリサンプリングされ、一時コピーとしてbridgeに渡される。リサンプリング
+	// されたユニットではFRQファイルが意図的に破棄される。元のfrq位置は
+	// リサンプリング後の音声と一致しなくなり、Worldlineはリサンプリング後の波形
+	// 自体からF0を再測定するためである。
+	normalizedSources := make(map[string]string)
+	for index := range synthesisPlan.Units {
+		unit := &synthesisPlan.Units[index]
+		if unit.Silent {
+			continue
+		}
+		mono, err := cache.loadMono(unit.Source)
+		if err != nil {
+			return nil, fmt.Errorf("read unit %q: %w", unit.Alias, err)
+		}
+		if mono.SampleRate == sampleRate {
+			continue
+		}
+		resampled, err := cache.loadNormalized(unit.Source, sampleRate)
+		if err != nil {
+			return nil, fmt.Errorf("normalize unit %q to %d Hz: %w", unit.Alias, sampleRate, err)
+		}
+		tempPath := filepath.Join(tempDir, fmt.Sprintf("resampled-%d.wav", index))
+		if err := audio.WriteWav(tempPath, resampled); err != nil {
+			return nil, fmt.Errorf("write resampled unit %q: %w", unit.Alias, err)
+		}
+		normalizedSources[unit.Source] = tempPath
+	}
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
 		if unit.Silent {
@@ -168,16 +203,20 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		var envelopePoints []worldlineEnvelopePoint
 		pitchLengthMS := 0.0
 		if strings.HasPrefix(engine, "classic-worldline-") {
-			// OpenUtau's ResamplerItem starts its bend array at the unscaled
-			// source preutterance and asks the resampler for a 50 ms rounded
-			// buffer. The convergence mixer then skips any leading excess.
+			// OpenUtauのResamplerItemはbend配列をスケール前の元のpreutterance
+			// から開始し、resamplerに50ms単位で丸めたバッファを要求する。その後
+			// convergenceミキサーが先頭の余分な部分をスキップする。
 			pitchLeadingMS := unit.PreutteranceMS
 			skipMS = math.Max(0, pitchLeadingMS-timing.preutteranceMS)
 			pitchStartMS = unit.NoteStartMS - pitchLeadingMS
 			durCorrection := 0.0
 			if faithfulClassic {
 				phoneTiming := classicTimings[i]
-				skipMS = pitchLeadingMS - phoneTiming.preutter
+				// クラシックのタイミングテーブルはpreutterをピッチ先行量（下の
+				// openUtauClassicTimings）以下に保つため、skipMSは非負に保たれる。
+				// このガードにより、呼び出し側に依存せずにその不変条件を局所的に
+				// 維持する。
+				skipMS = math.Max(0, pitchLeadingMS-phoneTiming.preutter)
 				durCorrection = phoneTiming.preutter - phoneTiming.tailIntrude + phoneTiming.tailOverlap
 				envelopePoints = openUtauEnvelopeFromTiming(*unit, phoneTiming)
 				pitchLengthMS = envelopePoints[4].XMS + pitchLeadingMS
@@ -194,8 +233,13 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 			lengthMS -= leadingTrimMS
 			positionMS = 0
 		}
+		source, frqPath := unit.Source, findFRQPath(unit.Source)
+		if normalized, ok := normalizedSources[unit.Source]; ok {
+			source = normalized
+			frqPath = ""
+		}
 		manifest.Units = append(manifest.Units, worldlineManifestUnit{
-			Source: unit.Source, FRQPath: findFRQPath(unit.Source), PositionMS: positionMS, SkipMS: skipMS,
+			Source: source, FRQPath: frqPath, PositionMS: positionMS, SkipMS: skipMS,
 			LengthMS: lengthMS, FadeInMS: math.Max(2, timing.preutteranceMS-timing.overlapMS),
 			FadeOutMS: cfg.ReleaseMS, OffsetMS: unit.OffsetMS, RequiredLengthMS: requiredLength,
 			ConsonantMS: unit.ConsonantMS, CutoffMS: unit.CutoffMS,
@@ -205,11 +249,6 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		})
 	}
 
-	tempDir, err := os.MkdirTemp("", "utautts-worldline-")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tempDir)
 	manifest.OutputPath = filepath.Join(tempDir, "output.wav")
 	manifestPath := filepath.Join(tempDir, "manifest.json")
 	data, err := json.Marshal(manifest)
@@ -376,10 +415,7 @@ func measureWorldlinePitches(synthesisPlan *plan.Plan, cache *sourceCache) ([]fl
 		if sampleRate == 0 {
 			sampleRate = mono.SampleRate
 		}
-		if mono.SampleRate != sampleRate {
-			return nil, 0, fmt.Errorf("worldline requires one sample rate per phrase: %s is %d Hz, want %d Hz", unit.Source, mono.SampleRate, sampleRate)
-		}
-		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.ConsonantMS, unit.CutoffMS)
+		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.CutoffMS)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -393,16 +429,13 @@ func measureWorldlinePitches(synthesisPlan *plan.Plan, cache *sourceCache) ([]fl
 	return stabilizeWorldlinePitches(values), sampleRate, nil
 }
 
-// stabilizeWorldlinePitches removes the most common short-recording pitch
-// tracker failures before a source pitch is handed to Worldline. A voiced
-// unit can occasionally be reported at a harmonic-related period (for
-// example, about 3/2 or 2 times its neighbours) when the vowel has a strong
-// formant or an irregular waveform. Treating that value as the target pitch
-// makes the resampler shift the otherwise natural recording by several
-// semitones. The lower-frequency member is kept as the local anchor and only
-// the higher-frequency member is folded down. This one-way rule is important
-// for very short phrases: a two-unit phrase must not make both units swap
-// their pitches while correcting each other.
+// stabilizeWorldlinePitchesは、音源ピッチをWorldlineに渡す前に、短い録音で最も
+// 起こりやすいピッチトラッカーの失敗を取り除く。母音に強いフォルマントや不規則な
+// 波形があると、有声ユニットが隣の倍音関係の周期（例えば約3/2倍や2倍）で検出
+// されることがある。その値を目標ピッチとして扱うと、本来自然な録音を数半音ずらす
+// ことになる。低周波側をローカルの基準点として残し、高周波側のみを折り畳む。この
+// 一方向の規則は非常に短いフレーズで重要である。2ユニットのフレーズで互いに補正し
+// 合って両方のピッチが入れ替わってはならない。
 func stabilizeWorldlinePitches(values []float64) []float64 {
 	result := append([]float64(nil), values...)
 	for index, value := range values {

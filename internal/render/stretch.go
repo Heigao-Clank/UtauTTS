@@ -2,20 +2,10 @@ package render
 
 import "math"
 
-func stretchPreservingPrefix(source []float64, targetFrames, prefixFrames, sampleRate int) []float64 {
-	result, _ := stretchPreservingPrefixUsing(source, targetFrames, prefixFrames, sampleRate,
-		func(source []float64, targetFrames, sampleRate int) ([]float64, error) {
-			return wsola(source, targetFrames, sampleRate), nil
-		})
-	return result
-}
-
-func retimeWithCompressedPrefix(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) []float64 {
-	result, _ := retimeWithCompressedPrefixUsing(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate,
-		func(source []float64, targetFrames, sampleRate int) ([]float64, error) {
-			return wsola(source, targetFrames, sampleRate), nil
-		})
-	return result
+// wsolaStretchはretimeヘルパーが使う既定の時間領域ストレッチ関数。常に成功する
+// ため、下のエラーを返すヘルパー群は失敗しうるGPU系でも同じ形で使える。
+func wsolaStretch(source []float64, targetFrames, sampleRate int) ([]float64, error) {
+	return wsola(source, targetFrames, sampleRate), nil
 }
 
 func retimeWithCompressedPrefixUsing(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int, stretch func([]float64, int, int) ([]float64, error)) ([]float64, error) {

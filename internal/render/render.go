@@ -27,20 +27,18 @@ type Config struct {
 	PitchCurve              *PitchCurve
 }
 
-// MaxIntonationStrength is the upper bound for the user-facing intonation
-// control.  1.0 keeps the historical strength; values above 1 amplify the
-// generated contour and renderer-side correction.
+// MaxIntonationStrengthはユーザー向けイントネーション制御の上限値。1.0が従来の
+// 強さに相当し、1を超える値は生成された輪郭とレンダラー側の補正を増幅する。
 const MaxIntonationStrength = 2.0
 
-// defaultReleaseMS is the unit release envelope applied when a caller has not
-// explicitly configured one. Zero is a valid explicit value meaning "no
-// release"; callers that want it must set ReleaseSet.
+// defaultReleaseMSは、呼び出し側が明示的に設定しなかった場合に適用されるユニットの
+// リリースエンベロープ。0は「リリースなし」を意味する有効な明示値であり、それを
+// 望む呼び出し側はReleaseSetを設定する必要がある。
 const defaultReleaseMS = 20.0
 
-// rendererImplementations is the single source of truth for which backend
-// strings this executable can dispatch. Display identity and declared
-// capabilities belong to each renderer's plugin.json; a renderer manifest
-// whose backend is not in this map is rejected at discovery time.
+// rendererImplementationsは、この実行ファイルがディスパッチ可能なbackend文字列の
+// 唯一の情報源。表示名や宣言された機能は各レンダラーのplugin.jsonに属し、この
+// マップに無いbackendを持つレンダラーマニフェストは検出時に拒否される。
 var rendererImplementations = map[string]func(*plan.Plan, Config) (*audio.PCM, error){
 	"waveform":                            renderWaveform,
 	"openutau-classic-worldline-faithful": renderOpenUtauClassicWorldlineFaithful,
@@ -55,8 +53,8 @@ func IsKnownRenderer(id string) bool {
 	return ok
 }
 
-// CUDAAvailable reports whether the optional CUDA renderer library and a
-// compatible device are available on this machine.
+// CUDAAvailableは、オプションのCUDAレンダラーライブラリと互換デバイスがこの
+// マシンで利用可能かどうかを返す。
 func CUDAAvailable() bool {
 	return gpuWaveformAvailable() == nil
 }
@@ -89,11 +87,11 @@ func newSourceCache() sourceCache {
 	}
 }
 
-// WAV sources are decoded once per render in a process-local cache and once
-// more by the shared global cache below. The GUI synthesizes the same
-// voicebank repeatedly, so keeping decoded recordings alive between renders
-// avoids rereading every file for each preview.
-const maxWAVCacheBytes = 256 << 20 // 256 MiB of decoded source audio
+// WAV音源はプロセスローカルなキャッシュでレンダーごとに一度デコードされ、下の共有
+// グローバルキャッシュでもう一度デコードされる。GUIは同じ音声バンクを繰り返し合成
+// するため、デコード済みの録音をレンダー間で保持すれば、プレビューのたびに全ファイル
+// を読み直す必要がなくなる。
+const maxWAVCacheBytes = 256 << 20 // デコード済み音源 256 MiB
 
 type wavCacheEntry struct {
 	path    string
@@ -127,10 +125,9 @@ func (c *wavCache) evict() {
 	}
 }
 
-// loadWAVCached decodes a WAV once and reuses it across renders. Entries are
-// keyed by path plus size and modification time, so edited recordings are
-// picked up automatically and evicted least-recently-used against a byte
-// budget.
+// loadWAVCachedはWAVを一度デコードしてレンダー間で再利用する。エントリはパスに
+// サイズと更新時刻を加えたキーで管理され、編集された録音は自動的に検出され、バイト
+// 予算に応じて最も古いものから追い出される。
 func loadWAVCached(path string) (*audio.PCM, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -159,8 +156,8 @@ func loadWAVCached(path string) (*audio.PCM, error) {
 	return pcm, nil
 }
 
-// ClearWAVCache drops all cached source recordings. Call it when the set of
-// available voicebanks changes so removed recordings are not retained.
+// ClearWAVCacheはキャッシュ済みの音源録音をすべて破棄する。利用可能な音声バンクが
+// 変わったときに呼び出し、削除された録音が保持されないようにする。
 func ClearWAVCache() {
 	globalWAVCache.mu.Lock()
 	defer globalWAVCache.mu.Unlock()
@@ -214,9 +211,6 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 				return nil, fmt.Errorf("pitch curve value %d is outside the supported +/-4800 cent range", index)
 			}
 		}
-		if cfg.Backend == "" || cfg.Backend == "waveform" {
-			return nil, fmt.Errorf("frame pitch curve is not supported by waveform renderer %q", cfg.Backend)
-		}
 	}
 	if cfg.BoundaryBridgeMS > 0 && !rendererSupportsBoundaryBridge(cfg.Backend) {
 		return nil, fmt.Errorf("boundary bridge requires waveform renderer, got %q", cfg.Backend)
@@ -258,7 +252,7 @@ func pitchCurveFactorAt(curve *PitchCurve, timeMS float64) float64 {
 
 func renderWaveform(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	return renderWaveformWithStretch(synthesisPlan, cfg, false, func(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int) ([]float64, error) {
-		return retimeWithCompressedPrefix(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate), nil
+		return retimeWithCompressedPrefixUsing(source, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate, wsolaStretch)
 	})
 }
 
@@ -271,9 +265,9 @@ type preparedWaveformUnit struct {
 	effectiveConsonantFrames int
 }
 
-// Each unit owns a CUDA stream and several device buffers. A fixed worker
-// count keeps long passages from creating hundreds of streams at once while
-// still exposing enough independent work to occupy consumer GPUs.
+// 各ユニットはCUDAストリームと複数のデバイスバッファを所有する。ワーカー数を
+// 固定することで、長いパッセージで一度に数百のストリームが生成されるのを防ぎつつ、
+// コンシューマGPUを飽和させるのに十分な独立した作業量を確保する。
 const maxParallelGPUUnits = 32
 
 func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRetime bool, retime func([]float64, int, int, int, int) ([]float64, error)) (*audio.PCM, error) {
@@ -328,7 +322,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 				return nil, fmt.Errorf("normalize unit %q: %w", unit.Alias, err)
 			}
 		}
-		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.ConsonantMS, unit.CutoffMS)
+		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.CutoffMS)
 		if err != nil {
 			return nil, fmt.Errorf("trim unit %q: %w", unit.Alias, err)
 		}
@@ -342,9 +336,19 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		if cfg.ApplyPitch {
 			appliedPitch = unit.PitchFactor * intonation[unitIndex]
 		}
-		wave = resampleForPitch(wave, appliedPitch)
+		if cfg.PitchCurve != nil {
+			positionMS := unit.NoteStartMS - timing.preutteranceMS
+			spanMS := float64(len(wave)) / float64(sampleRate) * 1000
+			wave = resampleForPitchCurve(wave, appliedPitch, cfg.PitchCurve, positionMS, spanMS)
+		} else {
+			wave = resampleForPitch(wave, appliedPitch)
+		}
 		if appliedPitch > 0 {
-			sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / appliedPitch))
+			consonantFactor := clampPitchFactor(appliedPitch)
+			if cfg.PitchCurve != nil {
+				consonantFactor = clampPitchFactor(appliedPitch * pitchCurveFactorAt(cfg.PitchCurve, unit.NoteStartMS-timing.preutteranceMS))
+			}
+			sourceConsonantFrames = int(math.Round(float64(sourceConsonantFrames) / consonantFactor))
 		}
 		prepared = append(prepared, preparedWaveformUnit{unitIndex: unitIndex, timing: timing, wave: wave,
 			targetFrames: targetFrames, sourceConsonantFrames: sourceConsonantFrames,
@@ -480,7 +484,7 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 		if err != nil {
 			continue
 		}
-		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.ConsonantMS, unit.CutoffMS)
+		trimmed, err := audio.TrimPCM(mono, unit.OffsetMS, unit.CutoffMS)
 		if err != nil {
 			continue
 		}
@@ -590,9 +594,9 @@ func handoffGain(globalFrame, unitIndex int, synthesisPlan *plan.Plan, timings [
 }
 
 func fadeInDurationMS(timing effectiveTiming) float64 {
-	// Some CV banks use zero preutterance, or set overlap equal to
-	// preutterance. Without a floor, the previous unit is cut off exactly when
-	// the next unit still has zero envelope gain, creating an audible click.
+	// 一部の CV 音源は preutterance が 0 だったり、overlap を preutterance と等しく
+	// 設定している。下限が無いと、次のユニットのエンベロープゲインがまだ 0 のときに
+	// 前のユニットがちょうど途切れ、可聴なクリックが生じる。
 	return math.Max(6, timing.preutteranceMS-timing.overlapMS)
 }
 
@@ -625,8 +629,57 @@ func resampleForPitch(source []float64, factor float64) []float64 {
 	if len(source) < 16 || factor <= 0 || math.Abs(factor-1) < 0.001 {
 		return append([]float64(nil), source...)
 	}
-	factor = math.Max(0.75, math.Min(1.35, factor))
+	factor = clampPitchFactor(factor)
 	return linearResample(source, max(16, int(math.Round(float64(len(source))/factor))))
+}
+
+// resampleForPitchCurveは時間変化するピッチ係数でsourceをストレッチする。
+// baseFactorは一定のモーラ単位の係数で、フレームピッチカーブはsourceが占める
+// フレーズ時刻の窓[startMS, startMS+spanMS]でサンプリングしたサンプル毎の乗数を
+// 加える。可変レートのマッピングは1/f(t)を積分するため、平坦なカーブは
+// resampleForPitchと同じ結果になる。
+func resampleForPitchCurve(source []float64, baseFactor float64, curve *PitchCurve, startMS, spanMS float64) []float64 {
+	if len(source) < 16 || baseFactor <= 0 {
+		return append([]float64(nil), source...)
+	}
+	if curve == nil || curve.FrameMS <= 0 || len(curve.Cents) == 0 {
+		return resampleForPitch(source, baseFactor)
+	}
+	span := math.Max(1e-3, spanMS)
+	cumulative := make([]float64, len(source)+1)
+	for i := range source {
+		frame := 0.0
+		if len(source) > 1 {
+			frame = float64(i) / float64(len(source)-1)
+		}
+		factor := clampPitchFactor(baseFactor * pitchCurveFactorAt(curve, startMS+span*frame))
+		cumulative[i+1] = cumulative[i] + 1/factor
+	}
+	targetFrames := max(16, int(math.Round(cumulative[len(source)])))
+	result := make([]float64, targetFrames)
+	segment := 0
+	for output := range result {
+		for segment < len(source)-1 && float64(output) >= cumulative[segment+1] {
+			segment++
+		}
+		fraction := 0.0
+		if segment < len(source)-1 {
+			width := cumulative[segment+1] - cumulative[segment]
+			if width > 0 {
+				fraction = (float64(output) - cumulative[segment]) / width
+			}
+		}
+		right := source[segment]
+		if segment+1 < len(source) {
+			right = source[segment+1]
+		}
+		result[output] = source[segment] + (right-source[segment])*fraction
+	}
+	return result
+}
+
+func clampPitchFactor(factor float64) float64 {
+	return math.Max(0.75, math.Min(1.35, factor))
 }
 
 func (c *sourceCache) ensureMaps() {

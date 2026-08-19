@@ -4,7 +4,7 @@ import "testing"
 
 func TestTrimPCMPositiveCutoff(t *testing.T) {
 	pcm := testPCM(1000)
-	got, err := TrimPCM(pcm, 100, 0, 200)
+	got, err := TrimPCM(pcm, 100, 200)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -15,7 +15,7 @@ func TestTrimPCMPositiveCutoff(t *testing.T) {
 
 func TestTrimPCMNegativeCutoffIsLengthFromOffset(t *testing.T) {
 	pcm := testPCM(1000)
-	got, err := TrimPCM(pcm, 100, 0, -300)
+	got, err := TrimPCM(pcm, 100, -300)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,9 +24,9 @@ func TestTrimPCMNegativeCutoffIsLengthFromOffset(t *testing.T) {
 	}
 }
 
-func TestTrimPCMFixedDoesNotExtendCutoff(t *testing.T) {
+func TestTrimPCMRangeDependsOnlyOnOffsetAndCutoff(t *testing.T) {
 	pcm := testPCM(1000)
-	got, err := TrimPCM(pcm, 100, 800, 600)
+	got, err := TrimPCM(pcm, 100, 600)
 	if err != nil {
 		t.Fatal(err)
 	}
