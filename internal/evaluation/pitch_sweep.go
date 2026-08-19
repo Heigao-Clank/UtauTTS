@@ -20,9 +20,8 @@ type FramePitchSweepCase struct {
 	Cents       []float64 `json:"cents"`
 }
 
-// DeterministicFramePitchSweep creates phrase-time contours that can express
-// a real intra-unit hill and a discontinuous step, rather than approximating
-// them with one value per mora.
+// DeterministicFramePitchSweepは、モーラあたり1値による近似ではなく、実際の
+// ユニット内の丘状変化と不連続な段差を表現できるフレーム時間単位の輪郭を生成する。
 func DeterministicFramePitchSweep(durationMS, frameMS float64) []FramePitchSweepCase {
 	if durationMS <= 0 || frameMS <= 0 {
 		return nil
@@ -65,9 +64,8 @@ func DeterministicFramePitchSweep(durationMS, frameMS float64) []FramePitchSweep
 	)
 }
 
-// DeterministicPitchSweep returns renderer-diagnostic contours. Constants
-// measure pitch-shift damage independently of contour shape; hill and step
-// then expose slow and abrupt time-varying behavior.
+// DeterministicPitchSweepはレンダラ診断用の輪郭を返す。定数値は輪郭形状とは独立に
+// ピッチシフトの損傷を測定し、hillとstepは緩やかな変化と急激な変化の挙動を明らかにする。
 func DeterministicPitchSweep(morae []frontend.Mora) []PitchSweepCase {
 	voiced := make([]int, 0, len(morae))
 	for index, mora := range morae {

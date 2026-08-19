@@ -1,4 +1,4 @@
-// Package connection measures acoustic compatibility between UTAU units.
+// Package connectionはUTAUユニット間の音響的な相性を測定する。
 package connection
 
 import (
@@ -11,7 +11,7 @@ import (
 	"utautts/internal/oto"
 )
 
-// Boundary contains the frames used when a unit is joined to its neighbours.
+// Boundaryはユニットが隣接ユニットと接合されるときに使われるフレーム群を格納する。
 type Boundary struct {
 	Incoming     acoustic.Frame
 	Outgoing     acoustic.Frame
@@ -19,7 +19,7 @@ type Boundary struct {
 	outgoingWave []float64
 }
 
-// PairFeatures are both the model inputs and the current heuristic's inputs.
+// PairFeaturesはモデル入力と現在のヒューリスティック入力の両方を兼ねる。
 type PairFeatures struct {
 	PreviousOutgoing    acoustic.Frame `json:"previous_outgoing"`
 	CurrentIncoming     acoustic.Frame `json:"current_incoming"`
@@ -32,8 +32,8 @@ type PairFeatures struct {
 	ForwardInSource     bool           `json:"forward_in_source"`
 }
 
-// LearningFeatures are the acoustic-only subset safe to expose to a model.
-// Source continuity is excluded because it defines the weak training labels.
+// LearningFeaturesはモデルに公開しても安全な音響のみの部分集合。
+// ソース連続性は弱い学習ラベルを定義するため除外されている。
 type LearningFeatures struct {
 	PreviousOutgoing    acoustic.Frame `json:"previous_outgoing"`
 	CurrentIncoming     acoustic.Frame `json:"current_incoming"`
@@ -60,7 +60,7 @@ func (features LearningFeatures) Valid() bool {
 	return features.PreviousOutgoing.Valid && features.CurrentIncoming.Valid
 }
 
-// Extractor caches WAV analysis because every unit participates in many pairs.
+// ExtractorはWAV分析結果をキャッシュする。すべてのユニットが多数のペアに関与するため。
 type Extractor struct {
 	mutex sync.Mutex
 	cache map[oto.Entry]Boundary
@@ -106,7 +106,7 @@ func (e *Extractor) Pair(previous, current oto.Entry) PairFeatures {
 	return result
 }
 
-// HandcraftedScore is the baseline which a learned connection model should beat.
+// HandcraftedScoreは学習コネクションモデルが上回るべき基準点。
 func HandcraftedScore(features PairFeatures) float64 {
 	score := 0.0
 	if features.ForwardInSource {

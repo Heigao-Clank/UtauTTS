@@ -37,9 +37,8 @@ type Model struct {
 	DurationWeights      map[string]float64 `json:"duration_weights"`
 	PitchWeights         map[string]float64 `json:"pitch_weights,omitempty"`
 	EnergyWeights        map[string]float64 `json:"energy_weights,omitempty"`
-	// MoraDuration is the duration head of a multitask model. It uses the
-	// same portable TCN representation as SequencePitch, but its output is a
-	// multiplicative mora-duration factor instead of a pitch factor.
+	// MoraDurationはマルチタスクモデルの継続時間ヘッド。SequencePitchと同じ移植可能なTCN表現を
+	// 使うが、出力はピッチ係数ではなくモーラ長の乗算係数になる。
 	MoraDuration   *SequencePitchModel  `json:"mora_duration,omitempty"`
 	SequencePitch  *SequencePitchModel  `json:"sequence_pitch,omitempty"`
 	FramePitch     *FramePitchModel     `json:"frame_pitch,omitempty"`
@@ -295,8 +294,8 @@ func (m *Model) PredictWithFeatures(morae []frontend.Mora, frames []FeatureFrame
 	return result
 }
 
-// RequiresExternalFeatures reports whether the exported sequence model uses
-// linguistic inputs that the mora-only Go frontend cannot derive by itself.
+// RequiresExternalFeaturesは、エクスポートされたシーケンスモデルがモーラのみのGoフロントエンドでは
+// 導出できない言語入力を使用するかどうかを返す。
 func (m *Model) RequiresExternalFeatures() bool {
 	if m.StandardAccent != nil {
 		return true
@@ -325,8 +324,8 @@ func (m *Model) RequiresExternalFeatures() bool {
 	return false
 }
 
-// HasFrameContour reports whether the model produces a renderer-facing frame
-// pitch curve, either learned or from the standard-accent baseline.
+// HasFrameContourは、モデルがレンダラー向けのフレームピッチ曲線を生成するかどうかを返す。
+// 学習済みモデルまたはstandard-accentベースラインのどちらかを指す。
 func (m *Model) HasFrameContour() bool {
 	return m != nil && (m.FramePitch != nil || m.PhrasePitch != nil || m.StandardAccent != nil)
 }
@@ -906,9 +905,8 @@ func featuresFor(morae []frontend.Mora, position int) map[string]float64 {
 	return result
 }
 
-// indexedFeatureVectors converts the static per-mora features once per
-// synthesis instead of rebuilding and merging a map for every frame. Frame
-// features such as mora_progress are added separately by the frame loop.
+// indexedFeatureVectorsは、静的モーラ特徴を合成ごとに一度だけ変換し、フレームごとにmapを
+// 再構築・マージすることを避ける。mora_progressなどのフレーム特徴はフレームループ側で追加する。
 type indexedFeature struct {
 	column int
 	value  float64

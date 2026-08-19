@@ -135,9 +135,9 @@ func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selectio
 	return layers, nil
 }
 
-// candidateScore combines linguistic candidate priority with basic oto.ini
-// consistency. It mainly chooses between duplicate recordings, while allowing
-// a badly configured VCV entry to lose to a usable fallback.
+// candidateScoreは言語的な候補優先度とoto.iniの基本的な整合性を組み合わせる。
+// 主に重複録音の間の選択に使われ、設定が悪いVCVエントリは
+// 使用可能なフォールバックに負けることを許す。
 func candidateScore(candidateTier int, entry oto.Entry) float64 {
 	score := 100 - float64(candidateTier)*10
 	if entry.Preutterance >= 0 {

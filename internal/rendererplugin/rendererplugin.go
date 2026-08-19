@@ -1,6 +1,6 @@
-// Package rendererplugin resolves renderer plugins for the diagnostic and
-// evaluation command-line tools. Production entry points use the equivalent
-// helpers in the plugin and tts packages directly.
+// Package rendererpluginは、診断・評価用のコマンドラインツール向けにレンダラプラグインを
+// 解決する。本番のエントリポイントは、pluginパッケージとttsパッケージの同等のヘルパーを
+// 直接使用する。
 package rendererplugin
 
 import (

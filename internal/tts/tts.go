@@ -69,9 +69,7 @@ type ProsodyPreview struct {
 	PitchPoints     []float64
 }
 
-// ConvertToReading converts Japanese text to kana, falling back to Open JTalk
-// when the built-in tokenizer cannot produce a reading for a token (for
-// example numerals or Latin letters).
+// ConvertToReadingは日本語テキストをかなに変換する。内蔵トークナイザが数字やラテン文字などのトークンを読みに変換できない場合はOpen JTalkにフォールバックする。
 func ConvertToReading(text string, dictionary map[string]string, openJTalk openjtalk.Config) (string, error) {
 	reading, frontendErr := frontend.ToKanaWithDictionary(text, dictionary)
 	if frontendErr == nil {
@@ -103,19 +101,17 @@ func resolveProsodyModel(cfg Config) (*prosody.Model, error) {
 	return loadProsodyModelCached(cfg.ProsodyModelPath)
 }
 
-// resolveProsodyFeatures supplies the mora-level accent features a model needs
-// when the caller did not precompute them. Open JTalk analyzes the runtime
-// text; if alignment fails, the reading is analyzed instead so kana-only
-// requests still work.
+// resolveProsodyFeaturesは、呼び出し側が事前計算していない場合にモデルが必要とする
+// モーラ単位のアクセント特徴を供給する。Open JTalkは実行時テキストを解析し、アライメントが
+// 失敗した場合は読みを解析するため、かなのみのリクエストでも機能する。
 func resolveProsodyFeatures(cfg Config, model *prosody.Model, morae []frontend.Mora, reading string) ([]prosody.FeatureFrame, error) {
 	if model == nil || !model.RequiresExternalFeatures() || len(cfg.ProsodyFeatures) > 0 {
 		return cfg.ProsodyFeatures, nil
 	}
 	runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
 	if strings.TrimSpace(runtimeText) == "" {
-		// Kana-only requests do not have a surface text. Open JTalk can
-		// still analyze the supplied reading, and passing an empty string
-		// here would otherwise fail before synthesis starts.
+		// かなのみのリクエストには表層テキストがない。Open JTalkは指定された読みを解析できる
+		// ため、ここで空文字を渡すと合成開始前に失敗するのを防ぐ。
 		runtimeText = reading
 	}
 	runtimeConfig := openjtalk.Config{
@@ -140,9 +136,9 @@ func analyzeAndAlignRuntimeFeatures(morae []frontend.Mora, text string, cfg open
 	return alignRuntimeProsodyFeatures(morae, analysis)
 }
 
-// ApplyRenderer resolves rendererID against the catalog (defaulting to the
-// catalog default) and fills the renderer-dependent fields of cfg. A
-// user-configured worldline path wins over the renderer manifest asset.
+// ApplyRendererはcatalogからrendererIDを解決し（未指定ならカタログ既定値を使用）、
+// cfgのレンダラ依存フィールドを埋める。ユーザー指定のworldlineパスは
+// レンダラマニフェストのアセットより優先される。
 func ApplyRenderer(cfg *Config, catalog *plugin.Catalog, rendererID, worldlinePath, worldlineBridgePath string) error {
 	if catalog == nil {
 		return errors.New("renderer catalog is not initialized")
@@ -161,8 +157,7 @@ func ApplyRenderer(cfg *Config, catalog *plugin.Catalog, rendererID, worldlinePa
 	return nil
 }
 
-// ApplyResolvedRenderer fills the renderer-dependent fields of cfg from an
-// already resolved renderer plugin.
+// ApplyResolvedRendererは、解決済みのレンダラプラグインからcfgのレンダラ依存フィールドを埋める。
 func ApplyResolvedRenderer(cfg *Config, renderer plugin.Renderer, worldlinePath, worldlineBridgePath string) {
 	cfg.Renderer = renderer.Backend
 	cfg.RendererCapabilities = &renderer.Capabilities
@@ -344,9 +339,7 @@ func Synthesize(cfg Config) (*Result, error) {
 	}, nil
 }
 
-// PredictProsody evaluates the selected prosody model without synthesizing
-// audio. Manual mora durations are respected so the preview follows the
-// values currently edited in the GUI.
+// PredictProsodyは音声合成せずに選択されたプロソディモデルを評価する。手動のモーラ長を尊重するため、プレビューはGUIで編集中の値に従う。
 func PredictProsody(cfg Config) (*ProsodyPreview, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
@@ -782,11 +775,10 @@ func effectiveIntonationStrength(cfg Config) float64 {
 	return cfg.IntonationStrength
 }
 
-// scaleAutomaticPitchCurve applies the user-facing strength to a model
-// contour.  Zero disables the automatic contour, 1 keeps the model output,
-// and values above 1 emphasize it. Manual pitch offsets are merged after this
-// function and are therefore not unexpectedly amplified by the global
-// control.
+// scaleAutomaticPitchCurveは、ユーザー指定の強度をモデルコンターに適用する。
+// 0は自動コンターを無効化し、1はモデル出力を維持し、1超は強調する。
+// 手動のピッチオフセットはこの関数の後にマージされるため、グローバル制御によって
+// 意図せず増幅されることはない。
 func scaleAutomaticPitchCurve(curve *render.PitchCurve, strength float64) *render.PitchCurve {
 	if curve == nil || len(curve.Cents) == 0 {
 		return curve

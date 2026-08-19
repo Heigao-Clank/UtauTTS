@@ -56,8 +56,8 @@ type CandidateAudit struct {
 	BestLearnedProbability float64 `json:"best_learned_probability,omitempty"`
 }
 
-// AuditLattice reports every retained candidate and its best possible incoming
-// edge. It is diagnostic only; synthesis still uses the exact Viterbi path.
+// AuditLatticeは保持された全候補と各候補への最良の入エッジを報告する。
+// 診断専用であり、合成では依然として正確なViterbiパスを使う。
 func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connection.LearnedModel) (*LatticeAudit, error) {
 	layers, err := b.candidateLayers(morae, tone)
 	if err != nil {

@@ -10,9 +10,9 @@ import (
 	"utautts/internal/plan"
 )
 
-// BenchmarkWaveformRenderer exercises the same independent-unit workload that
-// the desktop GUI produces. Keep it available while CPU and GPU backends are
-// developed so optimization decisions use comparable input.
+// BenchmarkWaveformRendererはデスクトップGUIが生成するのと同じ独立ユニットの
+// ワークロードを実行する。CPUとGPUのbackendを開発している間はこれを維持し、
+// 最適化の判断に同等の入力を使えるようにする。
 func BenchmarkWaveformRenderer(b *testing.B) {
 	benchmarkWaveformRenderer(b, "waveform")
 }

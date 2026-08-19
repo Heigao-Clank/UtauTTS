@@ -222,9 +222,8 @@ func (model *LearnedModel) Predict(features LearningFeatures) float64 {
 	return sigmoid(model.Bias + dotVector(model.Weights, vector))
 }
 
-// LearnedScore maps the model probability to the same bounded scale used by
-// the continuity bonus. The logit is clipped so an uncertain small model
-// cannot dominate target cost or destabilize the path search.
+// LearnedScoreはモデル確率を継続ボーナスと同じ有界スケールにマッピングする。
+// 不確かな小さなモデルがtarget costを支配したりパス探索を不安定にしないよう、logitはクリップされる。
 func LearnedScore(features PairFeatures, model *LearnedModel) (score, probability float64) {
 	if features.ForwardInSource {
 		score += 8

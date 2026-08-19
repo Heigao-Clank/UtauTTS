@@ -14,10 +14,9 @@ type pathState struct {
 	joinProbability float64
 }
 
-// selectBestPaths treats every phrase as a candidate lattice. CandidateScore
-// is the target cost baseline and joinScore is the pairwise concatenation
-// score. Keeping those concerns separate makes it possible to replace either
-// heuristic with a learned model without changing the search.
+// selectBestPathsは各フレーズを候補ラティスとして扱う。CandidateScoreは
+// ターゲットコストの基準、joinScoreはペア間の連結スコア。両者を分離することで、
+// 探索を変更せずにどちらかのヒューリスティックを学習モデルに置き換えられる。
 func selectBestPaths(layers [][]Selection, mode SelectionMode, model *connection.LearnedModel, extractor *connection.Extractor) []Selection {
 	result := make([]Selection, 0, len(layers))
 	cache := extractor

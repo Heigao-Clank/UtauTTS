@@ -11,10 +11,9 @@ import (
 
 const ManualPitchVersion = 1
 
-// ManualPitchFile stores edits made to the pitch of individual morae.
-// Cents are relative offsets from the renderer/model baseline. Keeping the
-// edits relative means a phrase can still use a learned contour and the user
-// only needs to correct the parts that sound wrong.
+// ManualPitchFileは個々のモーラのピッチへの編集を格納する。Centsはレンダラー/モデルの
+// ベースラインからの相対オフセット。相対で保持することで、学習済みの輪郭を使いながら
+// 違和感のある部分だけをユーザーが修正できる。
 type ManualPitchFile struct {
 	Version int                `json:"version"`
 	Reading string             `json:"reading,omitempty"`
@@ -28,7 +27,6 @@ type ManualPitchPoint struct {
 	Cents    float64 `json:"cents"`
 }
 
-// LoadManualPitch reads and validates a hand-edited mora pitch file.
 func LoadManualPitch(path string) (*ManualPitchFile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -71,9 +69,8 @@ func (file *ManualPitchFile) Validate() error {
 	return nil
 }
 
-// Curve converts mora-centered edits into a smooth 10 ms frame contour.
-// Missing positions are zero, so a sparse file can correct only selected
-// morae. Pauses are represented by their timing but do not receive a point.
+// Curveはモーラ中心の編集を滑らかな10msフレーム輪郭に変換する。未指定位置はゼロなので、
+// 疎なファイルで選択したモーラのみを補正できる。休止はタイミングに反映されるが点は与えない。
 func (file *ManualPitchFile) Curve(morae []frontend.Mora, timings []MoraTiming, durationMS float64) (*PitchContour, error) {
 	if file == nil || len(file.Points) == 0 {
 		return nil, nil

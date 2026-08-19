@@ -6,8 +6,7 @@ import (
 	"os"
 )
 
-// Corpus is a versioned, reproducible set of utterances used by objective and
-// listening evaluations.
+// Corpusは、客観評価と聴取評価に用いる、バージョン管理された再現可能な発話集合。
 type Corpus struct {
 	Version int          `json:"version"`
 	Name    string       `json:"name"`

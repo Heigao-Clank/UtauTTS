@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Summary is the lightweight information needed to present a voicebank picker.
+// Summaryはvoicebankピッカーに表示するための軽量な情報。
 type Summary struct {
 	Name          string `json:"name"`
 	Path          string `json:"path"`
@@ -24,8 +24,8 @@ type Presentation struct {
 	ReadmeText    string
 }
 
-// Discover finds voicebanks directly below root. If root itself is a
-// voicebank, it is returned as the only result.
+// Discoverはroot直下のvoicebankを探す。root自体がvoicebankなら
+// それを唯一の結果として返す。
 func Discover(root string) ([]Summary, error) {
 	if root == "" {
 		root = "voice"
@@ -62,9 +62,9 @@ func Discover(root string) ([]Summary, error) {
 	return result, nil
 }
 
-// ResolveDirectory makes a configured voice directory independent from the
-// process working directory. An existing working-directory path wins for
-// development; packaged applications otherwise use a path beside the binary.
+// ResolveDirectoryは設定されたvoiceディレクトリをプロセスの作業ディレクトリから独立させる。
+// 開発時は既存の作業ディレクトリ配下のパスを優先し、パッケージ化されたアプリでは
+// 実行ファイルの隣のパスを使う。
 func ResolveDirectory(configured string) string {
 	if configured == "" {
 		configured = "voice"
@@ -85,8 +85,8 @@ func ResolveDirectory(configured string) string {
 
 var errOtoFound = errors.New("oto.ini found")
 
-// Inspect reads only enough metadata to show a voicebank in a picker. Unlike
-// Load, it does not parse every oto.ini entry.
+// Inspectはピッカーにvoicebankを表示するのに足るメタデータのみを読む。
+// Loadと異なり、oto.iniの全エントリをパースしない。
 func Inspect(root string) (Summary, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {

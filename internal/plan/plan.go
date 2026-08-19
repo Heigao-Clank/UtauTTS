@@ -39,8 +39,8 @@ type Plan struct {
 	Units                   []Unit                   `json:"units"`
 }
 
-// BoundaryBridge records an optional short transition repair applied by a
-// renderer. It does not add a mora or change the linguistic unit sequence.
+// BoundaryBridgeはレンダラが適用する任意の短い遷移補正を記録する。モーラを追加したり
+// 言語単位の並びを変えたりはしない。
 type BoundaryBridge struct {
 	UnitIndex   int     `json:"unit_index"`
 	Position    int     `json:"position"`
@@ -54,8 +54,8 @@ type BoundaryBridge struct {
 	Kind        string  `json:"kind"`
 }
 
-// BoundaryRepairDecision records normal-versus-repair candidate selection,
-// including decisions that deliberately keep the unmodified connection.
+// BoundaryRepairDecisionは、通常接続と補正接続の候補選択を記録する。意図的に未修正の
+// 接続を採用した判断も含む。
 type BoundaryRepairDecision struct {
 	UnitIndex        int     `json:"unit_index"`
 	Position         int     `json:"position"`

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// FeatureCase is one utterance and its aligned mora-level linguistic features.
+// FeatureCaseは1発話と、それに整列されたモーラレベルの言語特徴。
 type FeatureCase struct {
 	ID       string         `json:"id"`
 	Text     string         `json:"text,omitempty"`
@@ -15,8 +15,7 @@ type FeatureCase struct {
 	Features []FeatureFrame `json:"features"`
 }
 
-// FeatureCorpus is the portable Open JTalk feature exchange format used by
-// frame-level prosody models.
+// FeatureCorpusはフレームレベルのprosodyモデルが使う、移植可能なOpen JTalk特徴交換フォーマット。
 type FeatureCorpus struct {
 	Version int           `json:"version"`
 	Name    string        `json:"name,omitempty"`
@@ -56,8 +55,8 @@ func LoadFeatureCorpus(path string) (*FeatureCorpus, error) {
 	return &corpus, nil
 }
 
-// Select returns a case by explicit ID, or by an exact normalized text or
-// reading match. A single-case corpus is also unambiguous without a selector.
+// Selectは明示的なID、または正規化されたテキスト・読みの完全一致でケースを返す。
+// ケースが1件だけのコーパスはセレクタなしでも一意に決まる。
 func (c *FeatureCorpus) Select(caseID, text, reading string) (*FeatureCase, error) {
 	if c == nil {
 		return nil, fmt.Errorf("prosody feature corpus is nil")

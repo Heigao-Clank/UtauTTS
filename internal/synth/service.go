@@ -1,7 +1,7 @@
-// Package synth is the transport-agnostic synthesis orchestrator shared by the
-// Qt GUI backend and the HTTP server. It resolves a voicebank, prosody model,
-// and renderer plugin, then dispatches to the tts package so callers only need
-// to handle their own request decoding, validation, and response encoding.
+// Package synthは、Qt GUIバックエンドとHTTPサーバが共有するトランスポート非依存の
+// 合成オーケストレータである。ボイスバンク・プロソディモデル・レンダラプラグインを解決し、
+// ttsパッケージにディスパッチする。呼び出し側は自身のリクエストのデコード・検証・
+// レスポンスエンコードのみを扱えばよい。
 package synth
 
 import (
@@ -13,12 +13,11 @@ import (
 	"utautts/internal/tts"
 )
 
-// ErrUnavailable marks a resolution failure (voicebank, prosody model, or
-// renderer plugin not found) so HTTP callers can return a client error that is
-// distinct from a synthesis failure.
+// ErrUnavailableは解決失敗（ボイスバンク・プロソディモデル・レンダラプラグインが見つからない）
+// を表す。HTTP呼び出し側は合成失敗とは異なるクライアントエラーを返せる。
 var ErrUnavailable = errors.New("unavailable")
 
-// Request is the shared, transport-agnostic synthesis and preview request.
+// Requestは、共有のトランスポート非依存な合成・プレビューリクエストである。
 type Request struct {
 	Text               string
 	Kana               string
@@ -35,22 +34,22 @@ type Request struct {
 	ManualPitch        *prosody.ManualPitchFile
 }
 
-// VoicebankResolver maps a voicebank ID to its root path. An empty ID selects
-// the default voicebank.
+// VoicebankResolverはボイスバンクIDをそのルートパスにマッピングする。空のIDは
+// デフォルトのボイスバンクを選択する。
 type VoicebankResolver interface {
 	Resolve(id string) (path string, ok bool)
 }
 
-// Service resolves request inputs against a plugin catalog and voicebank
-// resolver, then dispatches to the tts package.
+// Serviceはプラグインカタログとボイスバンクリゾルバに対してリクエスト入力を解決し、
+// ttsパッケージにディスパッチする。
 type Service struct {
-	catalog              *plugin.Catalog
-	renderer             string
-	worldlinePath        string
-	worldlineBridgePath  string
-	openJTalkPath        string
-	openJTalkDictionary  string
-	voicebanks           VoicebankResolver
+	catalog             *plugin.Catalog
+	renderer            string
+	worldlinePath       string
+	worldlineBridgePath string
+	openJTalkPath       string
+	openJTalkDictionary string
+	voicebanks          VoicebankResolver
 }
 
 func NewService(catalog *plugin.Catalog, renderer, worldlinePath, worldlineBridgePath, openJTalkPath, openJTalkDictionary string, voicebanks VoicebankResolver) *Service {
@@ -62,8 +61,7 @@ func NewService(catalog *plugin.Catalog, renderer, worldlinePath, worldlineBridg
 	}
 }
 
-// Synthesize resolves the request and renders audio, returning the renderer ID
-// that was actually used.
+// Synthesizeはリクエストを解決して音声をレンダリングし、実際に使用されたレンダラIDを返す。
 func (s *Service) Synthesize(request Request) (*tts.Result, string, error) {
 	cfg, rendererID, err := s.config(request, true)
 	if err != nil {
@@ -76,8 +74,8 @@ func (s *Service) Synthesize(request Request) (*tts.Result, string, error) {
 	return result, rendererID, nil
 }
 
-// PredictProsody resolves the request and previews prosody without synthesizing
-// audio or loading a voicebank.
+// PredictProsodyはリクエストを解決してプロソディをプレビューする。音声の合成や
+// ボイスバンクの読み込みは行わない。
 func (s *Service) PredictProsody(request Request) (*tts.ProsodyPreview, string, error) {
 	cfg, rendererID, err := s.config(request, false)
 	if err != nil {
@@ -134,8 +132,8 @@ func (s *Service) rendererID(requested string) string {
 	return s.renderer
 }
 
-// modelPath resolves a prosody model ID to its file path. An empty or "none"
-// ID selects no model.
+// modelPathはプロソディモデルIDをファイルパスに解決する。空または"none"のIDは
+// モデルなしを選択する。
 func (s *Service) modelPath(id string) (string, error) {
 	if id == "" || id == "none" {
 		return "", nil
@@ -147,8 +145,8 @@ func (s *Service) modelPath(id string) (string, error) {
 	return model.Path, nil
 }
 
-// ModelAvailable reports whether the request selects a prosody model, matching
-// the "prosody_model_applied" field the callers return.
+// ModelAvailableは、リクエストがプロソディモデルを選択するかどうかを返す。呼び出し側が返す
+// "prosody_model_applied"フィールドと一致する。
 func (s *Service) ModelAvailable(id string) bool {
 	if id == "" || id == "none" {
 		return false

@@ -7,8 +7,8 @@ import (
 	"utautts/internal/pitch"
 )
 
-// Frame describes the level, pitch, and coarse spectral shape of a waveform
-// region. Spectrum values are in dB and may optionally be mean-normalized.
+// Frameは波形領域のレベル、ピッチ、および粗いスペクトル形状を表す。
+// スペクトル値はdB単位で、オプションで平均正規化できる。
 type Frame struct {
 	Valid      bool      `json:"valid"`
 	RMSDB      float64   `json:"rms_db"`

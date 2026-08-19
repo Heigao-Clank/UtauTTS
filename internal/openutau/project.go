@@ -10,9 +10,8 @@ import (
 	"strings"
 )
 
-// ProjectAudit contains only the renderer-related USTX fields needed to make
-// an OpenUtau comparison reproducible. It is intentionally not a full USTX
-// parser.
+// ProjectAuditは、OpenUtau比較を再現可能にするために必要なレンダラ関連のUSTX
+// フィールドのみを保持する。意図的に完全なUSTXパーサではない。
 type ProjectAudit struct {
 	Path               string              `json:"path"`
 	SHA256             string              `json:"sha256"`
