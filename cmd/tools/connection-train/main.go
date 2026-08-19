@@ -42,7 +42,7 @@ func main() {
 	var output, reportPath, validationVoicebank, modelType string
 	var validationFraction, rate, l2 float64
 	var epochs, hiddenUnits int
-	var seed uint64
+	var seed int64
 	flag.Var(&paths, "dataset", "connection JSONL path (repeatable)")
 	flag.StringVar(&output, "out", "out/connection/model.json", "output model JSON")
 	flag.StringVar(&reportPath, "split-report", "", "split report JSON (default: <out>.split.json)")
@@ -53,7 +53,7 @@ func main() {
 	flag.IntVar(&hiddenUnits, "hidden", 32, "MLP hidden units")
 	flag.Float64Var(&rate, "learning-rate", 0.08, "gradient descent learning rate")
 	flag.Float64Var(&l2, "l2", 0.001, "L2 regularization")
-	flag.Uint64Var(&seed, "seed", 1, "deterministic split seed")
+	flag.Int64Var(&seed, "seed", 1, "deterministic split seed")
 	flag.Parse()
 	if len(paths) == 0 {
 		flag.Usage()
@@ -82,13 +82,13 @@ func main() {
 	training, validation := connection.SplitExamples(examples, connection.SplitConfig{
 		ValidationVoicebank: validationVoicebank,
 		ValidationFraction:  validationFraction,
-		Seed:                seed,
+		Seed:                uint64(seed),
 	})
 	if len(validation) == 0 {
 		log.Fatal("validation split is empty; check --validation-voicebank or --validation-fraction")
 	}
 	model, err := connection.TrainModel(training, validation, connection.TrainConfig{
-		Epochs: epochs, LearningRate: rate, L2: l2, Model: modelType, HiddenUnits: hiddenUnits, Seed: int64(seed),
+		Epochs: epochs, LearningRate: rate, L2: l2, Model: modelType, HiddenUnits: hiddenUnits, Seed: seed,
 	})
 	if err != nil {
 		log.Fatal(err)

@@ -21,6 +21,12 @@ type response struct {
 	Error  string          `json:"error,omitempty"`
 }
 
+// lastCreateErrorは直近のUtauTTSCreate失敗を保持し、
+// 呼び出し側がハンドルなしでUtauTTSLastErrorを通じて取得できるようにする
+// Qtバックエンドが唯一の利用者で、initialize()中にメインスレッド上で
+// Createに続けてLastErrorを同期的に呼ぶから単一スロットで十分
+// 成功したcreateは意図的にスロットをクリアしない: 並行するcreateが、
+// 他スレッドが読もうとしている失敗を消してはならない。
 var lastCreateError struct {
 	sync.Mutex
 	message string
@@ -39,9 +45,6 @@ func UtauTTSCreate(configJSON *C.char) C.uintptr_t {
 		lastCreateError.Unlock()
 		return 0
 	}
-	lastCreateError.Lock()
-	lastCreateError.message = ""
-	lastCreateError.Unlock()
 	return C.uintptr_t(cgo.NewHandle(engine))
 }
 

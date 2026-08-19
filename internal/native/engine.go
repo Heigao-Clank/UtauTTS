@@ -113,15 +113,9 @@ func (r nativeVoicebankResolver) Resolve(id string) (string, bool) {
 		summary, ok := r.engine.voicebanks[id]
 		return summary.Path, ok
 	}
-	ids := make([]string, 0, len(r.engine.voicebanks))
-	for candidate := range r.engine.voicebanks {
-		ids = append(ids, candidate)
-	}
-	sort.Strings(ids)
-	if len(ids) == 0 {
-		return "", false
-	}
-	return r.engine.voicebanks[ids[0]].Path, true
+	first := voicebank.DefaultSortedKey(r.engine.voicebanks)
+	summary, ok := r.engine.voicebanks[first]
+	return summary.Path, ok
 }
 
 func (e *Engine) reload() error {

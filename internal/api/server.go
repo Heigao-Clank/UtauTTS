@@ -367,7 +367,9 @@ func (s *Server) handleSynthesizeAudio(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-UtauTTS-Engine", engine)
 	w.Header().Set("X-UtauTTS-Reading", result.Plan.Reading)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(audio.PCMToWavBytes(result.Audio))
+	if _, err := w.Write(audio.PCMToWavBytes(result.Audio)); err != nil {
+		log.Printf("write synthesis response: %v", err)
+	}
 }
 
 func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
@@ -506,15 +508,9 @@ func (s *Server) resolveVoicebank(id string) (Voicebank, bool) {
 		vb, ok := s.voicebanks[id]
 		return vb, ok
 	}
-	ids := make([]string, 0, len(s.voicebanks))
-	for candidate := range s.voicebanks {
-		ids = append(ids, candidate)
-	}
-	if len(ids) == 0 {
-		return Voicebank{}, false
-	}
-	sort.Strings(ids)
-	return s.voicebanks[ids[0]], true
+	first := voicebank.DefaultSortedKey(s.voicebanks)
+	vb, ok := s.voicebanks[first]
+	return vb, ok
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
