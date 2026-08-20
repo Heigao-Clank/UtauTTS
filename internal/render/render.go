@@ -2,6 +2,7 @@ package render
 
 import (
 	"container/list"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -15,6 +16,7 @@ import (
 )
 
 type Config struct {
+	Context                 context.Context
 	ReleaseMS               float64
 	ReleaseSet              bool
 	IntonationStrength      float64
@@ -40,8 +42,8 @@ const defaultReleaseMS = 20.0
 // 唯一の情報源。表示名や宣言された機能は各レンダラーのplugin.jsonに属し、この
 // マップに無いbackendを持つレンダラーマニフェストは検出時に拒否される。
 var rendererImplementations = map[string]func(*plan.Plan, Config) (*audio.PCM, error){
-	"waveform":                            renderWaveform,
-	"openutau-classic-worldline-faithful": renderOpenUtauClassicWorldlineFaithful,
+	"waveform":                                renderWaveform,
+	"openutau-classic-worldline-faithful":     renderOpenUtauClassicWorldlineFaithful,
 	"openutau-classic-worldline-faithful-gpu": renderOpenUtauClassicWorldlineFaithfulGPU,
 }
 
@@ -176,6 +178,9 @@ type effectiveTiming struct {
 }
 
 func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	if err := contextError(cfg.Context); err != nil {
+		return nil, err
+	}
 	for name, value := range map[string]float64{
 		"release_ms":                cfg.ReleaseMS,
 		"intonation_strength":       cfg.IntonationStrength,
@@ -304,6 +309,9 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 	}
 	prepared := make([]preparedWaveformUnit, 0, len(synthesisPlan.Units))
 	for unitIndex := range synthesisPlan.Units {
+		if err := contextError(cfg.Context); err != nil {
+			return nil, err
+		}
 		unit := &synthesisPlan.Units[unitIndex]
 		timing := timings[unitIndex]
 		if unit.Silent {
@@ -355,6 +363,9 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 			effectiveConsonantFrames: effectiveConsonantFrames})
 	}
 	retimeUnit := func(index int) error {
+		if err := contextError(cfg.Context); err != nil {
+			return err
+		}
 		item := &prepared[index]
 		wave, err := retime(item.wave, item.targetFrames, item.sourceConsonantFrames, item.effectiveConsonantFrames, sampleRate)
 		if err != nil {
@@ -400,6 +411,9 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 	}
 
 	for _, item := range prepared {
+		if err := contextError(cfg.Context); err != nil {
+			return nil, err
+		}
 		unitIndex := item.unitIndex
 		unit := &synthesisPlan.Units[unitIndex]
 		timing := item.timing
@@ -429,6 +443,11 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		fadeInFrames := msToFrames(fadeInMS, sampleRate)
 		fadeOutFrames := msToFrames(cfg.ReleaseMS, sampleRate)
 		for sourceFrame := sourceStart; sourceFrame < len(wave); sourceFrame++ {
+			if sourceFrame%4096 == 0 {
+				if err := contextError(cfg.Context); err != nil {
+					return nil, err
+				}
+			}
 			gain := envelope(sourceFrame, len(wave), fadeInFrames, fadeOutFrames)
 			position := startFrame + sourceFrame - sourceStart
 			gain *= handoffGain(position, unitIndex, synthesisPlan, timings, sampleRate)
@@ -454,6 +473,18 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 	}
 	preventClipping(mix, 0.98)
 	return &audio.PCM{SampleRate: sampleRate, Channels: 1, Data: floatPCM(mix)}, nil
+}
+
+func contextError(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("render canceled: %w", ctx.Err())
+	default:
+		return nil
+	}
 }
 
 func identityFactors(size int) []float64 {

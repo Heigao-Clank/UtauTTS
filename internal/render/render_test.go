@@ -1,6 +1,8 @@
 package render
 
 import (
+	"context"
+	"errors"
 	"math"
 	"reflect"
 	"strings"
@@ -10,6 +12,15 @@ import (
 	"utautts/internal/pitch"
 	"utautts/internal/plan"
 )
+
+func TestRenderHonorsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := Render(nil, Config{Context: ctx})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
 
 func TestFaithfulGPURendererIsRegistered(t *testing.T) {
 	const backend = "openutau-classic-worldline-faithful-gpu"

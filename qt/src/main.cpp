@@ -1,11 +1,17 @@
 #include "backend.h"
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QUrl>
 #include <QVariantList>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 namespace {
 QString readTextResource(const QString &path) {
@@ -51,6 +57,26 @@ QVariantList legalDocuments() {
     }
     return documents;
 }
+
+bool updateInProgress() {
+    if (qEnvironmentVariable("UTAUTTS_UPDATE_RELAUNCH") == QLatin1String("1"))
+        return false;
+    QDir root(QCoreApplication::applicationDirPath());
+    if (root.dirName().compare(QLatin1String("app"), Qt::CaseInsensitive) == 0)
+        root.cdUp();
+    const QString lockPath = root.absolutePath() + QStringLiteral(".update-lock.json");
+    if (!QFileInfo::exists(lockPath))
+        return false;
+#ifdef Q_OS_WIN
+    const QString title = QStringLiteral("UtauTTS 更新中");
+    const QString text = QStringLiteral(
+        "UtauTTSを更新しています。完了すると自動的に再起動します。\n\n"
+        "更新が中断された場合は、インストール先のutautts.exeから起動して復旧してください。");
+    MessageBoxW(nullptr, reinterpret_cast<LPCWSTR>(text.utf16()),
+                reinterpret_cast<LPCWSTR>(title.utf16()), MB_OK | MB_ICONINFORMATION);
+#endif
+    return true;
+}
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -60,6 +86,9 @@ int main(int argc, char *argv[]) {
     app.setApplicationDisplayName(UTAUTTS_APP_NAME);
     app.setApplicationVersion(UTAUTTS_VERSION);
     app.setOrganizationName(UTAUTTS_APP_ORGANIZATION);
+
+    if (updateInProgress())
+        return 0;
 
     QIcon appIcon;
     appIcon.addFile(QStringLiteral(":/icons/icon16.png"));

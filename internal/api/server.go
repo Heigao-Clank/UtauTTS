@@ -2,7 +2,7 @@ package api
 
 import (
 	"archive/zip"
-	"bytes"
+	"context"
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
@@ -47,6 +47,7 @@ const (
 	maxBatchWAVBytes       = 256 << 20
 	maxManualPitchPoints   = 1000
 	maxConcurrentSynthesis = 4
+	maxConcurrentBatches   = 2
 )
 
 type Config struct {
@@ -70,6 +71,7 @@ type Server struct {
 	mu                  sync.RWMutex
 	voicebanks          map[string]Voicebank
 	synthesisSem        chan struct{}
+	batchSem            chan struct{}
 	renderer            string
 	worldlinePath       string
 	worldlineBridgePath string
@@ -102,6 +104,7 @@ func New(config Config) (*Server, error) {
 	srv := &Server{
 		voicebanks:   map[string]Voicebank{},
 		synthesisSem: make(chan struct{}, maxConcurrentSynthesis),
+		batchSem:     make(chan struct{}, maxConcurrentBatches),
 		renderer:     config.Renderer, worldlinePath: config.WorldlinePath, worldlineBridgePath: config.WorldlineBridgePath, voiceDir: voiceDir,
 		openJTalkPath: config.OpenJTalkPath, openJTalkDictionary: config.OpenJTalkDictionary,
 		authToken: config.AuthToken, allowRegistration: config.AllowVoicebankRegistration,
@@ -239,11 +242,11 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": fmt.Sprintf("text is limited to %d characters", maxTextRunes)})
 		return
 	}
-	reading, err := tts.ConvertToReading(request.Text, nil, openjtalk.Config{
+	reading, err := tts.ConvertToReadingContext(r.Context(), request.Text, nil, openjtalk.Config{
 		HelperPath: s.openJTalkPath, DictionaryPath: s.openJTalkDictionary,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		writeJSON(w, contextErrorStatus(err, http.StatusUnprocessableEntity), map[string]string{"error": err.Error()})
 		return
 	}
 	morae, err := frontend.ParseKana(reading)
@@ -358,7 +361,7 @@ func (s *Server) handleSynthesizeAudio(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, jsonDecodeStatus(err), map[string]string{"error": err.Error()})
 		return
 	}
-	result, engine, status, err := s.synthesize(request)
+	result, engine, status, err := s.synthesize(r.Context(), request)
 	if err != nil {
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
@@ -405,11 +408,29 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 		seenNames[name] = struct{}{}
 		names[index] = name
 	}
-	var output bytes.Buffer
-	archive := zip.NewWriter(&output)
+	if s.batchSem != nil {
+		select {
+		case s.batchSem <- struct{}{}:
+			defer func() { <-s.batchSem }()
+		case <-r.Context().Done():
+			writeJSON(w, http.StatusRequestTimeout, map[string]string{"error": r.Context().Err().Error()})
+			return
+		}
+	}
+	output, err := os.CreateTemp("", "utautts-batch-*.zip")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	outputPath := output.Name()
+	defer func() {
+		_ = output.Close()
+		_ = os.Remove(outputPath)
+	}()
+	archive := zip.NewWriter(output)
 	totalWAVBytes := 0
 	for index, item := range request.Items {
-		result, _, status, err := s.synthesize(item.Request)
+		result, _, status, err := s.synthesize(r.Context(), item.Request)
 		if err != nil {
 			_ = archive.Close()
 			writeJSON(w, status, map[string]string{"error": fmt.Sprintf("item %d: %v", index+1, err)})
@@ -439,15 +460,25 @@ func (s *Server) handleSynthesizeBatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	if _, err := output.Seek(0, io.SeekStart); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="utautts-audio.zip"`)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(output.Bytes())
+	if _, err := io.Copy(w, output); err != nil {
+		log.Printf("write batch response: %v", err)
+	}
 }
 
-func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int, error) {
+func (s *Server) synthesize(ctx context.Context, request SynthesisRequest) (*tts.Result, string, int, error) {
 	if s.synthesisSem != nil {
-		s.synthesisSem <- struct{}{}
+		select {
+		case s.synthesisSem <- struct{}{}:
+		case <-ctx.Done():
+			return nil, "", http.StatusRequestTimeout, ctx.Err()
+		}
 		defer func() { <-s.synthesisSem }()
 	}
 	if request.Kana == "" && request.Text == "" {
@@ -473,7 +504,7 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 	if request.ManualPitch != nil && len(request.ManualPitch.Points) > maxManualPitchPoints {
 		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("manual pitch supports at most %d points", maxManualPitchPoints)
 	}
-	result, rendererID, err := s.synthesisService().Synthesize(synth.Request{
+	result, rendererID, err := s.synthesisService().SynthesizeContext(ctx, synth.Request{
 		Text: request.Text, Kana: request.Kana, VoicebankID: request.VoicebankID,
 		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer,
 		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
@@ -481,12 +512,22 @@ func (s *Server) synthesize(request SynthesisRequest) (*tts.Result, string, int,
 		ApplyPitch: request.ApplyPitch, ManualPitch: request.ManualPitch,
 	})
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, "", http.StatusRequestTimeout, err
+		}
 		if errors.Is(err, synth.ErrUnavailable) {
 			return nil, "", http.StatusBadRequest, err
 		}
 		return nil, "", http.StatusUnprocessableEntity, err
 	}
 	return result, rendererID, http.StatusOK, nil
+}
+
+func contextErrorStatus(err error, fallback int) int {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusRequestTimeout
+	}
+	return fallback
 }
 
 func (s *Server) synthesisService() *synth.Service {

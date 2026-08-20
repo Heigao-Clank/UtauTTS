@@ -171,6 +171,7 @@ private:
     QNetworkReply *m_updateReply = nullptr;
     QFile *m_updateFile = nullptr;
     bool m_updateCancelled = false;
+    QString m_updateWriteError;
     QHash<QString, quint64> m_analysisGenerations;
     quint64 m_nextAnalysisGeneration = 0;
     quint64 m_nextProsodyGeneration = 0;

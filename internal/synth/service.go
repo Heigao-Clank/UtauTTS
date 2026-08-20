@@ -5,6 +5,7 @@
 package synth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -63,10 +64,15 @@ func NewService(catalog *plugin.Catalog, renderer, worldlinePath, worldlineBridg
 
 // Synthesizeはリクエストを解決して音声をレンダリングし、実際に使用されたレンダラIDを返す。
 func (s *Service) Synthesize(request Request) (*tts.Result, string, error) {
+	return s.SynthesizeContext(context.Background(), request)
+}
+
+func (s *Service) SynthesizeContext(ctx context.Context, request Request) (*tts.Result, string, error) {
 	cfg, rendererID, err := s.config(request, true)
 	if err != nil {
 		return nil, "", err
 	}
+	cfg.Context = ctx
 	result, err := tts.Synthesize(cfg)
 	if err != nil {
 		return nil, "", err

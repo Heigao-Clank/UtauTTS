@@ -39,6 +39,32 @@ bool hasResourceLayout(const QDir &root) {
     return root.exists("plugins/renderers") || root.exists("models") || root.exists("voice");
 }
 
+QString updateLockPath(const QDir &root) {
+    return root.absolutePath() + QStringLiteral(".update-lock.json");
+}
+
+bool writePendingUpdateLock(const QDir &root, const QString &version, QString *error) {
+    QSaveFile file(updateLockPath(root));
+    if (!file.open(QIODevice::WriteOnly)) {
+        if (error)
+            *error = file.errorString();
+        return false;
+    }
+    const QJsonObject state{
+        {QStringLiteral("version"), version},
+        {QStringLiteral("started_at"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {QStringLiteral("updater_pid"), 0},
+    };
+    const QByteArray data = QJsonDocument(state).toJson(QJsonDocument::Compact) + '\n';
+    if (file.write(data) != data.size() || !file.commit()) {
+        if (error)
+            *error = file.errorString();
+        file.cancelWriting();
+        return false;
+    }
+    return true;
+}
+
 QDir resourceRoot() {
     QDir application(QCoreApplication::applicationDirPath());
     if (application.dirName().compare("app", Qt::CaseInsensitive) == 0) {
@@ -329,6 +355,7 @@ bool Backend::startUpdateDownload(const QString &downloadUrl, const QString &ver
     delete m_updateFile;
     m_updateFile = nullptr;
     m_updateCancelled = false;
+    m_updateWriteError.clear();
     QFile::remove(zipPath);
     m_updateFile = new QFile(zipPath, this);
     if (!m_updateFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -346,7 +373,13 @@ bool Backend::startUpdateDownload(const QString &downloadUrl, const QString &ver
     m_updateReply = reply;
     connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
         if (m_updateReply == reply && m_updateFile) {
-            m_updateFile->write(reply->readAll());
+            const QByteArray data = reply->readAll();
+            if (!data.isEmpty() && m_updateFile->write(data) != data.size()) {
+                m_updateWriteError = m_updateFile->errorString();
+                if (m_updateWriteError.isEmpty())
+                    m_updateWriteError = tr("更新ファイルを一時ディレクトリへ書き込めませんでした。");
+                reply->abort();
+            }
         }
     });
     connect(reply, &QNetworkReply::downloadProgress, this, [this, reply](qint64 received, qint64 total) {
@@ -362,22 +395,27 @@ bool Backend::startUpdateDownload(const QString &downloadUrl, const QString &ver
         const bool cancelled = m_updateCancelled && networkError == QNetworkReply::OperationCanceledError;
         const QString errorText = reply->errorString();
         const QString path = m_updateFile->fileName();
-        m_updateFile->flush();
+        if (!m_updateFile->flush() && m_updateWriteError.isEmpty())
+            m_updateWriteError = m_updateFile->errorString();
+        const QString writeError = m_updateWriteError;
         delete m_updateFile;
         m_updateFile = nullptr;
         m_updateReply = nullptr;
         m_updateCancelled = false;
+        m_updateWriteError.clear();
         reply->deleteLater();
         if (cancelled) {
             QFile::remove(path);
             return;
         }
-        if (networkError == QNetworkReply::NoError) {
+        if (networkError == QNetworkReply::NoError && writeError.isEmpty()) {
             emit updateDownloadFinished(true, path);
             return;
         }
         QFile::remove(path);
-        const QString detail = networkError == QNetworkReply::OperationCanceledError
+        const QString detail = !writeError.isEmpty()
+            ? writeError
+            : networkError == QNetworkReply::OperationCanceledError
             ? tr("タイムアウトしました。通信環境を確認して、再度お試しください。")
             : errorText;
         setError(tr("更新ファイルのダウンロードに失敗しました: %1").arg(detail));
@@ -414,10 +452,20 @@ bool Backend::installUpdate(const QString &localZip, const QString &version) {
     const QStringList arguments{
         QStringLiteral("-target"), QDir::toNativeSeparators(root.absolutePath()),
         QStringLiteral("-zip"), QDir::toNativeSeparators(localZip),
+        QStringLiteral("-delete-zip"),
         QStringLiteral("-pid"), QString::number(QCoreApplication::applicationPid()),
         QStringLiteral("-version"), version,
     };
-    if (!QProcess::startDetached(tempUpdater, arguments, QDir::tempPath())) {
+    QString lockError;
+    if (!writePendingUpdateLock(root, version, &lockError)) {
+        const QString message = tr("更新中ロックを作成できませんでした: %1").arg(lockError);
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
+        return false;
+    }
+    qint64 updaterPid = 0;
+    if (!QProcess::startDetached(tempUpdater, arguments, QDir::tempPath(), &updaterPid)) {
+        QFile::remove(updateLockPath(root));
         const QString message = tr("アップデータを起動できませんでした。");
         setError(message);
         showUpdateError(tr("更新に失敗しました"), message);

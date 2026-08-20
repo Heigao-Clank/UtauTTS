@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"utautts/internal/updatelock"
 )
 
 var logPath = filepath.Join(os.TempDir(), "utautts-updater.log")
@@ -29,6 +31,7 @@ func main() {
 	target := flag.String("target", "", "package root directory to update")
 	downloadURL := flag.String("url", "", "zip download URL")
 	zipFlag := flag.String("zip", "", "local zip file to install; skips download when set")
+	deleteZip := flag.Bool("delete-zip", false, "delete the local zip after staging (for application-owned temporary downloads)")
 	pid := flag.Int("pid", 0, "PID of the running GUI to wait for before replacing files")
 	version := flag.String("version", "", "incoming release tag (diagnostics)")
 	preserveFlag := flag.String("preserve", "voice", "comma-separated relative paths kept from the old install")
@@ -46,16 +49,21 @@ func main() {
 	}
 
 	ok := true
-	if err := run(*target, *downloadURL, *zipFlag, *pid, *version, preserve); err != nil {
+	if err := updatelock.Write(*target, *version, os.Getpid()); err != nil {
+		ok = false
+		logf("update lock failed: %v", err)
+	} else if err := run(*target, *downloadURL, *zipFlag, *pid, *version, preserve, *deleteZip); err != nil {
 		ok = false
 		logf("update failed: %v", err)
 	}
 	launchApp(*target)
+	if err := updatelock.Remove(*target); err != nil {
+		logf("removing update lock failed: %v", err)
+	}
 	if !ok {
 		os.Exit(1)
 	}
 }
-
 
 func detachFromTarget(target string) error {
 	cwd, err := os.Getwd()
@@ -74,7 +82,7 @@ func detachFromTarget(target string) error {
 	return nil
 }
 
-func run(target, url, zipPath string, pid int, version string, preserve []string) error {
+func run(target, url, zipPath string, pid int, version string, preserve []string, deleteLocalZip bool) error {
 	logf("utautts-updater start: target=%s version=%s", target, version)
 	absolute, err := filepath.Abs(target)
 	if err != nil {
@@ -92,14 +100,11 @@ func run(target, url, zipPath string, pid int, version string, preserve []string
 		return fmt.Errorf("target directory is not a directory: %s", target)
 	}
 
-	if !waitForExit(pid, 5*time.Minute) {
-		logf("parent process %d did not exit within timeout; continuing anyway", pid)
-	}
-
 	stage := target + ".stage"
 	old := target + ".old"
 
-	if zipPath == "" {
+	downloaded := zipPath == ""
+	if downloaded {
 		zipPath = filepath.Join(os.TempDir(), "utautts-update-"+sanitizeToken(version)+".zip")
 		if err := download(url, zipPath); err != nil {
 			return err
@@ -117,8 +122,10 @@ func run(target, url, zipPath string, pid int, version string, preserve []string
 	if err := extractZip(zipPath, stage); err != nil {
 		return err
 	}
-	if err := os.Remove(zipPath); err != nil {
-		logf("removing downloaded archive failed: %v", err)
+	if downloaded || deleteLocalZip {
+		if err := os.Remove(zipPath); err != nil && !os.IsNotExist(err) {
+			logf("removing temporary archive failed: %v", err)
+		}
 	}
 	if err := normalizeStage(stage); err != nil {
 		return err
@@ -126,8 +133,13 @@ func run(target, url, zipPath string, pid int, version string, preserve []string
 
 	for _, rel := range preserve {
 		if err := preservePath(target, stage, rel); err != nil {
-			logf("preserve %s: %v", rel, err)
+			_ = os.RemoveAll(stage)
+			return fmt.Errorf("preserve %s: %w", rel, err)
 		}
+	}
+	if !waitForExit(pid, 5*time.Minute) {
+		_ = os.RemoveAll(stage)
+		return fmt.Errorf("parent process %d did not exit within timeout", pid)
 	}
 
 	if err := os.RemoveAll(old); err != nil {
@@ -308,15 +320,34 @@ func packageLooksValid(dir string) bool {
 }
 
 func preservePath(target, stage, rel string) error {
-	source := filepath.Join(target, rel)
-	destination := filepath.Join(stage, rel)
+	clean, err := safePreservePath(rel)
+	if err != nil {
+		return err
+	}
+	source := filepath.Join(target, clean)
+	destination := filepath.Join(stage, clean)
 	if _, err := os.Stat(source); err != nil {
-		return fmt.Errorf("source not found: %s", source)
+		if os.IsNotExist(err) {
+			logf("preserve path is absent; skipping: %s", source)
+			return nil
+		}
+		return fmt.Errorf("inspect source %s: %w", source, err)
 	}
 	if err := os.RemoveAll(destination); err != nil {
 		return err
 	}
 	return copyTree(source, destination)
+}
+
+func safePreservePath(value string) (string, error) {
+	if value == "" || filepath.IsAbs(value) || filepath.VolumeName(value) != "" {
+		return "", fmt.Errorf("preserve path must be a relative path: %q", value)
+	}
+	clean := filepath.Clean(filepath.FromSlash(value))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("preserve path escapes the package root: %q", value)
+	}
+	return clean, nil
 }
 
 func copyTree(source, destination string) error {
@@ -379,6 +410,7 @@ func launchApp(target string) {
 	}
 	command := exec.Command(launcher)
 	command.Dir = target
+	command.Env = append(os.Environ(), "UTAUTTS_UPDATE_RELAUNCH=1")
 	if err := command.Start(); err != nil {
 		logf("relaunch failed: %v", err)
 		return

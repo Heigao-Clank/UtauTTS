@@ -1,6 +1,7 @@
 package tts
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -93,7 +94,7 @@ func loadProsodyModelCached(path string) (*prosody.Model, error) {
 	return model, nil
 }
 
-func analyzeOpenJTalkCached(text string, cfg openjtalk.Config) (*openjtalk.Analysis, error) {
+func analyzeOpenJTalkCached(ctx context.Context, text string, cfg openjtalk.Config) (*openjtalk.Analysis, error) {
 	key := analysisCacheKey{text: text, helper: cfg.HelperPath, dictionary: cfg.DictionaryPath}
 	synthesisCache.RLock()
 	analysis := synthesisCache.analyses[key]
@@ -101,7 +102,7 @@ func analyzeOpenJTalkCached(text string, cfg openjtalk.Config) (*openjtalk.Analy
 	if analysis != nil {
 		return analysis, nil
 	}
-	analysis, err := openjtalk.Analyze(text, cfg)
+	analysis, err := openjtalk.AnalyzeContext(ctx, text, cfg)
 	if err != nil {
 		return nil, err
 	}

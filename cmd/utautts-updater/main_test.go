@@ -277,7 +277,7 @@ func TestRunSwapsPackagePreservingVoice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := run(target, "", zipPath, 0, "v0.0.6", []string{"voice"}); err != nil {
+	if err := run(target, "", zipPath, 0, "v0.0.6", []string{"voice"}, false); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 	for _, path := range []string{"utautts.exe", "app/utautts-gui.exe", "app/qml/Main.qml", "models/prosody.json"} {
@@ -293,6 +293,9 @@ func TestRunSwapsPackagePreservingVoice(t *testing.T) {
 	}
 	if _, err := os.Stat(target + ".old"); !os.IsNotExist(err) {
 		t.Error("backup directory should be removed after a successful update")
+	}
+	if _, err := os.Stat(zipPath); err != nil {
+		t.Errorf("caller-owned local archive should be retained: %v", err)
 	}
 }
 
@@ -337,7 +340,7 @@ func TestRunWorksWhenCWDInsideTarget(t *testing.T) {
 	if err := os.Chdir(target); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(target, "", zipPath, 0, "v0.0.6", []string{"voice"}); err != nil {
+	if err := run(target, "", zipPath, 0, "v0.0.6", []string{"voice"}, false); err != nil {
 		t.Fatalf("run failed while the working directory is inside the target: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, "app", "qml", "Main.qml")); err != nil {
@@ -345,5 +348,43 @@ func TestRunWorksWhenCWDInsideTarget(t *testing.T) {
 	}
 	if content, err := os.ReadFile(filepath.Join(target, "voice", "bank", "oto.ini")); err != nil || string(content) != "voice-data" {
 		t.Errorf("user voice data was not preserved: %q, %v", content, err)
+	}
+}
+
+func TestSafePreservePathRejectsEscapes(t *testing.T) {
+	for _, value := range []string{"", ".", "..", `..\outside`, `C:\outside`} {
+		if _, err := safePreservePath(value); err == nil {
+			t.Errorf("safePreservePath(%q) accepted an unsafe path", value)
+		}
+	}
+	if got, err := safePreservePath("voice/bank"); err != nil || got != filepath.Join("voice", "bank") {
+		t.Fatalf("safe path = %q, %v", got, err)
+	}
+}
+
+func TestRunDeletesApplicationOwnedLocalArchive(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "UtauTTS")
+	writeTestFile(t, filepath.Join(target, "app", "utautts-gui.exe"), "old-gui")
+	zipPath := makeZip(t, map[string]string{"app/utautts-gui.exe": "new-gui"})
+	if err := run(target, "", zipPath, 0, "test", nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(zipPath); !os.IsNotExist(err) {
+		t.Fatalf("application-owned archive was not deleted: %v", err)
+	}
+}
+
+func TestRunPreserveFailureDoesNotReplaceInstall(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "UtauTTS")
+	writeTestFile(t, filepath.Join(target, "app", "utautts-gui.exe"), "old-gui")
+	zipPath := makeZip(t, map[string]string{"app/utautts-gui.exe": "new-gui"})
+	if err := run(target, "", zipPath, 0, "test", []string{`..\outside`}, false); err == nil {
+		t.Fatal("expected preservation failure")
+	}
+	content, err := os.ReadFile(filepath.Join(target, "app", "utautts-gui.exe"))
+	if err != nil || string(content) != "old-gui" {
+		t.Fatalf("current install changed after preservation failure: %q, %v", content, err)
 	}
 }

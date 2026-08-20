@@ -2,6 +2,7 @@ package openjtalk
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"utautts/internal/processutil"
 	"utautts/internal/prosody"
@@ -28,6 +30,20 @@ type Analysis struct {
 }
 
 func Analyze(text string, cfg Config) (*Analysis, error) {
+	return AnalyzeContext(context.Background(), text, cfg)
+}
+
+const helperTimeout = 2 * time.Minute
+
+func AnalyzeContext(ctx context.Context, text string, cfg Config) (*Analysis, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("Open JTalk frontend canceled: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, helperTimeout)
+	defer cancel()
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, fmt.Errorf("Open JTalk input is empty")
@@ -46,13 +62,17 @@ func Analyze(text string, cfg Config) (*Analysis, error) {
 	if err != nil {
 		return nil, err
 	}
-	command := exec.Command(helper, "--dictionary", dictionary)
+	command := exec.CommandContext(ctx, helper, "--dictionary", dictionary)
+	command.WaitDelay = 5 * time.Second
 	processutil.Configure(command)
 	command.Stdin = bytes.NewReader(request)
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("Open JTalk frontend canceled: %w", ctxErr)
+		}
 		message := strings.TrimSpace(stderr.String())
 		details := []string{
 			fmt.Sprintf("helper=%q", helper),

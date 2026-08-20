@@ -7,8 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
+	"time"
 	"unsafe"
+
+	"utautts/internal/updatelock"
 )
 
 func main() {
@@ -18,6 +23,9 @@ func main() {
 		return
 	}
 	root := filepath.Dir(executable)
+	if os.Getenv("UTAUTTS_UPDATE_RELAUNCH") != "1" && updateBlocked(root) {
+		return
+	}
 	target := filepath.Join(root, "app", "utautts-gui.exe")
 	command := exec.Command(target, os.Args[1:]...)
 	command.Dir = root
@@ -26,9 +34,71 @@ func main() {
 	}
 }
 
+func updateBlocked(root string) bool {
+	state, err := updatelock.Read(root)
+	if os.IsNotExist(err) {
+		return false
+	}
+	active := false
+	if err == nil {
+		active = lockStateActive(state, time.Now(), processAlive)
+	} else if path, pathErr := updatelock.Path(root); pathErr == nil {
+		if info, statErr := os.Stat(path); statErr == nil {
+			active = time.Since(info.ModTime()) < time.Minute
+		}
+	}
+	if active {
+		showMessage("UtauTTS 更新中", "UtauTTSを更新しています。\n完了すると自動的に再起動します。", 0x40)
+		return true
+	}
+	if !confirmStaleUpdateRecovery() {
+		return true
+	}
+	if err := updatelock.Remove(root); err != nil {
+		showError(fmt.Errorf("更新ロックを解除できませんでした。\n\n%w", err))
+		return true
+	}
+	return false
+}
+
+func lockStateActive(state updatelock.State, now time.Time, alive func(int) bool) bool {
+	if state.UpdaterPID > 0 {
+		return alive(state.UpdaterPID)
+	}
+	return !state.StartedAt.IsZero() && now.Sub(state.StartedAt) < time.Minute
+}
+
+func processAlive(pid int) bool {
+	out, err := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/NH").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	pidText := strconv.Itoa(pid)
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == pidText {
+			return true
+		}
+	}
+	return false
+}
+
+func confirmStaleUpdateRecovery() bool {
+	const yes = 6
+	result := showMessage("UtauTTS 更新の復旧",
+		"前回の更新が中断された可能性があります。\n更新ロックを解除して通常起動しますか？",
+		0x04|0x20)
+	return result == yes
+}
+
 func showError(err error) {
-	text, _ := syscall.UTF16PtrFromString(err.Error())
-	title, _ := syscall.UTF16PtrFromString("UtauTTS 起動エラー")
+	showMessage("UtauTTS 起動エラー", err.Error(), 0x10)
+}
+
+func showMessage(titleText, body string, flags uintptr) uintptr {
+	text, _ := syscall.UTF16PtrFromString(body)
+	title, _ := syscall.UTF16PtrFromString(titleText)
 	messageBox := syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW")
-	_, _, _ = messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x10)
+	result, _, _ := messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), flags)
+	return result
 }

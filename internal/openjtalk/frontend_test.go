@@ -1,6 +1,19 @@
 package openjtalk
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+)
+
+func TestAnalyzeContextHonorsCancellationBeforeResolvingRuntime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := AnalyzeContext(ctx, "テスト", Config{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
 
 func TestAnalyzeRejectsEmptyTextBeforeResolvingRuntime(t *testing.T) {
 	if _, err := Analyze("  ", Config{}); err == nil {

@@ -1,6 +1,7 @@
 package tts
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -18,6 +19,7 @@ import (
 )
 
 type Config struct {
+	Context                 context.Context
 	VoicebankPath           string
 	Voicebank               *voicebank.Bank
 	Text                    string
@@ -71,11 +73,18 @@ type ProsodyPreview struct {
 
 // ConvertToReadingは日本語テキストをかなに変換する。内蔵トークナイザが数字やラテン文字などのトークンを読みに変換できない場合はOpen JTalkにフォールバックする。
 func ConvertToReading(text string, dictionary map[string]string, openJTalk openjtalk.Config) (string, error) {
+	return ConvertToReadingContext(context.Background(), text, dictionary, openJTalk)
+}
+
+func ConvertToReadingContext(ctx context.Context, text string, dictionary map[string]string, openJTalk openjtalk.Config) (string, error) {
+	if err := synthesisContextError(ctx); err != nil {
+		return "", err
+	}
 	reading, frontendErr := frontend.ToKanaWithDictionary(text, dictionary)
 	if frontendErr == nil {
 		return reading, nil
 	}
-	analysis, openJTalkErr := analyzeOpenJTalkCached(frontend.ApplyDictionary(text, dictionary), openJTalk)
+	analysis, openJTalkErr := analyzeOpenJTalkCached(ctx, frontend.ApplyDictionary(text, dictionary), openJTalk)
 	if openJTalkErr != nil {
 		return "", fmt.Errorf("convert text to reading: %v; Open JTalk fallback: %w", frontendErr, openJTalkErr)
 	}
@@ -86,7 +95,7 @@ func resolveReading(cfg Config) (string, error) {
 	if cfg.Reading != "" {
 		return cfg.Reading, nil
 	}
-	return ConvertToReading(cfg.Text, cfg.Dictionary, openjtalk.Config{
+	return ConvertToReadingContext(cfg.Context, cfg.Text, cfg.Dictionary, openjtalk.Config{
 		HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
 	})
 }
@@ -117,19 +126,19 @@ func resolveProsodyFeatures(cfg Config, model *prosody.Model, morae []frontend.M
 	runtimeConfig := openjtalk.Config{
 		HelperPath: cfg.OpenJTalkPath, DictionaryPath: cfg.OpenJTalkDictionaryPath,
 	}
-	aligned, alignmentErr := analyzeAndAlignRuntimeFeatures(morae, runtimeText, runtimeConfig)
+	aligned, alignmentErr := analyzeAndAlignRuntimeFeatures(cfg.Context, morae, runtimeText, runtimeConfig)
 	if alignmentErr == nil {
 		return aligned, nil
 	}
-	fallback, fallbackErr := analyzeAndAlignRuntimeFeatures(morae, reading, runtimeConfig)
+	fallback, fallbackErr := analyzeAndAlignRuntimeFeatures(cfg.Context, morae, reading, runtimeConfig)
 	if fallbackErr != nil {
 		return nil, fmt.Errorf("align runtime prosody features: %v; Open JTalk fallback: %w", alignmentErr, fallbackErr)
 	}
 	return fallback, nil
 }
 
-func analyzeAndAlignRuntimeFeatures(morae []frontend.Mora, text string, cfg openjtalk.Config) ([]prosody.FeatureFrame, error) {
-	analysis, err := analyzeOpenJTalkCached(text, cfg)
+func analyzeAndAlignRuntimeFeatures(ctx context.Context, morae []frontend.Mora, text string, cfg openjtalk.Config) ([]prosody.FeatureFrame, error) {
+	analysis, err := analyzeOpenJTalkCached(ctx, text, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("analyze runtime prosody features: %w", err)
 	}
@@ -173,6 +182,9 @@ func preferExplicit(explicit, manifestValue string) string {
 }
 
 func Synthesize(cfg Config) (*Result, error) {
+	if err := synthesisContextError(cfg.Context); err != nil {
+		return nil, err
+	}
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -304,6 +316,7 @@ func Synthesize(cfg Config) (*Result, error) {
 	}
 	intonationStrength := effectiveIntonationStrength(cfg)
 	pcm, err := render.Render(synthesisPlan, render.Config{
+		Context:                 cfg.Context,
 		ReleaseMS:               cfg.ReleaseMS,
 		ReleaseSet:              cfg.ReleaseSet,
 		IntonationStrength:      intonationStrength,
@@ -341,6 +354,9 @@ func Synthesize(cfg Config) (*Result, error) {
 
 // PredictProsodyは音声合成せずに選択されたプロソディモデルを評価する。手動のモーラ長を尊重するため、プレビューはGUIで編集中の値に従う。
 func PredictProsody(cfg Config) (*ProsodyPreview, error) {
+	if err := synthesisContextError(cfg.Context); err != nil {
+		return nil, err
+	}
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -419,6 +435,18 @@ func PredictProsody(cfg Config) (*ProsodyPreview, error) {
 		}
 	}
 	return result, nil
+}
+
+func synthesisContextError(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("synthesis canceled: %w", ctx.Err())
+	default:
+		return nil
+	}
 }
 
 func previewDurationFor(mora frontend.Mora, base float64) float64 {

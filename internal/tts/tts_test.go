@@ -1,6 +1,8 @@
 package tts
 
 import (
+	"context"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -15,6 +17,15 @@ import (
 	"utautts/internal/prosody"
 	"utautts/internal/render"
 )
+
+func TestSynthesizeHonorsCanceledContextBeforeLoadingInputs(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := Synthesize(Config{Context: ctx, VoicebankPath: filepath.Join(t.TempDir(), "missing")})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
 
 func TestMoraTimingsIncludePausesMissingFromPlanUnits(t *testing.T) {
 	morae := []frontend.Mora{{Text: "a"}, {Pause: true}, {Text: "i"}}

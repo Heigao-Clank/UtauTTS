@@ -1,6 +1,7 @@
 package render
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"utautts/internal/audio"
 	"utautts/internal/pitch"
@@ -258,9 +260,19 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	if err := os.WriteFile(manifestPath, data, 0o600); err != nil {
 		return nil, err
 	}
-	command := exec.Command(bridge, manifestPath)
+	ctx := cfg.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	command := exec.CommandContext(ctx, bridge, manifestPath)
+	command.WaitDelay = 5 * time.Second
 	processutil.Configure(command)
 	if output, err := command.CombinedOutput(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("worldline bridge canceled: %w", ctxErr)
+		}
 		return nil, fmt.Errorf("worldline bridge failed: %w: %s", err, output)
 	}
 	pcm, err := audio.ReadWav(manifest.OutputPath)

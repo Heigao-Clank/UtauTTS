@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,21 @@ import (
 	"utautts/internal/audio"
 	"utautts/internal/plugin"
 )
+
+func TestSynthesisWaitHonorsRequestCancellation(t *testing.T) {
+	server := mustNewServer(t, Config{VoiceDir: t.TempDir()})
+	for range cap(server.synthesisSem) {
+		server.synthesisSem <- struct{}{}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request := httptest.NewRequest(http.MethodPost, "/api/synthesize/audio", bytes.NewBufferString(`{"kana":"あ"}`)).WithContext(ctx)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusRequestTimeout {
+		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
+	}
+}
 
 func mustNewServer(t *testing.T, config Config) *Server {
 	t.Helper()
