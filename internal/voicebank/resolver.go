@@ -12,18 +12,24 @@ import (
 )
 
 type Selection struct {
-	Position        int
-	Mora            frontend.Mora
-	Alias           string
-	Kind            AliasKind
-	FallbackTier    int
-	Entry           oto.Entry
-	Candidates      []string
-	CandidateCount  int
-	TargetScore     float64
-	JoinScore       float64
-	JoinProbability float64
-	PathScore       float64
+	Position                  int
+	Mora                      frontend.Mora
+	Alias                     string
+	Kind                      AliasKind
+	Composite                 bool
+	Transition                *Selection
+	FallbackTier              int
+	Entry                     oto.Entry
+	Candidates                []string
+	CandidateCount            int
+	TargetScore               float64
+	PreferenceScore           float64
+	TransitionScore           float64
+	JoinScore                 float64
+	JoinProbability           float64
+	TransitionJoinScore       float64
+	TransitionJoinProbability float64
+	PathScore                 float64
 }
 
 const maxCandidatesPerPosition = 32
@@ -104,20 +110,44 @@ func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, pol
 		}
 
 		candidateSpecs := aliasCandidatesWithPolicy(mora.Text, previousVowel, phraseStart, policy)
+		consonant := mora.Consonant
+		if consonant == "" {
+			consonant = frontend.ConsonantOf(mora.Text)
+		}
+		transitionSpecs := vcAliasCandidates(previousVowel, consonant, policy)
 		if hasAffix {
 			candidateSpecs = affixCandidates(candidateSpecs, affix)
+			transitionSpecs = affixCandidates(transitionSpecs, affix)
 		}
-		candidates := candidateNames(candidateSpecs)
+		allSpecs := append(append([]aliasCandidate{}, candidateSpecs...), transitionSpecs...)
+		candidates := candidateNames(allSpecs)
 		var candidatesAtPosition []Selection
 		for _, candidate := range candidateSpecs {
 			entries := b.Entries[candidate.name]
 			for _, entry := range entries {
-				targetScore := candidateScore(candidate.tier, entry)
-				candidatesAtPosition = append(candidatesAtPosition, Selection{
+				main := Selection{
 					Position: position, Mora: mora, Alias: candidate.name, Kind: candidate.kind,
 					FallbackTier: candidate.tier, Entry: entry, Candidates: candidates,
-					TargetScore: targetScore,
-				})
+					TargetScore: candidateScore(candidate.tier, entry),
+				}
+				candidatesAtPosition = append(candidatesAtPosition, main)
+				if candidate.kind != AliasCV || isWildcardAlias(candidate.name) || len(transitionSpecs) == 0 {
+					continue
+				}
+				for _, transitionSpec := range transitionSpecs {
+					for _, transitionEntry := range b.Entries[transitionSpec.name] {
+						transition := Selection{
+							Position: position, Mora: mora, Alias: transitionSpec.name, Kind: AliasVC,
+							FallbackTier: transitionSpec.tier, Entry: transitionEntry, Candidates: candidates,
+							TargetScore: candidateScore(transitionSpec.tier, transitionEntry),
+						}
+						composite := main
+						composite.Composite = true
+						composite.Transition = &transition
+						composite.TransitionScore = transition.TargetScore
+						candidatesAtPosition = append(candidatesAtPosition, composite)
+					}
+				}
 			}
 		}
 		if len(candidatesAtPosition) == 0 {
@@ -135,14 +165,20 @@ func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, pol
 			}
 			return nil, &MissingAliasError{Position: position, Mora: mora.Text, Candidates: candidates}
 		}
+		applyCompositePreferences(candidatesAtPosition, policy)
 		if len(candidatesAtPosition) > maxCandidatesPerPosition {
 			sort.SliceStable(candidatesAtPosition, func(i, j int) bool {
-				return candidatesAtPosition[i].TargetScore > candidatesAtPosition[j].TargetScore
+				left := candidatesAtPosition[i].TargetScore + candidatesAtPosition[i].PreferenceScore
+				right := candidatesAtPosition[j].TargetScore + candidatesAtPosition[j].PreferenceScore
+				return left > right
 			})
 			candidatesAtPosition = candidatesAtPosition[:maxCandidatesPerPosition]
 		}
 		for index := range candidatesAtPosition {
 			candidatesAtPosition[index].CandidateCount = len(candidatesAtPosition)
+			if candidatesAtPosition[index].Transition != nil {
+				candidatesAtPosition[index].Transition.CandidateCount = len(candidatesAtPosition)
+			}
 		}
 		layers = append(layers, candidatesAtPosition)
 		previousVowel = mora.Vowel
@@ -235,8 +271,72 @@ func aliasCandidatesWithPolicy(mora, previousVowel string, phraseStart bool, pol
 	return uniqueCandidates(candidates)
 }
 
+func vcAliasCandidates(previousVowel, consonant string, policy AliasPolicy) []aliasCandidate {
+	if policy == AliasPolicyCVOnly || previousVowel == "" || previousVowel == "cl" || consonant == "" || consonant == "cl" {
+		return nil
+	}
+	contexts := vowelContextForms(previousVowel)
+	result := make([]aliasCandidate, 0, len(contexts))
+	for _, context := range contexts {
+		result = append(result, aliasCandidate{name: context + " " + consonant, tier: vcPolicyTier(policy), kind: AliasVC})
+	}
+	return uniqueCandidates(result)
+}
+
+func vowelContextForms(vowel string) []string {
+	forms := []string{vowel}
+	if kana := map[string]string{"a": "あ", "i": "い", "u": "う", "e": "え", "o": "お", "n": "ん"}[vowel]; kana != "" {
+		forms = append(forms, kana)
+	}
+	return forms
+}
+
+func vcPolicyTier(policy AliasPolicy) int {
+	if policy == AliasPolicyVCVPrefer {
+		return 2
+	}
+	return 0
+}
+
+func applyCompositePreferences(candidates []Selection, policy AliasPolicy) {
+	hasComposite := false
+	for _, candidate := range candidates {
+		if candidate.Composite {
+			hasComposite = true
+			break
+		}
+	}
+	if !hasComposite {
+		return
+	}
+	for index := range candidates {
+		candidate := &candidates[index]
+		if candidate.Composite {
+			candidate.PreferenceScore = compositePreferenceScore(policy)
+			continue
+		}
+		if candidate.Kind == AliasVCV && policy != AliasPolicyCVVCPrefer {
+			candidate.PreferenceScore = 10
+		}
+	}
+}
+
+func compositePreferenceScore(policy AliasPolicy) float64 {
+	switch policy {
+	case AliasPolicyVCVPrefer:
+		return 22
+	case AliasPolicyCVVCPrefer:
+		return 12
+	default:
+		return 12
+	}
+}
+
 func policyTier(policy AliasPolicy, tier int, kind AliasKind) int {
 	if policy == AliasPolicyVCVPrefer && kind != AliasVCV {
+		return tier + 2
+	}
+	if policy == AliasPolicyCVVCPrefer && kind == AliasVCV {
 		return tier + 2
 	}
 	return tier
@@ -276,4 +376,9 @@ func candidateNames(candidates []aliasCandidate) []string {
 		result[index] = candidate.name
 	}
 	return result
+}
+
+func isWildcardAlias(alias string) bool {
+	parts := strings.Fields(alias)
+	return len(parts) >= 2 && strings.Contains(parts[0], "*")
 }

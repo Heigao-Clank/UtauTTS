@@ -31,6 +31,115 @@ func TestResolvePrefersVCVAndFallsBackToCV(t *testing.T) {
 	}
 }
 
+func TestResolveUsesCVVCTransitionWhenVCVIsUnavailable(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{
+		"あ":   {{Alias: "あ", Filename: "a.wav"}},
+		"か":   {{Alias: "か", Filename: "ka.wav"}},
+		"a k": {{Alias: "a k", Filename: "ak.wav"}},
+	}}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bank.Resolve(morae)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[1].Alias != "か" || !got[1].Composite || got[1].Transition == nil || got[1].Transition.Alias != "a k" {
+		t.Fatalf("selections = %#v", got)
+	}
+}
+
+func TestResolveDoesNotInventClosureTransition(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{
+		"っ":    {{Alias: "っ", Filename: "cl.wav"}},
+		"か":    {{Alias: "か", Filename: "ka.wav"}},
+		"cl k": {{Alias: "cl k", Filename: "clk.wav"}},
+	}}
+	morae, err := frontend.ParseKana("っか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bank.Resolve(morae)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[1].Composite || got[1].Alias != "か" {
+		t.Fatalf("closure transition was selected: %#v", got)
+	}
+}
+
+func TestResolveDoesNotMakeCVVCFromAffixedWildcard(t *testing.T) {
+	bank := &Bank{
+		Entries: map[string][]oto.Entry{
+			"強あ_C4":   {{Alias: "強あ_C4", Filename: "a.wav"}},
+			"強* か_C4": {{Alias: "強* か_C4", Filename: "wild.wav"}},
+			"強a k_C4": {{Alias: "強a k_C4", Filename: "ak.wav"}},
+		},
+		PrefixMap: map[string]Affix{"C4": {Prefix: "強", Suffix: "_C4"}},
+	}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bank.ResolveAtTone(morae, "C4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[1].Composite || got[1].Alias != "強* か_C4" {
+		t.Fatalf("wildcard was used as CVVC main: %#v", got)
+	}
+}
+
+func TestResolveVCVBeatsCVVCInAutoButCVVCPreferCanOverride(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{
+		"あ":   {{Alias: "あ", Filename: "a.wav"}},
+		"か":   {{Alias: "か", Filename: "ka.wav"}},
+		"a k": {{Alias: "a k", Filename: "ak.wav"}},
+		"a か": {{Alias: "a か", Filename: "aka.wav"}},
+	}}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	auto, err := bank.Resolve(morae)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auto[1].Kind != AliasVCV || auto[1].Composite {
+		t.Fatalf("auto selections = %#v", auto)
+	}
+	prefer, err := bank.ResolveWithConfig(morae, ResolveConfig{AliasPolicy: AliasPolicyCVVCPrefer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prefer[1].Composite || prefer[1].Transition == nil || prefer[1].Transition.Alias != "a k" {
+		t.Fatalf("cvvc-prefer selections = %#v", prefer)
+	}
+}
+
+func TestAuditLatticeReportsCVVCSelection(t *testing.T) {
+	bank := &Bank{Root: "bank", Entries: map[string][]oto.Entry{
+		"あ":   {{Alias: "あ", Filename: "a.wav"}},
+		"か":   {{Alias: "か", Filename: "ka.wav"}},
+		"a k": {{Alias: "a k", Filename: "ak.wav"}},
+	}}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit, err := bank.AuditLattice(morae, "C4", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audit.CVVCSelectedPositions != 1 || audit.CVSelectedPositions != 1 {
+		t.Fatalf("selection counts = %+v", audit)
+	}
+	if audit.Positions[1].CVVCCandidateCount == 0 || !audit.Positions[1].SelectedComposite || audit.Positions[1].SelectedTransition != "a k" {
+		t.Fatalf("position audit = %#v", audit.Positions[1])
+	}
+}
+
 func TestResolveCVOnlySuppressesVCVCandidates(t *testing.T) {
 	bank := &Bank{Entries: map[string][]oto.Entry{
 		"- あ": {{Alias: "- あ"}},

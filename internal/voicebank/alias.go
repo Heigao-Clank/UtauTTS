@@ -17,19 +17,22 @@ const (
 type AliasPolicy string
 
 const (
-	AliasPolicyAuto      AliasPolicy = "auto"
-	AliasPolicyVCVPrefer AliasPolicy = "vcv-prefer"
-	AliasPolicyCVOnly    AliasPolicy = "cv-only"
+	AliasPolicyAuto       AliasPolicy = "auto"
+	AliasPolicyVCVPrefer  AliasPolicy = "vcv-prefer"
+	AliasPolicyCVVCPrefer AliasPolicy = "cvvc-prefer"
+	AliasPolicyCVOnly     AliasPolicy = "cv-only"
 )
 
 func (p AliasPolicy) valid() bool {
-	return p == "" || p == AliasPolicyAuto || p == AliasPolicyVCVPrefer || p == AliasPolicyCVOnly
+	return p == "" || p == AliasPolicyAuto || p == AliasPolicyVCVPrefer || p == AliasPolicyCVVCPrefer || p == AliasPolicyCVOnly
 }
 
 type AliasCapabilities struct {
 	Counts         map[AliasKind]int
 	VCVContexts    map[string]int
+	VCContexts     map[string]int
 	HasVCV         bool
+	HasVC          bool
 	HasInitialVCV  bool
 	HasNContextVCV bool
 }
@@ -96,24 +99,28 @@ func (b *Bank) AliasCapabilities() AliasCapabilities {
 	capabilities := AliasCapabilities{
 		Counts:      map[AliasKind]int{},
 		VCVContexts: map[string]int{},
+		VCContexts:  map[string]int{},
 	}
 	for alias := range b.Entries {
 		kind := ClassifyAlias(alias)
 		capabilities.Counts[kind]++
-		if kind != AliasVCV {
-			continue
-		}
-		capabilities.HasVCV = true
 		parts := strings.Fields(alias)
 		if len(parts) != 2 {
 			continue
 		}
-		capabilities.VCVContexts[parts[0]]++
-		if parts[0] == "-" {
-			capabilities.HasInitialVCV = true
-		}
-		if parts[0] == "n" {
-			capabilities.HasNContextVCV = true
+		switch kind {
+		case AliasVCV:
+			capabilities.HasVCV = true
+			capabilities.VCVContexts[parts[0]]++
+			if parts[0] == "-" {
+				capabilities.HasInitialVCV = true
+			}
+			if parts[0] == "n" {
+				capabilities.HasNContextVCV = true
+			}
+		case AliasVC:
+			capabilities.HasVC = true
+			capabilities.VCContexts[parts[0]]++
 		}
 	}
 	return capabilities

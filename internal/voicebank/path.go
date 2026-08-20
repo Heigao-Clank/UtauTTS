@@ -52,17 +52,21 @@ func selectPhrasePath(layers [][]Selection, cache *connection.Extractor, model *
 	states := make([][]pathState, len(layers))
 	states[0] = make([]pathState, len(layers[0]))
 	for candidateIndex, candidate := range layers[0] {
-		states[0][candidateIndex] = pathState{score: candidate.TargetScore, previous: -1}
+		local, _, _ := candidateScores(candidate, cache, model, true)
+		states[0][candidateIndex] = pathState{score: local, previous: -1}
 	}
 	for layerIndex := 1; layerIndex < len(layers); layerIndex++ {
 		states[layerIndex] = make([]pathState, len(layers[layerIndex]))
 		for currentIndex, current := range layers[layerIndex] {
 			best := pathState{score: math.Inf(-1), previous: -1}
 			for previousIndex, previous := range layers[layerIndex-1] {
-				join, probability := pairScore(previous.Entry, current.Entry, cache, model)
-				score := states[layerIndex-1][previousIndex].score + current.TargetScore + join
+				join, probability := pairScore(previous.Entry, currentStartEntry(current), cache, model)
+				local, transitionJoin, transitionProbability := candidateScores(current, cache, model, true)
+				score := states[layerIndex-1][previousIndex].score + local + join
 				if score > best.score {
 					best = pathState{score: score, previous: previousIndex, joinScore: join, joinProbability: probability}
+					current.TransitionJoinScore = transitionJoin
+					current.TransitionJoinProbability = transitionProbability
 				}
 			}
 			states[layerIndex][currentIndex] = best
@@ -78,6 +82,9 @@ func selectPhrasePath(layers [][]Selection, cache *connection.Extractor, model *
 	path := make([]Selection, len(layers))
 	for layerIndex := len(layers) - 1; layerIndex >= 0; layerIndex-- {
 		path[layerIndex] = layers[layerIndex][last]
+		_, transitionJoin, transitionProbability := candidateScores(path[layerIndex], cache, model, true)
+		path[layerIndex].TransitionJoinScore = transitionJoin
+		path[layerIndex].TransitionJoinProbability = transitionProbability
 		path[layerIndex].JoinScore = states[layerIndex][last].joinScore
 		path[layerIndex].JoinProbability = states[layerIndex][last].joinProbability
 		path[layerIndex].PathScore = states[layerIndex][last].score
@@ -97,14 +104,20 @@ func selectGreedyPath(layers [][]Selection, cache *connection.Extractor, model *
 		for candidateIndex, candidate := range layer {
 			join, probability := 0.0, 0.0
 			if useJoin && layerIndex > 0 {
-				join, probability = pairScore(path[layerIndex-1].Entry, candidate.Entry, cache, model)
+				join, probability = pairScore(path[layerIndex-1].Entry, currentStartEntry(candidate), cache, model)
 			}
-			local := candidate.TargetScore + join
+			local, transitionJoin, transitionProbability := candidateScores(candidate, cache, model, useJoin)
+			local += join
 			if local > bestLocal {
 				bestIndex, bestJoin, bestProbability, bestLocal = candidateIndex, join, probability, local
+				layer[candidateIndex].TransitionJoinScore = transitionJoin
+				layer[candidateIndex].TransitionJoinProbability = transitionProbability
 			}
 		}
 		selected := layer[bestIndex]
+		_, selectedTransitionJoin, selectedTransitionProbability := candidateScores(selected, cache, model, useJoin)
+		selected.TransitionJoinScore = selectedTransitionJoin
+		selected.TransitionJoinProbability = selectedTransitionProbability
 		selected.JoinScore = bestJoin
 		selected.JoinProbability = bestProbability
 		pathScore += bestLocal
@@ -112,6 +125,27 @@ func selectGreedyPath(layers [][]Selection, cache *connection.Extractor, model *
 		path = append(path, selected)
 	}
 	return path
+}
+
+func currentStartEntry(selection Selection) oto.Entry {
+	if selection.Transition != nil {
+		return selection.Transition.Entry
+	}
+	return selection.Entry
+}
+
+func candidateScores(selection Selection, cache *connection.Extractor, model *connection.LearnedModel, includeJoin bool) (local, transitionJoin, transitionProbability float64) {
+	local = selection.TargetScore + selection.PreferenceScore
+	if selection.Transition == nil {
+		return local, 0, 0
+	}
+	if !includeJoin {
+		return local + selection.TransitionScore - 114, 0, 0
+	}
+	transitionJoin, transitionProbability = pairScore(selection.Transition.Entry, selection.Entry, cache, model)
+
+	local += selection.TransitionScore - 114 + transitionJoin
+	return local, transitionJoin, transitionProbability
 }
 
 func joinScore(previous, current oto.Entry, cache *connection.Extractor) float64 {

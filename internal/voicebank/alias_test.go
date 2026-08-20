@@ -28,7 +28,7 @@ func TestClassifyAlias(t *testing.T) {
 }
 
 func TestAliasPolicyValues(t *testing.T) {
-	for _, policy := range []AliasPolicy{AliasPolicyAuto, AliasPolicyVCVPrefer, AliasPolicyCVOnly} {
+	for _, policy := range []AliasPolicy{AliasPolicyAuto, AliasPolicyVCVPrefer, AliasPolicyCVVCPrefer, AliasPolicyCVOnly} {
 		if !policy.valid() {
 			t.Errorf("policy %q was rejected", policy)
 		}
@@ -55,5 +55,8 @@ func TestAliasCapabilitiesSummarizeVCVContexts(t *testing.T) {
 	}
 	if capabilities.VCVContexts["a"] != 1 || capabilities.VCVContexts["n"] != 1 || capabilities.VCVContexts["-"] != 1 {
 		t.Fatalf("contexts = %#v", capabilities.VCVContexts)
+	}
+	if !capabilities.HasVC || capabilities.VCContexts["あ"] != 1 {
+		t.Fatalf("vc capabilities = %+v", capabilities)
 	}
 }

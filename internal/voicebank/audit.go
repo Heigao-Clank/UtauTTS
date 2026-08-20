@@ -12,6 +12,7 @@ import (
 
 type LatticeAudit struct {
 	VCVSelectedPositions    int             `json:"vcv_selected_positions"`
+	CVVCSelectedPositions   int             `json:"cvvc_selected_positions"`
 	CVSelectedPositions     int             `json:"cv_selected_positions"`
 	Positions               []PositionAudit `json:"positions"`
 	MultiCandidatePositions int             `json:"multi_candidate_positions"`
@@ -28,9 +29,12 @@ type LatticeAudit struct {
 
 type PositionAudit struct {
 	VCVCandidateCount    int              `json:"vcv_candidate_count"`
+	CVVCCandidateCount   int              `json:"cvvc_candidate_count"`
 	CVCandidateCount     int              `json:"cv_candidate_count"`
 	SelectedAliasKind    string           `json:"selected_alias_kind"`
 	SelectedAlias        string           `json:"selected_alias"`
+	SelectedComposite    bool             `json:"selected_composite,omitempty"`
+	SelectedTransition   string           `json:"selected_transition,omitempty"`
 	SelectedFallbackTier int              `json:"selected_fallback_tier"`
 	Position             int              `json:"position"`
 	Mora                 string           `json:"mora"`
@@ -52,6 +56,8 @@ type CandidateAudit struct {
 	Index                  int     `json:"index"`
 	Alias                  string  `json:"alias"`
 	AliasKind              string  `json:"alias_kind"`
+	Composite              bool    `json:"composite,omitempty"`
+	TransitionAlias        string  `json:"transition_alias,omitempty"`
 	FallbackTier           int     `json:"fallback_tier"`
 	Source                 string  `json:"source"`
 	OtoPath                string  `json:"oto_path"`
@@ -100,6 +106,10 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 		selected := handcraftedByPosition[layer[0].Position]
 		position.SelectedAlias = selected.Alias
 		position.SelectedAliasKind = string(selected.Kind)
+		position.SelectedComposite = selected.Composite
+		if selected.Transition != nil {
+			position.SelectedTransition = selected.Transition.Alias
+		}
 		position.SelectedFallbackTier = selected.FallbackTier
 		if model != nil {
 			position.LearnedSelected = candidateIndex(layer, learnedByPosition[layer[0].Position])
@@ -113,6 +123,9 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 				position.VCVCandidateCount++
 			case AliasCV:
 				position.CVCandidateCount++
+			}
+			if candidate.Composite {
+				position.CVVCCandidateCount++
 			}
 			minimum = min(minimum, candidate.TargetScore)
 			maximum = max(maximum, candidate.TargetScore)
@@ -135,15 +148,23 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 			}
 			audit := CandidateAudit{
 				Index: candidateIndex, Alias: candidate.Alias, AliasKind: string(candidate.Kind), FallbackTier: candidate.FallbackTier,
-				Source:  relativePath(b.Root, candidate.Entry.Filename),
-				OtoPath: relativePath(b.Root, candidate.Entry.OtoPath), OtoLine: candidate.Entry.Line,
+				Composite: candidate.Composite,
+				Source:    relativePath(b.Root, candidate.Entry.Filename),
+				OtoPath:   relativePath(b.Root, candidate.Entry.OtoPath), OtoLine: candidate.Entry.Line,
 				TargetScore: candidate.TargetScore, SourceGroup: group,
 				SourceF0Hz: measuredPitch.Hz, PitchValid: measuredPitch.Valid,
 			}
+			if candidate.Transition != nil {
+				audit.TransitionAlias = candidate.Transition.Alias
+			}
 			if layerIndex > 0 && len(layers[layerIndex-1]) > 0 {
-				audit.BestHandcraftedJoin = bestIncoming(layers[layerIndex-1], candidate.Entry, cache, nil).score
+				incoming := candidate.Entry
+				if candidate.Transition != nil {
+					incoming = candidate.Transition.Entry
+				}
+				audit.BestHandcraftedJoin = bestIncoming(layers[layerIndex-1], incoming, cache, nil).score
 				if model != nil {
-					best := bestIncoming(layers[layerIndex-1], candidate.Entry, cache, model)
+					best := bestIncoming(layers[layerIndex-1], incoming, cache, model)
 					audit.BestLearnedJoin, audit.BestLearnedProbability = best.score, best.probability
 				}
 			}
@@ -186,7 +207,11 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 		case string(AliasVCV):
 			result.VCVSelectedPositions++
 		case string(AliasCV):
-			result.CVSelectedPositions++
+			if position.SelectedComposite {
+				result.CVVCSelectedPositions++
+			} else {
+				result.CVSelectedPositions++
+			}
 		}
 		if model != nil && position.LearnedSelected != position.TargetSelected {
 			result.LearnedChanges++
@@ -231,9 +256,16 @@ func selectionsByPosition(selections []Selection) map[int]Selection {
 
 func candidateIndex(layer []Selection, selected Selection) int {
 	for index, candidate := range layer {
-		if candidate.Entry == selected.Entry && candidate.Alias == selected.Alias {
-			return index
+		if candidate.Entry != selected.Entry || candidate.Alias != selected.Alias || candidate.Composite != selected.Composite {
+			continue
 		}
+		if (candidate.Transition == nil) != (selected.Transition == nil) {
+			continue
+		}
+		if candidate.Transition != nil && (candidate.Transition.Entry != selected.Transition.Entry || candidate.Transition.Alias != selected.Transition.Alias) {
+			continue
+		}
+		return index
 	}
 	return -1
 }

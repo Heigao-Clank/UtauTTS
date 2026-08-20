@@ -52,3 +52,22 @@ func TestResolveAtToneUsesAffixedAlias(t *testing.T) {
 		t.Fatalf("alias = %q", selections[0].Alias)
 	}
 }
+
+func TestResolveAtToneUsesAffixedCVVCTransition(t *testing.T) {
+	bank := &Bank{
+		Entries: map[string][]oto.Entry{
+			"あ_C4":   {{Alias: "あ_C4"}},
+			"か_C4":   {{Alias: "か_C4"}},
+			"a k_C4": {{Alias: "a k_C4"}},
+		},
+		PrefixMap: map[string]Affix{"C4": {Suffix: "_C4"}},
+	}
+	morae, _ := frontend.ParseKana("あか")
+	selections, err := bank.ResolveAtTone(morae, "C4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selections) != 2 || !selections[1].Composite || selections[1].Transition == nil || selections[1].Transition.Alias != "a k_C4" {
+		t.Fatalf("selections = %#v", selections)
+	}
+}
