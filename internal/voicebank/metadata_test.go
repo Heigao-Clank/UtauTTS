@@ -71,3 +71,29 @@ func TestResolveAtToneUsesAffixedCVVCTransition(t *testing.T) {
 		t.Fatalf("selections = %#v", selections)
 	}
 }
+
+func TestLoadPrefixMapPreservesEmptyAffixes(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "oto.ini"), "a.wav=a,0,0,0,0,0\n")
+	write(t, filepath.Join(root, "prefix.map"), "B3\t\t_B3\r\nC4\t\t\r\nF4\t\t F4\r\n")
+
+	bank, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bank.PrefixMap["B3"]; got != (Affix{Suffix: "_B3"}) {
+		t.Fatalf("B3 affix = %+v", got)
+	}
+	if got, ok := bank.PrefixMap["C4"]; !ok || got != (Affix{}) {
+		t.Fatalf("C4 affix = %+v, present = %t", got, ok)
+	}
+	if got := bank.PrefixMap["F4"]; got != (Affix{Suffix: " F4"}) {
+		t.Fatalf("F4 affix = %+v", got)
+	}
+	if len(bank.Diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v", bank.Diagnostics)
+	}
+	if got, ok := bank.AffixForTone("C4"); !ok || got != (Affix{}) {
+		t.Fatalf("C4 lookup = %+v, %t", got, ok)
+	}
+}

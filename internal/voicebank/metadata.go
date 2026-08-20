@@ -37,8 +37,9 @@ func (b *Bank) loadMetadata() {
 		return
 	}
 	for index, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+		line = strings.TrimSuffix(line, "\r")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
 			continue
 		}
 		fields := strings.Split(line, "\t")
