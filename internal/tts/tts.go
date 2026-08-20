@@ -742,6 +742,9 @@ func cloneFeatureFrame(frame prosody.FeatureFrame) prosody.FeatureFrame {
 func moraTimings(morae []frontend.Mora, synthesisPlan *plan.Plan) []prosody.MoraTiming {
 	byPosition := make(map[int]plan.Unit, len(synthesisPlan.Units))
 	for _, unit := range synthesisPlan.Units {
+		if unit.Role == "transition" {
+			continue
+		}
 		byPosition[unit.Position] = unit
 	}
 	timings := make([]prosody.MoraTiming, len(morae))

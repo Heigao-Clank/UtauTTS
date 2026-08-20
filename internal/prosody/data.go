@@ -147,5 +147,5 @@ func median(values []float64) float64 {
 }
 
 func moraFromTarget(target Target) frontend.Mora {
-	return frontend.Mora{Text: target.Mora, Vowel: target.Vowel, Pause: target.Pause}
+	return frontend.Mora{Text: target.Mora, Consonant: frontend.ConsonantOf(target.Mora), Vowel: target.Vowel, Pause: target.Pause}
 }

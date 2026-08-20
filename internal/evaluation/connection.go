@@ -73,7 +73,7 @@ func Analyze(pcm *audio.PCM, synthesisPlan *plan.Plan) (*Report, error) {
 		metric := Metric{
 			UnitIndex: i, Position: unit.Position, TimeMS: timeMS,
 			HandoffStartMS: handoffStartMS, HandoffEndMS: handoffEndMS,
-			Connected:       unit.Position == synthesisPlan.Units[i-1].Position+1,
+			Connected:       unitsShareHandoff(synthesisPlan.Units[i-1], unit),
 			Click:           math.Abs(wave[frame] - wave[frame-1]),
 			PeakClick:       peakClick,
 			DeltaRMS:        deltaRMS,
@@ -115,6 +115,24 @@ func Analyze(pcm *audio.PCM, synthesisPlan *plan.Plan) (*Report, error) {
 		report.MeanF0DeltaCents = f0Sum / float64(f0Count)
 	}
 	return report, nil
+}
+
+func unitsShareHandoff(previous, current plan.Unit) bool {
+	previousRole := previous.Role
+	if previousRole == "" {
+		previousRole = "mora"
+	}
+	currentRole := current.Role
+	if currentRole == "" {
+		currentRole = "mora"
+	}
+	if currentRole == "transition" {
+		return previousRole == "mora" && current.Position == previous.Position+1
+	}
+	if previousRole == "transition" {
+		return currentRole == "mora" && current.Position == previous.Position
+	}
+	return current.Position == previous.Position+1
 }
 
 func derivativeMetrics(wave []float64) (peak, rms float64) {

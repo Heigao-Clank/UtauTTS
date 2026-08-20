@@ -320,7 +320,7 @@ func openUtauClassicTimings(units []plan.Unit) ([]openUtauClassicTiming, float64
 		if unit.Silent {
 			continue
 		}
-		if first < 0 {
+		if first < 0 && unit.Role != "transition" {
 			first = index
 		}
 		autoPreutter := unit.PreutteranceMS
@@ -360,11 +360,13 @@ func openUtauClassicTimings(units []plan.Unit) ([]openUtauClassicTiming, float64
 		result[index].overlapped = previous >= 0 && adjacent && autoOverlap > 0
 		if previous >= 0 {
 			if adjacent {
-				result[previous].tailIntrude = math.Max(autoPreutter, autoPreutter-autoOverlap)
-				result[previous].tailOverlap = math.Max(autoOverlap, 0)
+				result[previous].tailIntrude = math.Max(result[previous].tailIntrude, math.Max(autoPreutter, autoPreutter-autoOverlap))
+				result[previous].tailOverlap = math.Max(result[previous].tailOverlap, math.Max(autoOverlap, 0))
 			}
 		}
-		previous = index
+		if unit.Role != "transition" {
+			previous = index
+		}
 	}
 	phraseStart := 0.0
 	if first >= 0 {
@@ -417,7 +419,7 @@ func measureWorldlinePitches(synthesisPlan *plan.Plan, cache *sourceCache) ([]fl
 	values := make([]float64, len(synthesisPlan.Units))
 	sampleRate := 0
 	for i, unit := range synthesisPlan.Units {
-		if unit.Silent {
+		if unit.Silent || unit.Role == "transition" {
 			continue
 		}
 		mono, err := cache.loadMono(unit.Source)

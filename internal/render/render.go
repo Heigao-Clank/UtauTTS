@@ -508,7 +508,7 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 	pitches := make([]float64, len(synthesisPlan.Units))
 	var voiced []float64
 	for i, unit := range synthesisPlan.Units {
-		if unit.Silent {
+		if unit.Silent || unit.Role == "transition" {
 			continue
 		}
 		mono, err := cache.loadMono(unit.Source)
@@ -549,20 +549,44 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 	}
 
 	for start := 0; start < len(synthesisPlan.Units); {
+		if synthesisPlan.Units[start].Role == "transition" {
+			start++
+			continue
+		}
 		end := start + 1
-		for end < len(synthesisPlan.Units) && synthesisPlan.Units[end].Position == synthesisPlan.Units[end-1].Position+1 {
+		lastPosition := synthesisPlan.Units[start].Position
+		for end < len(synthesisPlan.Units) {
+			unit := synthesisPlan.Units[end]
+			if unit.Role == "transition" {
+				end++
+				continue
+			}
+			if unit.Position != lastPosition+1 {
+				break
+			}
+			lastPosition = unit.Position
 			end++
 		}
+		moraCount := 0
+		for index := start; index < end; index++ {
+			if synthesisPlan.Units[index].Role != "transition" {
+				moraCount++
+			}
+		}
+		moraIndex := 0
 		for i := start; i < end; i++ {
+			if synthesisPlan.Units[i].Role == "transition" {
+				continue
+			}
 			position := 0.0
-			if end-start > 1 {
-				position = float64(i-start) / float64(end-start-1)
+			if moraCount > 1 {
+				position = float64(moraIndex) / float64(moraCount-1)
 			}
 			semitones := 0.3 - 0.8*position
-			if i == start {
+			if moraIndex == 0 {
 				semitones -= 0.35
 			}
-			if i == start+1 {
+			if moraIndex == 1 {
 				semitones += 0.25
 			}
 			target := reference * math.Pow(2, semitones/12)
@@ -583,6 +607,7 @@ func analyzeIntonation(synthesisPlan *plan.Plan, timings []effectiveTiming, cach
 				unit.TargetF0Hz = pitches[i] * factors[i] * pitchFactor
 			}
 			unit.IntonationFactor = factors[i]
+			moraIndex++
 		}
 		start = end
 	}
@@ -608,7 +633,7 @@ func handoffGain(globalFrame, unitIndex int, synthesisPlan *plan.Plan, timings [
 	}
 	unit := synthesisPlan.Units[unitIndex]
 	next := synthesisPlan.Units[unitIndex+1]
-	if next.Position != unit.Position+1 {
+	if !unitsShareHandoff(unit, next) {
 		return 1
 	}
 	nextTiming := timings[unitIndex+1]
@@ -622,6 +647,24 @@ func handoffGain(globalFrame, unitIndex int, synthesisPlan *plan.Plan, timings [
 	}
 	progress := float64(globalFrame-start) / float64(end-start)
 	return 1 - smoothstep(progress)
+}
+
+func unitsShareHandoff(previous, next plan.Unit) bool {
+	previousRole := previous.Role
+	if previousRole == "" {
+		previousRole = "mora"
+	}
+	nextRole := next.Role
+	if nextRole == "" {
+		nextRole = "mora"
+	}
+	if nextRole == "transition" {
+		return previousRole == "mora" && next.Position == previous.Position+1
+	}
+	if previousRole == "transition" {
+		return nextRole == "mora" && next.Position == previous.Position
+	}
+	return next.Position == previous.Position+1
 }
 
 func fadeInDurationMS(timing effectiveTiming) float64 {

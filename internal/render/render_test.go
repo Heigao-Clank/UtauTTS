@@ -85,6 +85,44 @@ func TestMinimumHandoffIsComplementaryWhenPreutteranceEqualsOverlap(t *testing.T
 	}
 }
 
+func TestCVVCHandoffCoversMoraToTransitionAndTransitionToMora(t *testing.T) {
+	units := []plan.Unit{
+		{Position: 0, Role: "mora", NoteStartMS: 0, DurationMS: 100},
+		{Position: 1, Role: "transition", NoteStartMS: 100, DurationMS: 30, PreutteranceMS: 30, OverlapMS: 0},
+		{Position: 1, Role: "mora", NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
+	}
+	if !unitsShareHandoff(units[0], units[1]) || !unitsShareHandoff(units[1], units[2]) {
+		t.Fatal("CVVC units did not form both handoff boundaries")
+	}
+	if unitsShareHandoff(units[0], plan.Unit{Position: 2, Role: "mora"}) {
+		t.Fatal("non-adjacent CVVC units were treated as one handoff")
+	}
+}
+
+func TestRenderCVVCPlanWithTransitionUnit(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/unit.wav"
+	data := make([]int16, 400)
+	for i := range data {
+		data[i] = int16(6000 * math.Sin(2*math.Pi*120*float64(i)/1000))
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{DurationMS: 200, Units: []plan.Unit{
+		{Position: 0, Role: "mora", Alias: "あ", Source: path, NoteStartMS: 0, DurationMS: 100, PreutteranceMS: 20},
+		{Position: 1, Role: "transition", Alias: "a k", Source: path, NoteStartMS: 100, DurationMS: 30, PreutteranceMS: 50, OverlapMS: 20, ConsonantMS: 20},
+		{Position: 1, Role: "mora", Alias: "か", Source: path, NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
+	}}
+	pcm, err := Render(p, Config{ReleaseMS: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pcm.Data) < 220 {
+		t.Fatalf("CVVC render frames = %d, want at least 220", len(pcm.Data))
+	}
+}
+
 func TestFadeInDurationKeepsConfiguredLongCrossfade(t *testing.T) {
 	if got := fadeInDurationMS(effectiveTiming{preutteranceMS: 60, overlapMS: 20}); got != 40 {
 		t.Fatalf("fade-in duration=%f, want 40", got)
@@ -147,6 +185,24 @@ func TestOpenUtauEnvelopeUsesNextPhoneTailTiming(t *testing.T) {
 		if envelope[index].XMS != want {
 			t.Fatalf("envelope point %d x = %.1f, want %.1f", index, envelope[index].XMS, want)
 		}
+	}
+}
+
+func TestOpenUtauClassicTimingsKeepMoraTimingAcrossCVVCTransition(t *testing.T) {
+	units := []plan.Unit{
+		{Position: 0, Role: "mora", NoteStartMS: 0, DurationMS: 100, PreutteranceMS: 30, OverlapMS: 5},
+		{Position: 1, Role: "transition", NoteStartMS: 100, DurationMS: 30, PreutteranceMS: 50, OverlapMS: 20},
+		{Position: 1, Role: "mora", NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
+	}
+	timings, phraseStart := openUtauClassicTimings(units)
+	if timings[1].preutter != 50 || timings[1].overlap != 20 {
+		t.Fatalf("transition timing = %+v", timings[1])
+	}
+	if timings[2].preutter != 40 || timings[2].overlap != 10 || !timings[2].overlapped {
+		t.Fatalf("main timing = %+v", timings[2])
+	}
+	if timings[0].tailIntrude != 50 || timings[0].tailOverlap != 20 || phraseStart != -30 {
+		t.Fatalf("mora tail timing = %+v phraseStart=%.1f", timings[0], phraseStart)
 	}
 }
 
@@ -486,6 +542,34 @@ func TestAnalyzeIntonationMeasuresAndLimitsCorrection(t *testing.T) {
 	}
 	if p.Units[2].TargetF0Hz >= p.Units[1].TargetF0Hz {
 		t.Fatalf("phrase does not fall: %#v", p.Units)
+	}
+}
+
+func TestAnalyzeIntonationSkipsCVVCTransitionInMoraContour(t *testing.T) {
+	dir := t.TempDir()
+	paths := make([]string, 3)
+	for index, hz := range []float64{200, 220, 240} {
+		paths[index] = dir + "/cvvc-tone" + string(rune('0'+index)) + ".wav"
+		data := make([]int16, 8000)
+		for i := range data {
+			data[i] = int16(6000 * math.Sin(2*math.Pi*hz*float64(i)/16000))
+		}
+		if err := audio.WriteWav(paths[index], &audio.PCM{SampleRate: 16000, Channels: 1, Data: data}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &plan.Plan{Units: []plan.Unit{
+		{Position: 0, Role: "mora", Source: paths[0]},
+		{Position: 1, Role: "transition", Source: paths[1]},
+		{Position: 1, Role: "mora", Source: paths[1]},
+		{Position: 2, Role: "mora", Source: paths[2]},
+	}}
+	factors := analyzeIntonation(p, make([]effectiveTiming, len(p.Units)), &sourceCache{}, 1)
+	if factors[1] != 1 || p.Units[1].SourceF0Hz != 0 || p.Units[1].TargetF0Hz != 0 {
+		t.Fatalf("transition received intonation: factor=%v unit=%#v", factors[1], p.Units[1])
+	}
+	if p.Units[2].SourceF0Hz == 0 || p.Units[2].TargetF0Hz == 0 || p.Units[3].TargetF0Hz == 0 {
+		t.Fatalf("mora contour omitted a main unit: %#v", p.Units)
 	}
 }
 

@@ -53,7 +53,7 @@ func applyBoundaryBridges(mix, mixWeights []float64, rendered []renderedUnit, sy
 	extractor := connection.NewExtractor()
 	for index := 1; index < len(rendered); index++ {
 		previous, current := rendered[index-1], rendered[index]
-		if previous.index+1 != current.index || previous.unit.Position+1 != current.unit.Position {
+		if previous.index+1 != current.index || previous.unit.Role == "transition" || current.unit.Role == "transition" || previous.unit.Position+1 != current.unit.Position {
 			continue
 		}
 		features := extractor.Pair(asOtoEntry(previous.unit), asOtoEntry(current.unit))

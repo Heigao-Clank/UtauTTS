@@ -81,3 +81,38 @@ func TestBuildUsesPerMoraDurationOverride(t *testing.T) {
 		t.Fatalf("timing = %+v duration=%v", got.Units, got.DurationMS)
 	}
 }
+
+func TestBuildAddsCVVCTransitionWithoutChangingMoraTimeline(t *testing.T) {
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bank := &voicebank.Bank{Root: "bank"}
+	transition := &voicebank.Selection{
+		Position: 1, Mora: morae[1], Alias: "a k", Kind: voicebank.AliasVC,
+		Entry: oto.Entry{Filename: "ak.wav", Preutterance: 50, Overlap: 20, Fixed: 20},
+	}
+	selections := []voicebank.Selection{
+		{Position: 0, Mora: morae[0], Alias: "あ", Kind: voicebank.AliasCV, Entry: oto.Entry{Filename: "a.wav"}},
+		{Position: 1, Mora: morae[1], Alias: "か", Kind: voicebank.AliasCV, Entry: oto.Entry{Filename: "ka.wav"}, Transition: transition},
+	}
+	got, err := Build(bank, "あか", morae, selections, Config{MoraDurationMS: 100, PauseDurationMS: 180})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Units) != 3 {
+		t.Fatalf("units = %#v", got.Units)
+	}
+	if got.Units[1].Role != "transition" || got.Units[1].Alias != "a k" || got.Units[1].Position != 1 {
+		t.Fatalf("transition unit = %#v", got.Units[1])
+	}
+	if got.Units[1].PreutteranceMS != 50 || got.Units[1].OverlapMS != 20 || got.Units[1].DurationMS != 30 {
+		t.Fatalf("transition timing = %#v", got.Units[1])
+	}
+	if got.Units[2].Role != "mora" || got.Units[2].NoteStartMS != 100 || got.Units[2].DurationMS != 100 {
+		t.Fatalf("main unit = %#v", got.Units[2])
+	}
+	if got.DurationMS != 200 {
+		t.Fatalf("duration = %v", got.DurationMS)
+	}
+}

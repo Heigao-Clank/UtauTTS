@@ -349,3 +349,28 @@ func TestSynthesizePropagatesAliasPolicyIntoPlan(t *testing.T) {
 		}
 	}
 }
+
+func TestSynthesizeUsesCVVCTransitionInAutoMode(t *testing.T) {
+	root := t.TempDir()
+	samples := make([]int16, 8000)
+	for index := range samples {
+		samples[index] = int16(3000 * math.Sin(2*math.Pi*220*float64(index)/16000))
+	}
+	if err := audio.WriteWav(filepath.Join(root, "source.wav"), &audio.PCM{SampleRate: 16000, Channels: 1, Data: samples}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "oto.ini"), []byte(
+		"source.wav=あ,0,100,0,50,10\n"+"source.wav=か,0,100,0,50,10\n"+"source.wav=a k,0,100,0,50,10\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Synthesize(Config{VoicebankPath: root, Reading: "あか", MoraDurationMS: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Plan.Units) != 3 || result.Plan.Units[1].Role != "transition" || result.Plan.Units[1].Alias != "a k" {
+		t.Fatalf("CVVC plan = %#v", result.Plan.Units)
+	}
+	if len(result.MoraDurationsMS) != 2 || result.MoraDurationsMS[0] != 100 || result.MoraDurationsMS[1] != 100 {
+		t.Fatalf("mora timings = %#v", result.MoraDurationsMS)
+	}
+}

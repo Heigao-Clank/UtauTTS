@@ -67,3 +67,19 @@ func TestAnalyzeMeasuresRenderedHandoffRange(t *testing.T) {
 		t.Fatalf("click at actual handoff was not detected: %#v", metric)
 	}
 }
+
+func TestAnalyzeTreatsCVVCTransitionBoundariesAsConnected(t *testing.T) {
+	data := make([]int16, 4000)
+	p := &plan.Plan{Units: []plan.Unit{
+		{Position: 0, Role: "mora", NoteStartMS: 0, DurationMS: 100},
+		{Position: 1, Role: "transition", NoteStartMS: 100, DurationMS: 30, PreutteranceMS: 30},
+		{Position: 1, Role: "mora", NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
+	}}
+	report, err := Analyze(&audio.PCM{SampleRate: 8000, Channels: 1, Data: data}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ConnectedCount != 2 || len(report.Boundaries) != 2 || !report.Boundaries[0].Connected || !report.Boundaries[1].Connected {
+		t.Fatalf("report = %#v", report)
+	}
+}

@@ -3,13 +3,15 @@ package plan
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"utautts/internal/frontend"
+	"utautts/internal/oto"
 	"utautts/internal/prosody"
 	"utautts/internal/voicebank"
 )
 
-const Version = 10
+const Version = 11
 
 type Config struct {
 	MoraDurationMS   float64
@@ -75,38 +77,44 @@ type BoundaryRepairDecision struct {
 }
 
 type Unit struct {
-	Position                int     `json:"position"`
-	Mora                    string  `json:"mora"`
-	Alias                   string  `json:"alias"`
-	Source                  string  `json:"source"`
-	Silent                  bool    `json:"silent,omitempty"`
-	LongUnitGroup           int     `json:"long_unit_group,omitempty"`
-	LongUnitSize            int     `json:"long_unit_size,omitempty"`
-	OtoPath                 string  `json:"oto_path"`
-	OtoLine                 int     `json:"oto_line"`
-	NoteStartMS             float64 `json:"note_start_ms"`
-	DurationMS              float64 `json:"duration_ms"`
-	OffsetMS                float64 `json:"offset_ms"`
-	ConsonantMS             float64 `json:"consonant_ms"`
-	CutoffMS                float64 `json:"cutoff_ms"`
-	PreutteranceMS          float64 `json:"preutterance_ms"`
-	OverlapMS               float64 `json:"overlap_ms"`
-	PitchFactor             float64 `json:"pitch_factor"`
-	EnergyFactor            float64 `json:"energy_factor"`
-	TimingScale             float64 `json:"timing_scale"`
-	EffectivePreutteranceMS float64 `json:"effective_preutterance_ms"`
-	EffectiveConsonantMS    float64 `json:"effective_consonant_ms"`
-	EffectiveOverlapMS      float64 `json:"effective_overlap_ms"`
-	SourceF0Hz              float64 `json:"source_f0_hz,omitempty"`
-	TargetF0Hz              float64 `json:"target_f0_hz,omitempty"`
-	IntonationFactor        float64 `json:"intonation_factor"`
-	CandidateCount          int     `json:"candidate_count"`
-	TargetScore             float64 `json:"target_score"`
-	JoinScore               float64 `json:"join_score"`
-	JoinProbability         float64 `json:"join_probability,omitempty"`
-	PathScore               float64 `json:"path_score"`
-	AliasKind               string  `json:"alias_kind,omitempty"`
-	FallbackTier            int     `json:"fallback_tier"`
+	Position                  int     `json:"position"`
+	Role                      string  `json:"role"`
+	ParentPosition            int     `json:"parent_position,omitempty"`
+	TransitionFrom            string  `json:"transition_from,omitempty"`
+	TransitionTo              string  `json:"transition_to,omitempty"`
+	Mora                      string  `json:"mora"`
+	Alias                     string  `json:"alias"`
+	Source                    string  `json:"source"`
+	Silent                    bool    `json:"silent,omitempty"`
+	LongUnitGroup             int     `json:"long_unit_group,omitempty"`
+	LongUnitSize              int     `json:"long_unit_size,omitempty"`
+	OtoPath                   string  `json:"oto_path"`
+	OtoLine                   int     `json:"oto_line"`
+	NoteStartMS               float64 `json:"note_start_ms"`
+	DurationMS                float64 `json:"duration_ms"`
+	OffsetMS                  float64 `json:"offset_ms"`
+	ConsonantMS               float64 `json:"consonant_ms"`
+	CutoffMS                  float64 `json:"cutoff_ms"`
+	PreutteranceMS            float64 `json:"preutterance_ms"`
+	OverlapMS                 float64 `json:"overlap_ms"`
+	PitchFactor               float64 `json:"pitch_factor"`
+	EnergyFactor              float64 `json:"energy_factor"`
+	TimingScale               float64 `json:"timing_scale"`
+	EffectivePreutteranceMS   float64 `json:"effective_preutterance_ms"`
+	EffectiveConsonantMS      float64 `json:"effective_consonant_ms"`
+	EffectiveOverlapMS        float64 `json:"effective_overlap_ms"`
+	SourceF0Hz                float64 `json:"source_f0_hz,omitempty"`
+	TargetF0Hz                float64 `json:"target_f0_hz,omitempty"`
+	IntonationFactor          float64 `json:"intonation_factor"`
+	CandidateCount            int     `json:"candidate_count"`
+	TargetScore               float64 `json:"target_score"`
+	JoinScore                 float64 `json:"join_score"`
+	JoinProbability           float64 `json:"join_probability,omitempty"`
+	TransitionJoinScore       float64 `json:"transition_join_score,omitempty"`
+	TransitionJoinProbability float64 `json:"transition_join_probability,omitempty"`
+	PathScore                 float64 `json:"path_score"`
+	AliasKind                 string  `json:"alias_kind,omitempty"`
+	FallbackTier              int     `json:"fallback_tier"`
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {
@@ -185,40 +193,102 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 				duration *= prediction.DurationFactor
 			}
 		}
-		entry := selection.Entry
+		if selection.Transition != nil {
+			transition := selection.Transition
+			transitionDuration := transitionDurationFor(transition.Entry, duration)
+			result.Units = append(result.Units, unitFromSelection(transition, position, cursor, transitionDuration, prediction, "transition"))
+		}
 		aliasKind := selection.Kind
 		if aliasKind == "" {
 			aliasKind = voicebank.ClassifyAlias(selection.Alias)
 		}
-		result.Units = append(result.Units, Unit{
-			Position:        position,
-			Mora:            mora.Text,
-			Alias:           selection.Alias,
-			AliasKind:       string(aliasKind),
-			FallbackTier:    selection.FallbackTier,
-			Source:          entry.Filename,
-			Silent:          entry.Filename == "",
-			OtoPath:         entry.OtoPath,
-			OtoLine:         entry.Line,
-			NoteStartMS:     cursor,
-			DurationMS:      duration,
-			OffsetMS:        entry.Offset,
-			ConsonantMS:     entry.Fixed,
-			CutoffMS:        entry.Blank,
-			PreutteranceMS:  entry.Preutterance,
-			OverlapMS:       entry.Overlap,
-			PitchFactor:     prediction.PitchFactor,
-			EnergyFactor:    prediction.EnergyFactor,
-			CandidateCount:  selection.CandidateCount,
-			TargetScore:     selection.TargetScore,
-			JoinScore:       selection.JoinScore,
-			JoinProbability: selection.JoinProbability,
-			PathScore:       selection.PathScore,
-		})
+		mainUnit := unitFromSelection(&selection, position, cursor, duration, prediction, "mora")
+		mainUnit.AliasKind = string(aliasKind)
+		mainUnit.TransitionJoinScore = selection.TransitionJoinScore
+		mainUnit.TransitionJoinProbability = selection.TransitionJoinProbability
+		result.Units = append(result.Units, mainUnit)
 		cursor += duration
 	}
 	result.DurationMS = cursor
 	return result, nil
+}
+
+func unitFromSelection(selection *voicebank.Selection, position int, noteStart, duration float64, prediction prosody.Prediction, role string) Unit {
+	entry := selection.Entry
+	aliasKind := selection.Kind
+	if aliasKind == "" {
+		aliasKind = voicebank.ClassifyAlias(selection.Alias)
+	}
+	unit := Unit{
+		Position:        position,
+		Role:            role,
+		Mora:            selection.Mora.Text,
+		Alias:           selection.Alias,
+		AliasKind:       string(aliasKind),
+		FallbackTier:    selection.FallbackTier,
+		Source:          entry.Filename,
+		Silent:          entry.Filename == "",
+		OtoPath:         entry.OtoPath,
+		OtoLine:         entry.Line,
+		NoteStartMS:     noteStart,
+		DurationMS:      duration,
+		OffsetMS:        entry.Offset,
+		ConsonantMS:     entry.Fixed,
+		CutoffMS:        entry.Blank,
+		PreutteranceMS:  entry.Preutterance,
+		OverlapMS:       entry.Overlap,
+		PitchFactor:     prediction.PitchFactor,
+		EnergyFactor:    prediction.EnergyFactor,
+		CandidateCount:  selection.CandidateCount,
+		TargetScore:     selection.TargetScore,
+		JoinScore:       selection.JoinScore,
+		JoinProbability: selection.JoinProbability,
+		PathScore:       selection.PathScore,
+	}
+	if role == "transition" {
+		unit.ParentPosition = position
+		unit.TransitionFrom = transitionContext(selection.Alias)
+		unit.TransitionTo = transitionTarget(selection.Alias)
+		unit.PitchFactor = 1
+		unit.EnergyFactor = 1
+		unit.PreutteranceMS, unit.OverlapMS = transitionTiming(entry, duration)
+		unit.ConsonantMS = math.Min(math.Max(0, entry.Fixed), duration)
+	}
+	return unit
+}
+
+func transitionDurationFor(entry oto.Entry, moraDuration float64) float64 {
+	base := entry.Preutterance - math.Min(math.Max(0, entry.Overlap), math.Max(0, entry.Preutterance))
+	if base <= 0 {
+		base = 35
+	}
+	maximum := math.Max(24, moraDuration*0.45)
+	return math.Max(12, math.Min(maximum, base))
+}
+
+func transitionTiming(entry oto.Entry, duration float64) (preutterance, overlap float64) {
+	preutterance = math.Max(0, entry.Preutterance)
+	if preutterance <= 0 {
+		preutterance = duration
+	}
+	overlap = math.Max(0, math.Min(entry.Overlap, preutterance))
+	return preutterance, overlap
+}
+
+func transitionContext(alias string) string {
+	parts := strings.Fields(alias)
+	if len(parts) == 2 {
+		return parts[0]
+	}
+	return ""
+}
+
+func transitionTarget(alias string) string {
+	parts := strings.Fields(alias)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return ""
 }
 
 func configuredMoraDuration(mora frontend.Mora, position int, cfg Config) (float64, bool) {
