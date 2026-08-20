@@ -48,6 +48,7 @@ ApplicationWindow {
     property url updateDownloadUrl: ""
     property double updateDownloadReceived: 0
     property double updateDownloadTotal: 0
+    property bool updateSuppressVersion: false
 
     property alias utterancesModel: utterances
     property alias playerMedia: player
@@ -419,6 +420,17 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 color: window.mutedText
                 font.pixelSize: 11
+            }
+
+            CheckBox {
+                id: suppressUpdateVersionCheckBox
+                Layout.fillWidth: true
+                text: window.translator.tr("update.suppressVersion")
+                checked: window.updateSuppressVersion
+                onToggled: {
+                    window.updateSuppressVersion = checked;
+                    window.appBackend.setSuppressedUpdateVersion(checked ? window.updateAvailableVersion : "");
+                }
             }
 
             RowLayout {
@@ -934,6 +946,7 @@ window.translator.load(window.appBackend.language);
                 const suppressed = window.appBackend.suppressedUpdateVersion();
                 if (suppressed && window.compareVersions(latest, suppressed) <= 0)
                     return;
+                window.updateSuppressVersion = false;
                 window.updateAvailableVersion = latest;
                 window.updateReleaseNotes = data.body ? String(data.body) : "";
                 window.updateReleaseUrl = data.html_url ? String(data.html_url) : "";
