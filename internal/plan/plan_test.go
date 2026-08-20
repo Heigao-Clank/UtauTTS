@@ -17,6 +17,7 @@ func TestBuildPlacesMoraeAndPause(t *testing.T) {
 	selections := []voicebank.Selection{
 		{
 			Position: 0, Mora: morae[0], Alias: "あ", Entry: oto.Entry{Filename: "a.wav"},
+			Kind: voicebank.AliasCV, FallbackTier: 1,
 			CandidateCount: 3, TargetScore: 100, JoinScore: -2, JoinProbability: 0.75, PathScore: 98,
 		},
 		{Position: 2, Mora: morae[2], Alias: "ん", Entry: oto.Entry{Filename: "n.wav"}},
@@ -24,6 +25,7 @@ func TestBuildPlacesMoraeAndPause(t *testing.T) {
 	}
 	got, err := Build(bank, "あ、んっ", morae, selections, Config{
 		MoraDurationMS: 100, PauseDurationMS: 200, SelectionMode: voicebank.SelectionGreedy,
+		AliasPolicy:  voicebank.AliasPolicyCVOnly,
 		JoinCostMode: "learned", JoinModelVersion: 1,
 	})
 	if err != nil {
@@ -38,10 +40,10 @@ func TestBuildPlacesMoraeAndPause(t *testing.T) {
 	if got.DurationMS != 455 {
 		t.Fatalf("duration = %v", got.DurationMS)
 	}
-	if got.Version != Version || got.SelectionMode != "greedy" || got.JoinCostMode != "learned" || got.JoinModelVersion != 1 {
+	if got.Version != Version || got.SelectionMode != "greedy" || got.AliasPolicy != string(voicebank.AliasPolicyCVOnly) || got.JoinCostMode != "learned" || got.JoinModelVersion != 1 {
 		t.Fatalf("plan audit = %#v", got)
 	}
-	if unit := got.Units[0]; unit.CandidateCount != 3 || unit.TargetScore != 100 || unit.JoinScore != -2 || unit.JoinProbability != 0.75 || unit.PathScore != 98 {
+	if unit := got.Units[0]; unit.AliasKind != string(voicebank.AliasCV) || unit.FallbackTier != 1 || unit.CandidateCount != 3 || unit.TargetScore != 100 || unit.JoinScore != -2 || unit.JoinProbability != 0.75 || unit.PathScore != 98 {
 		t.Fatalf("selection score audit = %#v", unit)
 	}
 }

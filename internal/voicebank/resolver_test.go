@@ -31,6 +31,115 @@ func TestResolvePrefersVCVAndFallsBackToCV(t *testing.T) {
 	}
 }
 
+func TestResolveCVOnlySuppressesVCVCandidates(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{
+		"- あ": {{Alias: "- あ"}},
+		"a か": {{Alias: "a か"}},
+		"あ":   {{Alias: "あ"}},
+		"か":   {{Alias: "か"}},
+	}}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bank.ResolveWithConfig(morae, ResolveConfig{AliasPolicy: AliasPolicyCVOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Alias != "あ" || got[1].Alias != "か" {
+		t.Fatalf("cv-only selections = %#v", got)
+	}
+	if got[0].Kind != AliasCV || got[1].Kind != AliasCV {
+		t.Fatalf("cv-only kinds = %#v", got)
+	}
+}
+
+func TestResolveVCVPreferKeepsUsableVCVAboveCV(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{
+		"- あ": {{Alias: "- あ", Filename: "vcv-start.wav"}},
+		"a か": {{Alias: "a か", Filename: "vcv.wav"}},
+		"あ":   {{Alias: "あ", Filename: "cv.wav"}},
+		"か":   {{Alias: "か", Filename: "cv.wav"}},
+	}}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bank.ResolveWithConfig(morae, ResolveConfig{AliasPolicy: AliasPolicyVCVPrefer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Kind != AliasVCV || got[1].Kind != AliasVCV {
+		t.Fatalf("vcv-prefer selections = %#v", got)
+	}
+}
+
+func TestResolveVCVPreferFallsBackFromBrokenVCV(t *testing.T) {
+	bank := &Bank{Entries: map[string][]oto.Entry{
+		"- あ": {{Alias: "- あ", Fixed: 0, Preutterance: 200, Overlap: 250, Offset: -1}},
+		"a か": {{Alias: "a か", Fixed: 0, Preutterance: 200, Overlap: 250, Offset: -1}},
+		"あ":   {{Alias: "あ", Fixed: 100, Preutterance: 50, Overlap: 10}},
+		"か":   {{Alias: "か", Fixed: 100, Preutterance: 50, Overlap: 10}},
+	}}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bank.ResolveWithConfig(morae, ResolveConfig{AliasPolicy: AliasPolicyVCVPrefer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Kind != AliasCV || got[1].Kind != AliasCV {
+		t.Fatalf("broken VCV fallback = %#v", got)
+	}
+}
+
+func TestAliasCandidatesHandleSpecialMoraContexts(t *testing.T) {
+	contains := func(candidates []aliasCandidate, name string) bool {
+		for _, candidate := range candidates {
+			if candidate.name == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !contains(aliasCandidatesWithPolicy("か", "n", false, AliasPolicyAuto), "n か") {
+		t.Fatal("n-context VCV candidate was not generated")
+	}
+	if contains(aliasCandidatesWithPolicy("か", "cl", false, AliasPolicyAuto), "cl か") {
+		t.Fatal("closure was incorrectly used as a VCV context")
+	}
+	if contains(aliasCandidatesWithPolicy("っ", "", true, AliasPolicyAuto), "- っ") {
+		t.Fatal("closure was incorrectly offered as an initial VCV target")
+	}
+	if !contains(aliasCandidatesWithPolicy("ー", "u", false, AliasPolicyAuto), "u う") {
+		t.Fatal("long-vowel candidate did not use the preceding vowel")
+	}
+}
+
+func TestAuditLatticeReportsAliasKindsAndSelection(t *testing.T) {
+	bank := &Bank{Root: "bank", Entries: map[string][]oto.Entry{
+		"- あ": {{Alias: "- あ", Filename: "vcv-start.wav"}},
+		"a か": {{Alias: "a か", Filename: "vcv.wav"}},
+		"あ":   {{Alias: "あ", Filename: "cv.wav"}},
+		"か":   {{Alias: "か", Filename: "cv.wav"}},
+	}}
+	morae, err := frontend.ParseKana("あか")
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit, err := bank.AuditLattice(morae, "C4", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audit.VCVSelectedPositions != 2 || audit.CVSelectedPositions != 0 {
+		t.Fatalf("selection counts = %+v", audit)
+	}
+	if len(audit.Positions) != 2 || audit.Positions[0].SelectedAliasKind != string(AliasVCV) || audit.Positions[1].VCVCandidateCount == 0 || audit.Positions[1].CVCandidateCount == 0 {
+		t.Fatalf("position audit = %#v", audit.Positions)
+	}
+}
+
 func TestResolveResetsContextAtPause(t *testing.T) {
 	bank := &Bank{Entries: map[string][]oto.Entry{
 		"- あ": {{Alias: "- あ"}},

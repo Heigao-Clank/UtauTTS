@@ -14,6 +14,26 @@ const (
 	AliasOther AliasKind = "other"
 )
 
+type AliasPolicy string
+
+const (
+	AliasPolicyAuto      AliasPolicy = "auto"
+	AliasPolicyVCVPrefer AliasPolicy = "vcv-prefer"
+	AliasPolicyCVOnly    AliasPolicy = "cv-only"
+)
+
+func (p AliasPolicy) valid() bool {
+	return p == "" || p == AliasPolicyAuto || p == AliasPolicyVCVPrefer || p == AliasPolicyCVOnly
+}
+
+type AliasCapabilities struct {
+	Counts         map[AliasKind]int
+	VCVContexts    map[string]int
+	HasVCV         bool
+	HasInitialVCV  bool
+	HasNContextVCV bool
+}
+
 func ClassifyAlias(alias string) AliasKind {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -28,6 +48,9 @@ func ClassifyAlias(alias string) AliasKind {
 	}
 	if len(parts) != 2 {
 		return AliasOther
+	}
+	if parts[0] == "*" && containsKana(parts[1]) {
+		return AliasCV
 	}
 	if (parts[0] == "-" || isVowelContext(parts[0])) && containsKana(parts[1]) {
 		return AliasVCV
@@ -66,9 +89,32 @@ func isConsonantContext(value string) bool {
 }
 
 func (b *Bank) AliasCounts() map[AliasKind]int {
-	counts := map[AliasKind]int{}
-	for alias := range b.Entries {
-		counts[ClassifyAlias(alias)]++
+	return b.AliasCapabilities().Counts
+}
+
+func (b *Bank) AliasCapabilities() AliasCapabilities {
+	capabilities := AliasCapabilities{
+		Counts:      map[AliasKind]int{},
+		VCVContexts: map[string]int{},
 	}
-	return counts
+	for alias := range b.Entries {
+		kind := ClassifyAlias(alias)
+		capabilities.Counts[kind]++
+		if kind != AliasVCV {
+			continue
+		}
+		capabilities.HasVCV = true
+		parts := strings.Fields(alias)
+		if len(parts) != 2 {
+			continue
+		}
+		capabilities.VCVContexts[parts[0]]++
+		if parts[0] == "-" {
+			capabilities.HasInitialVCV = true
+		}
+		if parts[0] == "n" {
+			capabilities.HasNContextVCV = true
+		}
+	}
+	return capabilities
 }

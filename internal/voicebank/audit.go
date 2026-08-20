@@ -11,6 +11,8 @@ import (
 )
 
 type LatticeAudit struct {
+	VCVSelectedPositions    int             `json:"vcv_selected_positions"`
+	CVSelectedPositions     int             `json:"cv_selected_positions"`
 	Positions               []PositionAudit `json:"positions"`
 	MultiCandidatePositions int             `json:"multi_candidate_positions"`
 	SameTargetPositions     int             `json:"same_target_positions"`
@@ -25,6 +27,11 @@ type LatticeAudit struct {
 }
 
 type PositionAudit struct {
+	VCVCandidateCount    int              `json:"vcv_candidate_count"`
+	CVCandidateCount     int              `json:"cv_candidate_count"`
+	SelectedAliasKind    string           `json:"selected_alias_kind"`
+	SelectedAlias        string           `json:"selected_alias"`
+	SelectedFallbackTier int              `json:"selected_fallback_tier"`
 	Position             int              `json:"position"`
 	Mora                 string           `json:"mora"`
 	CandidateCount       int              `json:"candidate_count"`
@@ -44,6 +51,8 @@ type PositionAudit struct {
 type CandidateAudit struct {
 	Index                  int     `json:"index"`
 	Alias                  string  `json:"alias"`
+	AliasKind              string  `json:"alias_kind"`
+	FallbackTier           int     `json:"fallback_tier"`
 	Source                 string  `json:"source"`
 	OtoPath                string  `json:"oto_path"`
 	OtoLine                int     `json:"oto_line"`
@@ -88,6 +97,10 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 			HandcraftedSelected: candidateIndex(layer, handcraftedByPosition[layer[0].Position]),
 			LearnedSelected:     -1,
 		}
+		selected := handcraftedByPosition[layer[0].Position]
+		position.SelectedAlias = selected.Alias
+		position.SelectedAliasKind = string(selected.Kind)
+		position.SelectedFallbackTier = selected.FallbackTier
 		if model != nil {
 			position.LearnedSelected = candidateIndex(layer, learnedByPosition[layer[0].Position])
 		}
@@ -95,6 +108,12 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 		sourceGroups := map[string]bool{}
 		groupPitches := map[string][]float64{}
 		for candidateIndex, candidate := range layer {
+			switch candidate.Kind {
+			case AliasVCV:
+				position.VCVCandidateCount++
+			case AliasCV:
+				position.CVCandidateCount++
+			}
 			minimum = min(minimum, candidate.TargetScore)
 			maximum = max(maximum, candidate.TargetScore)
 			measuredPitch := measureCandidateF0(candidate.Entry, pitchCache)
@@ -115,7 +134,7 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 				groupPitches[group] = append(groupPitches[group], measuredPitch.Hz)
 			}
 			audit := CandidateAudit{
-				Index: candidateIndex, Alias: candidate.Alias,
+				Index: candidateIndex, Alias: candidate.Alias, AliasKind: string(candidate.Kind), FallbackTier: candidate.FallbackTier,
 				Source:  relativePath(b.Root, candidate.Entry.Filename),
 				OtoPath: relativePath(b.Root, candidate.Entry.OtoPath), OtoLine: candidate.Entry.Line,
 				TargetScore: candidate.TargetScore, SourceGroup: group,
@@ -162,6 +181,12 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 		}
 		if position.HandcraftedSelected != position.TargetSelected {
 			result.HandcraftedChanges++
+		}
+		switch position.SelectedAliasKind {
+		case string(AliasVCV):
+			result.VCVSelectedPositions++
+		case string(AliasCV):
+			result.CVSelectedPositions++
 		}
 		if model != nil && position.LearnedSelected != position.TargetSelected {
 			result.LearnedChanges++

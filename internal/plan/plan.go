@@ -9,7 +9,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 9
+const Version = 10
 
 type Config struct {
 	MoraDurationMS   float64
@@ -17,6 +17,7 @@ type Config struct {
 	MoraDurationsMS  []float64
 	Predictions      []prosody.Prediction
 	SelectionMode    voicebank.SelectionMode
+	AliasPolicy      voicebank.AliasPolicy
 	JoinCostMode     string
 	JoinModelVersion int
 	JoinScoreScale   float64
@@ -28,6 +29,7 @@ type Plan struct {
 	Text                    string                   `json:"text,omitempty"`
 	Reading                 string                   `json:"reading"`
 	SelectionMode           string                   `json:"selection_mode"`
+	AliasPolicy             string                   `json:"alias_policy"`
 	JoinCostMode            string                   `json:"join_cost_mode"`
 	JoinModelVersion        int                      `json:"join_model_version,omitempty"`
 	JoinScoreScale          float64                  `json:"join_score_scale,omitempty"`
@@ -103,6 +105,8 @@ type Unit struct {
 	JoinScore               float64 `json:"join_score"`
 	JoinProbability         float64 `json:"join_probability,omitempty"`
 	PathScore               float64 `json:"path_score"`
+	AliasKind               string  `json:"alias_kind,omitempty"`
+	FallbackTier            int     `json:"fallback_tier,omitempty"`
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {
@@ -132,13 +136,17 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 	if selectionMode == "" {
 		selectionMode = voicebank.SelectionViterbi
 	}
+	aliasPolicy := cfg.AliasPolicy
+	if aliasPolicy == "" {
+		aliasPolicy = voicebank.AliasPolicyAuto
+	}
 	joinCostMode := cfg.JoinCostMode
 	if joinCostMode == "" {
 		joinCostMode = "handcrafted"
 	}
 	result := &Plan{
 		Version: Version, Voicebank: bank.Root, Reading: reading,
-		SelectionMode: string(selectionMode), JoinCostMode: joinCostMode,
+		SelectionMode: string(selectionMode), AliasPolicy: string(aliasPolicy), JoinCostMode: joinCostMode,
 		JoinModelVersion: cfg.JoinModelVersion,
 		JoinScoreScale:   cfg.JoinScoreScale,
 	}
@@ -178,10 +186,16 @@ func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selectio
 			}
 		}
 		entry := selection.Entry
+		aliasKind := selection.Kind
+		if aliasKind == "" {
+			aliasKind = voicebank.ClassifyAlias(selection.Alias)
+		}
 		result.Units = append(result.Units, Unit{
 			Position:        position,
 			Mora:            mora.Text,
 			Alias:           selection.Alias,
+			AliasKind:       string(aliasKind),
+			FallbackTier:    selection.FallbackTier,
 			Source:          entry.Filename,
 			Silent:          entry.Filename == "",
 			OtoPath:         entry.OtoPath,

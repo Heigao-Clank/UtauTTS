@@ -15,6 +15,8 @@ type Selection struct {
 	Position        int
 	Mora            frontend.Mora
 	Alias           string
+	Kind            AliasKind
+	FallbackTier    int
 	Entry           oto.Entry
 	Candidates      []string
 	CandidateCount  int
@@ -35,9 +37,10 @@ const (
 )
 
 type ResolveConfig struct {
-	Tone      string
-	Mode      SelectionMode
-	JoinModel *connection.LearnedModel
+	Tone        string
+	Mode        SelectionMode
+	AliasPolicy AliasPolicy
+	JoinModel   *connection.LearnedModel
 }
 
 type MissingAliasError struct {
@@ -66,7 +69,14 @@ func (b *Bank) ResolveWithConfig(morae []frontend.Mora, cfg ResolveConfig) ([]Se
 	if mode != SelectionViterbi && mode != SelectionGreedy && mode != SelectionTargetOnly {
 		return nil, fmt.Errorf("unknown selection mode %q", mode)
 	}
-	layers, err := b.candidateLayers(morae, cfg.Tone)
+	policy := cfg.AliasPolicy
+	if policy == "" {
+		policy = AliasPolicyAuto
+	}
+	if !policy.valid() {
+		return nil, fmt.Errorf("unknown alias policy %q", policy)
+	}
+	layers, err := b.candidateLayersWithPolicy(morae, cfg.Tone, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +87,10 @@ func (b *Bank) ResolveWithConfig(morae []frontend.Mora, cfg ResolveConfig) ([]Se
 }
 
 func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selection, error) {
+	return b.candidateLayersWithPolicy(morae, tone, AliasPolicyAuto)
+}
+
+func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, policy AliasPolicy) ([][]Selection, error) {
 	layers := make([][]Selection, 0, len(morae))
 	affix, hasAffix := b.AffixForTone(tone)
 	previousVowel := ""
@@ -89,7 +103,7 @@ func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selectio
 			continue
 		}
 
-		candidateSpecs := aliasCandidates(mora.Text, previousVowel, phraseStart)
+		candidateSpecs := aliasCandidatesWithPolicy(mora.Text, previousVowel, phraseStart, policy)
 		if hasAffix {
 			candidateSpecs = affixCandidates(candidateSpecs, affix)
 		}
@@ -100,8 +114,9 @@ func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selectio
 			for _, entry := range entries {
 				targetScore := candidateScore(candidate.tier, entry)
 				candidatesAtPosition = append(candidatesAtPosition, Selection{
-					Position: position, Mora: mora, Alias: candidate.name, Entry: entry,
-					Candidates: candidates, TargetScore: targetScore,
+					Position: position, Mora: mora, Alias: candidate.name, Kind: candidate.kind,
+					FallbackTier: candidate.tier, Entry: entry, Candidates: candidates,
+					TargetScore: targetScore,
 				})
 			}
 		}
@@ -109,6 +124,7 @@ func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selectio
 			if mora.Vowel == "cl" {
 				candidatesAtPosition = []Selection{{
 					Position: position, Mora: mora, Alias: "<closure>",
+					Kind: AliasOther, FallbackTier: 0,
 					Candidates: candidates, CandidateCount: 1,
 					TargetScore: 100,
 				}}
@@ -166,20 +182,25 @@ func candidateScore(candidateTier int, entry oto.Entry) float64 {
 type aliasCandidate struct {
 	name string
 	tier int
+	kind AliasKind
 }
 
 func affixCandidates(base []aliasCandidate, affix Affix) []aliasCandidate {
 	result := make([]aliasCandidate, 0, len(base)*2)
 	for _, candidate := range base {
 		result = append(result,
-			aliasCandidate{name: affix.Prefix + candidate.name + affix.Suffix, tier: candidate.tier},
-			aliasCandidate{name: candidate.name, tier: candidate.tier + 1},
+			aliasCandidate{name: affix.Prefix + candidate.name + affix.Suffix, tier: candidate.tier, kind: candidate.kind},
+			aliasCandidate{name: candidate.name, tier: candidate.tier + 1, kind: candidate.kind},
 		)
 	}
 	return uniqueCandidates(result)
 }
 
 func aliasCandidates(mora, previousVowel string, phraseStart bool) []aliasCandidate {
+	return aliasCandidatesWithPolicy(mora, previousVowel, phraseStart, AliasPolicyAuto)
+}
+
+func aliasCandidatesWithPolicy(mora, previousVowel string, phraseStart bool, policy AliasPolicy) []aliasCandidate {
 	forms := make([]string, 0, 4)
 	if mora == "ー" {
 		if vowelKana := map[string]string{"a": "あ", "i": "い", "u": "う", "e": "え", "o": "お"}[previousVowel]; vowelKana != "" {
@@ -193,24 +214,32 @@ func aliasCandidates(mora, previousVowel string, phraseStart bool) []aliasCandid
 	}
 
 	var candidates []aliasCandidate
-	if phraseStart {
+	allowVCVTarget := mora != "っ"
+	if policy != AliasPolicyCVOnly && allowVCVTarget && phraseStart {
 		for _, form := range forms {
-			candidates = append(candidates, aliasCandidate{name: "- " + form, tier: 0})
+			candidates = append(candidates, aliasCandidate{name: "- " + form, tier: 0, kind: AliasVCV})
 		}
-	} else if previousVowel != "" && previousVowel != "cl" {
+	} else if policy != AliasPolicyCVOnly && allowVCVTarget && previousVowel != "" && previousVowel != "cl" {
 		for _, form := range forms {
-			candidates = append(candidates, aliasCandidate{name: previousVowel + " " + form, tier: 0})
+			candidates = append(candidates, aliasCandidate{name: previousVowel + " " + form, tier: 0, kind: AliasVCV})
 		}
 	}
 	for _, form := range forms {
-		candidates = append(candidates, aliasCandidate{name: form, tier: 1})
+		candidates = append(candidates, aliasCandidate{name: form, tier: policyTier(policy, 1, AliasCV), kind: AliasCV})
 	}
-	if !phraseStart {
+	if policy != AliasPolicyCVOnly && !phraseStart {
 		for _, form := range forms {
-			candidates = append(candidates, aliasCandidate{name: "* " + form, tier: 2})
+			candidates = append(candidates, aliasCandidate{name: "* " + form, tier: policyTier(policy, 2, AliasCV), kind: AliasCV})
 		}
 	}
 	return uniqueCandidates(candidates)
+}
+
+func policyTier(policy AliasPolicy, tier int, kind AliasKind) int {
+	if policy == AliasPolicyVCVPrefer && kind != AliasVCV {
+		return tier + 2
+	}
+	return tier
 }
 
 func toKatakana(value string) string {
@@ -230,6 +259,9 @@ func uniqueCandidates(values []aliasCandidate) []aliasCandidate {
 	for _, value := range values {
 		if index, ok := indices[value.name]; ok {
 			result[index].tier = min(result[index].tier, value.tier)
+			if result[index].kind == AliasOther {
+				result[index].kind = value.kind
+			}
 		} else {
 			indices[value.name] = len(result)
 			result = append(result, value)
