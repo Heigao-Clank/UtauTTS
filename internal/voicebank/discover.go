@@ -24,8 +24,9 @@ type Presentation struct {
 	ReadmeText    string
 }
 
-// Discoverはroot直下のvoicebankを探す。root自体がvoicebankなら
-// それを唯一の結果として返す。
+// Discoverはroot直下のvoicebankを探す。展開時にトップディレクトリが
+// 二重になったvoice/bank/bank/oto.ini形式も1段だけ内側を確認する。
+// root自体がvoicebankなら、それを唯一の結果として返す。
 func Discover(root string) ([]Summary, error) {
 	if root == "" {
 		root = "voice"
@@ -44,7 +45,7 @@ func Discover(root string) ([]Summary, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		summary, inspectErr := Inspect(filepath.Join(root, entry.Name()))
+		summary, inspectErr := inspectDiscoveredRoot(filepath.Join(root, entry.Name()))
 		if inspectErr != nil {
 			continue
 		}
@@ -60,6 +61,43 @@ func Discover(root string) ([]Summary, error) {
 		return result[i].Name < result[j].Name
 	})
 	return result, nil
+}
+
+func inspectDiscoveredRoot(root string) (Summary, error) {
+	if hasDirectOto(root) {
+		return Inspect(root)
+	}
+	entries, err := os.ReadDir(root)
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			nested := filepath.Join(root, entry.Name())
+			if !hasDirectOto(nested) {
+				continue
+			}
+			if summary, inspectErr := Inspect(nested); inspectErr == nil {
+				return summary, nil
+			}
+		}
+	}
+	// Preserve support for voicebanks that intentionally keep multiple oto.ini
+	// files below their root; the wrapper form above is preferred when present.
+	return Inspect(root)
+}
+
+func hasDirectOto(root string) bool {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.EqualFold(entry.Name(), "oto.ini") {
+			return true
+		}
+	}
+	return false
 }
 
 // ResolveDirectoryは設定されたvoiceディレクトリをプロセスの作業ディレクトリから独立させる。

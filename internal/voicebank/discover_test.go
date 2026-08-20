@@ -102,6 +102,28 @@ func TestDiscoverAcceptsVoicebankRoot(t *testing.T) {
 	}
 }
 
+func TestDiscoverFindsOneLevelWrappedVoicebank(t *testing.T) {
+	root := t.TempDir()
+	inner := filepath.Join(root, "bundle", "bundle")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inner, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inner, "character.txt"), []byte("name=二重ルート音源\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != inner || got[0].Name != "二重ルート音源" {
+		t.Fatalf("Discover() = %#v", got)
+	}
+}
+
 func TestInspectFindsNestedOtoWithoutParsingIt(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "append")
