@@ -1321,7 +1321,8 @@ window.translator.load(window.appBackend.language);
         else if (name === "pauseDuration")
             editorContent.pitchEditor.defaultPauseDuration = value;
         markUtteranceDirty(selectedIndex);
-        if (["modelId", "renderer", "moraDuration", "pauseDuration", "intonation", "applyPitch"].indexOf(name) >= 0) {
+        if (["voicebankId", "aliasPolicy", "modelId", "renderer", "tone", "moraDuration",
+             "pauseDuration", "intonation", "applyPitch"].indexOf(name) >= 0) {
             const updated = utterances.get(selectedIndex);
             if (!window.batchExportActive && updated.content.trim() && updated.reading)
                 Qt.callLater(function() { window.requestProsodyPreview(selectedIndex); });
