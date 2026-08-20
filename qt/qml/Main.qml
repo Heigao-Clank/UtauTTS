@@ -1055,6 +1055,11 @@ window.translator.load(window.appBackend.language);
         return waveform ? waveform.id : window.defaultRendererId();
     }
 
+    function normalizeAliasPolicy(value) {
+        const policy = String(value || "auto");
+        return ["auto", "vcv-prefer", "cv-only"].indexOf(policy) >= 0 ? policy : "auto";
+    }
+
     function utteranceIndex(id) {
         for (let i = 0; i < utterances.count; ++i)
             if (utterances.get(i).utteranceId === id)
@@ -1133,6 +1138,7 @@ window.translator.load(window.appBackend.language);
                 voicebank_id: item.voicebankId || "",
                 model_id: item.modelId || "",
                 renderer_id: item.renderer || "",
+                alias_policy: window.normalizeAliasPolicy(item.aliasPolicy),
                 tone: item.tone || "C4",
                 mora_duration_ms: item.moraDuration,
                 pause_duration_ms: item.pauseDuration,
@@ -1154,7 +1160,7 @@ window.translator.load(window.appBackend.language);
         }
         return {
             format: "utautts-project",
-            format_version: 2,
+            format_version: 3,
             app_version: Qt.application.version,
             utterances: savedUtterances,
             selected_index: utterances.count ? selectedIndex : 0
@@ -1256,6 +1262,7 @@ window.translator.load(window.appBackend.language);
                 imagePath: voice ? voice.image_path || "" : "",
                 modelId: String(saved.model_id || ""),
                 renderer: rendererId,
+                aliasPolicy: window.normalizeAliasPolicy(saved.alias_policy),
                 tone: String(saved.tone || "C4"),
                 moraDuration: window.projectNumber(saved.mora_duration_ms, window.appBackend.defaultMoraDuration, 20, 1000, true),
                 pauseDuration: window.projectNumber(saved.pause_duration_ms, window.appBackend.defaultPauseDuration, 0, 3000, true),
@@ -1301,7 +1308,7 @@ window.translator.load(window.appBackend.language);
         if (item[name] === value)
             return;
         utterances.setProperty(selectedIndex, name, value);
-        if (["voicebankId", "modelId", "renderer", "tone", "moraDuration", "pauseDuration",
+        if (["voicebankId", "modelId", "renderer", "aliasPolicy", "tone", "moraDuration", "pauseDuration",
              "intonation", "applyPitch"].indexOf(name) >= 0)
             clearAutomaticProsody(selectedIndex);
         if (name === "moraDuration")
@@ -1449,6 +1456,10 @@ window.translator.load(window.appBackend.language);
                 utterances.setProperty(index, "renderer", rendererId);
                 changed = true;
             }
+            if (!item.aliasPolicy) {
+                utterances.setProperty(index, "aliasPolicy", "auto");
+                changed = true;
+            }
             if (changed)
                 markUtteranceDirty(index, suppressDirty !== true);
         }
@@ -1491,6 +1502,7 @@ window.translator.load(window.appBackend.language);
         editorContent.pitchEditor.moraDurations = window.displayedMoraDurations(item);
         editorContent.pitchEditor.moraPositions = window.displayedMoraPositions(item);
         selectCombo(editorContent.voiceCombo, item.voicebankId);
+        selectCombo(editorContent.aliasPolicyCombo, window.normalizeAliasPolicy(item.aliasPolicy));
         selectCombo(editorContent.modelCombo, item.modelId);
         selectCombo(editorContent.rendererCombo, item.renderer);
     }
@@ -1631,6 +1643,7 @@ window.translator.load(window.appBackend.language);
             imagePath: voice ? voice.image_path || "" : "",
             modelId: window.appBackend.models.length ? window.defaultModelId() : "",
             renderer: window.appBackend.renderers.length ? window.defaultRendererId() : "",
+            aliasPolicy: "auto",
             tone: "C4",
             moraDuration: window.appBackend.defaultMoraDuration,
             pauseDuration: window.appBackend.defaultPauseDuration,
@@ -1766,6 +1779,7 @@ window.translator.load(window.appBackend.language);
             voicebank_id: item.voicebankId || editorContent.voiceCombo.currentValue,
             model_id: item.modelId,
             renderer: item.renderer,
+            alias_policy: window.normalizeAliasPolicy(item.aliasPolicy),
             tone: item.tone,
             mora_duration_ms: item.moraDuration,
             pause_duration_ms: item.pauseDuration,

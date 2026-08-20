@@ -10,6 +10,7 @@ import QtMultimedia
         property alias pitchEditor: pitchEditor
         property alias utteranceList: utteranceList
         property alias voiceCombo: voiceCombo
+        property alias aliasPolicyCombo: aliasPolicyCombo
         property alias modelCombo: modelCombo
         property alias rendererCombo: rendererCombo
         property alias toneField: toneField
@@ -291,6 +292,24 @@ import QtMultimedia
                                 const voice = window.voicebankById(currentValue);
                                 window.utterancesModel.setProperty(window.selectedIndex, "imagePath", voice ? voice.image_path : "");
                             }
+                        }
+
+                        Label {
+                            text: window.translator.tr("main.param.aliasPolicy")
+                            color: window.mutedText
+                            font.pixelSize: 12
+                        }
+                        ComboBox {
+                            id: aliasPolicyCombo
+                            Layout.fillWidth: true
+                            model: [
+                                { id: "auto", display_name: window.translator.tr("main.aliasPolicy.auto") },
+                                { id: "vcv-prefer", display_name: window.translator.tr("main.aliasPolicy.vcvPrefer") },
+                                { id: "cv-only", display_name: window.translator.tr("main.aliasPolicy.cvOnly") }
+                            ]
+                            textRole: "display_name"
+                            valueRole: "id"
+                            onActivated: window.updateSetting("aliasPolicy", currentValue)
                         }
 
                         Label {

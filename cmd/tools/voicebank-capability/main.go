@@ -15,6 +15,8 @@ import (
 )
 
 type caseReport struct {
+	VCVSelectedPositions     int     `json:"vcv_selected_positions"`
+	CVSelectedPositions      int     `json:"cv_selected_positions"`
 	ID                       string  `json:"id"`
 	Text                     string  `json:"text"`
 	Positions                int     `json:"positions"`
@@ -27,6 +29,8 @@ type caseReport struct {
 }
 
 type aggregate struct {
+	VCVSelectedPositions     int     `json:"vcv_selected_positions"`
+	CVSelectedPositions      int     `json:"cv_selected_positions"`
 	Utterances               int     `json:"utterances"`
 	Positions                int     `json:"positions"`
 	MultiCandidatePositions  int     `json:"multi_candidate_positions"`
@@ -38,16 +42,20 @@ type aggregate struct {
 }
 
 type report struct {
-	Version     int          `json:"version"`
-	Voicebank   string       `json:"voicebank"`
-	Root        string       `json:"root"`
-	Corpus      string       `json:"corpus"`
-	Tone        string       `json:"tone"`
-	EntryCount  int          `json:"entry_count"`
-	PrefixTones []string     `json:"prefix_tones,omitempty"`
-	Aggregate   aggregate    `json:"aggregate"`
-	Cases       []caseReport `json:"cases"`
-	Failures    []string     `json:"failures,omitempty"`
+	Version        int                         `json:"version"`
+	Voicebank      string                      `json:"voicebank"`
+	Root           string                      `json:"root"`
+	Corpus         string                      `json:"corpus"`
+	Tone           string                      `json:"tone"`
+	EntryCount     int                         `json:"entry_count"`
+	AliasCounts    map[voicebank.AliasKind]int `json:"alias_counts"`
+	VCVContexts    map[string]int              `json:"vcv_contexts"`
+	HasInitialVCV  bool                        `json:"has_initial_vcv"`
+	HasNContextVCV bool                        `json:"has_n_context_vcv"`
+	PrefixTones    []string                    `json:"prefix_tones,omitempty"`
+	Aggregate      aggregate                   `json:"aggregate"`
+	Cases          []caseReport                `json:"cases"`
+	Failures       []string                    `json:"failures,omitempty"`
 }
 
 func main() {
@@ -73,6 +81,11 @@ func main() {
 		Version: 1, Voicebank: bank.Name, Root: bank.Root, Corpus: corpus.Name,
 		Tone: tone, EntryCount: bank.EntryCount(),
 	}
+	capabilities := bank.AliasCapabilities()
+	result.AliasCounts = capabilities.Counts
+	result.VCVContexts = capabilities.VCVContexts
+	result.HasInitialVCV = capabilities.HasInitialVCV
+	result.HasNContextVCV = capabilities.HasNContextVCV
 	for prefixTone := range bank.PrefixMap {
 		result.PrefixTones = append(result.PrefixTones, prefixTone)
 	}
@@ -96,6 +109,8 @@ func main() {
 		current := caseReport{
 			ID: item.ID, Text: item.Text, Positions: len(audit.Positions),
 			MultiCandidatePositions:  audit.MultiCandidatePositions,
+			VCVSelectedPositions:     audit.VCVSelectedPositions,
+			CVSelectedPositions:      audit.CVSelectedPositions,
 			PitchChoicePositions:     audit.PitchChoicePositions,
 			WidePitchPositions:       audit.WidePitchPositions,
 			WideWithinGroupPositions: audit.WidePitchWithinGroup,
@@ -110,12 +125,14 @@ func main() {
 		result.Aggregate.Utterances++
 		result.Aggregate.Positions += current.Positions
 		result.Aggregate.MultiCandidatePositions += current.MultiCandidatePositions
+		result.Aggregate.VCVSelectedPositions += current.VCVSelectedPositions
+		result.Aggregate.CVSelectedPositions += current.CVSelectedPositions
 		result.Aggregate.PitchChoicePositions += current.PitchChoicePositions
 		result.Aggregate.WidePitchPositions += current.WidePitchPositions
 		result.Aggregate.WideWithinGroupPositions += current.WideWithinGroupPositions
 		result.Aggregate.CrossGroupPositions += current.CrossGroupPositions
 		result.Aggregate.MaximumPitchSpanCents = max(result.Aggregate.MaximumPitchSpanCents, current.MaximumPitchSpanCents)
-		fmt.Printf("%s positions=%d multi=%d pitch=%d wide=%d wide-within-group=%d cross-group=%d\n", item.ID, current.Positions, current.MultiCandidatePositions, current.PitchChoicePositions, current.WidePitchPositions, current.WideWithinGroupPositions, current.CrossGroupPositions)
+		fmt.Printf("%s positions=%d vcv=%d cv=%d multi=%d pitch=%d wide=%d wide-within-group=%d cross-group=%d\n", item.ID, current.Positions, current.VCVSelectedPositions, current.CVSelectedPositions, current.MultiCandidatePositions, current.PitchChoicePositions, current.WidePitchPositions, current.WideWithinGroupPositions, current.CrossGroupPositions)
 	}
 	if len(result.Cases) == 0 {
 		log.Fatal("no corpus case could be audited")

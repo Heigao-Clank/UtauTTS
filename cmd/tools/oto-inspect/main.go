@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"utautts/internal/frontend"
 	"utautts/internal/voicebank"
@@ -13,12 +14,13 @@ import (
 
 func main() {
 	var (
-		path     string
-		listOnly bool
-		alias    string
-		kana     string
-		tone     string
-		limit    int
+		path        string
+		listOnly    bool
+		alias       string
+		kana        string
+		tone        string
+		aliasPolicy string
+		limit       int
 	)
 
 	flag.StringVar(&path, "oto", "", "path to a voicebank directory or oto.ini")
@@ -26,6 +28,7 @@ func main() {
 	flag.StringVar(&alias, "alias", "", "filter by alias")
 	flag.StringVar(&kana, "kana", "", "resolve a kana reading and print selected aliases")
 	flag.StringVar(&tone, "tone", "C4", "voicebank tone used with prefix.map")
+	flag.StringVar(&aliasPolicy, "alias-policy", string(voicebank.AliasPolicyAuto), "voicebank alias policy: auto, vcv-prefer, or cv-only")
 	flag.IntVar(&limit, "limit", 20, "maximum entries to show (0 means all)")
 	flag.Parse()
 
@@ -69,7 +72,9 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		selections, err := bank.ResolveAtTone(morae, tone)
+		selections, err := bank.ResolveWithConfig(morae, voicebank.ResolveConfig{
+			Tone: tone, AliasPolicy: voicebank.AliasPolicy(aliasPolicy),
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -84,11 +89,22 @@ func main() {
 	fmt.Printf("oto_files=%d\n", len(bank.OtoFiles))
 	fmt.Printf("entries=%d\n", bank.EntryCount())
 	fmt.Printf("aliases=%d\n", len(bank.Entries))
-	aliasCounts := bank.AliasCounts()
+	capabilities := bank.AliasCapabilities()
+	aliasCounts := capabilities.Counts
 	fmt.Printf("alias_cv=%d\n", aliasCounts[voicebank.AliasCV])
 	fmt.Printf("alias_vcv=%d\n", aliasCounts[voicebank.AliasVCV])
 	fmt.Printf("alias_vc=%d\n", aliasCounts[voicebank.AliasVC])
 	fmt.Printf("alias_other=%d\n", aliasCounts[voicebank.AliasOther])
+	fmt.Printf("vcv_has_initial=%t\n", capabilities.HasInitialVCV)
+	fmt.Printf("vcv_has_n_context=%t\n", capabilities.HasNContextVCV)
+	contexts := make([]string, 0, len(capabilities.VCVContexts))
+	for context := range capabilities.VCVContexts {
+		contexts = append(contexts, context)
+	}
+	sort.Strings(contexts)
+	for _, context := range contexts {
+		fmt.Printf("vcv_context_%s=%d\n", context, capabilities.VCVContexts[context])
+	}
 	fmt.Printf("diagnostics=%d\n", len(bank.Diagnostics))
 	for _, diagnostic := range bank.Diagnostics {
 		rel, err := filepath.Rel(bank.Root, diagnostic.Path)
