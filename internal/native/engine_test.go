@@ -36,12 +36,16 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	if err := audio.WriteWav(filepath.Join(bankDir, "a.wav"), &audio.PCM{SampleRate: 1000, Channels: 1, Data: samples}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\na.wav=a k,0,0,0,0,0\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := New(Config{VoiceDir: root})
 	if err != nil {
 		t.Fatal(err)
+	}
+	voicebanks, err := engine.Call("voicebanks", nil)
+	if err != nil || !strings.Contains(string(voicebanks), `"has_vc":true`) || !strings.Contains(string(voicebanks), `"VC":1`) {
+		t.Fatalf("voicebank capabilities=%s err=%v", voicebanks, err)
 	}
 	for _, method := range []string{"health", "voicebanks", "renderers", "models"} {
 		if _, err := engine.Call(method, nil); err != nil {

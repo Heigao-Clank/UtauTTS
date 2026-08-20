@@ -336,7 +336,7 @@ func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
 	if len(first.Voicebanks) != 1 || first.Voicebanks[0].ID != "alpha" || first.Voicebanks[0].Name != "アルファ" {
 		t.Fatalf("voicebanks = %#v", first.Voicebanks)
 	}
-	for _, field := range []string{`"vcv_contexts":{}`, `"has_initial_vcv":false`, `"has_n_context_vcv":false`} {
+	for _, field := range []string{`"vcv_contexts":{}`, `"vc_contexts":{}`, `"has_vc":false`, `"has_initial_vcv":false`, `"has_n_context_vcv":false`} {
 		if !strings.Contains(response.Body.String(), field) {
 			t.Fatalf("voicebank capability field %s was omitted: %s", field, response.Body.String())
 		}

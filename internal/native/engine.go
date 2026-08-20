@@ -139,14 +139,24 @@ func (e *Engine) voicebankList() []map[string]any {
 	list := make([]map[string]any, 0, len(e.voicebanks))
 	for id, item := range e.voicebanks {
 		presentation, _ := voicebank.LoadPresentation(item)
-		list = append(list, map[string]any{
+		entry := map[string]any{
 			"id":          id,
 			"name":        item.Name,
 			"path":        item.Path,
 			"image_path":  item.ImagePath,
 			"readme_path": item.ReadmePath,
 			"readme_text": presentation.ReadmeText,
-		})
+		}
+		if bank, err := voicebank.Load(item.Path); err == nil {
+			capabilities := bank.AliasCapabilities()
+			entry["alias_counts"] = capabilities.Counts
+			entry["vcv_contexts"] = capabilities.VCVContexts
+			entry["vc_contexts"] = capabilities.VCContexts
+			entry["has_vc"] = capabilities.HasVC
+			entry["has_initial_vcv"] = capabilities.HasInitialVCV
+			entry["has_n_context_vcv"] = capabilities.HasNContextVCV
+		}
+		list = append(list, entry)
 	}
 	e.mu.RUnlock()
 	sort.Slice(list, func(i, j int) bool { return list[i]["name"].(string) < list[j]["name"].(string) })
@@ -175,7 +185,7 @@ func (e *Engine) analyze(data []byte) (any, error) {
 	}
 	items := make([]map[string]any, 0, len(morae))
 	for index, mora := range morae {
-		items = append(items, map[string]any{"position": index, "mora": mora.Text, "pause": mora.Pause})
+		items = append(items, map[string]any{"position": index, "mora": mora.Text, "consonant": mora.Consonant, "vowel": mora.Vowel, "pause": mora.Pause})
 	}
 	return map[string]any{"reading": reading, "morae": items}, nil
 }

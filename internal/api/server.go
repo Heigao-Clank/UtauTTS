@@ -67,6 +67,8 @@ type Voicebank struct {
 	DiagnosticCount int                         `json:"diagnostic_count"`
 	AliasCounts     map[voicebank.AliasKind]int `json:"alias_counts"`
 	VCVContexts     map[string]int              `json:"vcv_contexts"`
+	VCContexts      map[string]int              `json:"vc_contexts"`
+	HasVC           bool                        `json:"has_vc"`
 	HasInitialVCV   bool                        `json:"has_initial_vcv"`
 	HasNContextVCV  bool                        `json:"has_n_context_vcv"`
 }
@@ -214,6 +216,8 @@ func inspectVoicebank(path string) (Voicebank, error) {
 		DiagnosticCount: len(bank.Diagnostics),
 		AliasCounts:     capabilities.Counts,
 		VCVContexts:     capabilities.VCVContexts,
+		VCContexts:      capabilities.VCContexts,
+		HasVC:           capabilities.HasVC,
 		HasInitialVCV:   capabilities.HasInitialVCV,
 		HasNContextVCV:  capabilities.HasNContextVCV,
 	}, nil
@@ -265,7 +269,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]map[string]any, 0, len(morae))
 	for index, mora := range morae {
-		items = append(items, map[string]any{"position": index, "mora": mora.Text, "pause": mora.Pause})
+		items = append(items, map[string]any{"position": index, "mora": mora.Text, "consonant": mora.Consonant, "vowel": mora.Vowel, "pause": mora.Pause})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"reading": reading, "morae": items})
 }

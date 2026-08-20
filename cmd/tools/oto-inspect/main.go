@@ -28,7 +28,7 @@ func main() {
 	flag.StringVar(&alias, "alias", "", "filter by alias")
 	flag.StringVar(&kana, "kana", "", "resolve a kana reading and print selected aliases")
 	flag.StringVar(&tone, "tone", "C4", "voicebank tone used with prefix.map")
-	flag.StringVar(&aliasPolicy, "alias-policy", string(voicebank.AliasPolicyAuto), "voicebank alias policy: auto, vcv-prefer, or cv-only")
+	flag.StringVar(&aliasPolicy, "alias-policy", string(voicebank.AliasPolicyAuto), "voicebank alias policy: auto, vcv-prefer, cvvc-prefer, or cv-only")
 	flag.IntVar(&limit, "limit", 20, "maximum entries to show (0 means all)")
 	flag.Parse()
 
@@ -79,6 +79,9 @@ func main() {
 			log.Fatal(err)
 		}
 		for _, selection := range selections {
+			if selection.Transition != nil {
+				fmt.Printf("%d\t%s\t%s\t%s\ttransition\n", selection.Position, selection.Mora.Text, selection.Transition.Alias, selection.Transition.Entry.Filename)
+			}
 			fmt.Printf("%d\t%s\t%s\t%s\n", selection.Position, selection.Mora.Text, selection.Alias, selection.Entry.Filename)
 		}
 		return
@@ -97,6 +100,15 @@ func main() {
 	fmt.Printf("alias_other=%d\n", aliasCounts[voicebank.AliasOther])
 	fmt.Printf("vcv_has_initial=%t\n", capabilities.HasInitialVCV)
 	fmt.Printf("vcv_has_n_context=%t\n", capabilities.HasNContextVCV)
+	fmt.Printf("vc_has=%t\n", capabilities.HasVC)
+	vcContexts := make([]string, 0, len(capabilities.VCContexts))
+	for context := range capabilities.VCContexts {
+		vcContexts = append(vcContexts, context)
+	}
+	sort.Strings(vcContexts)
+	for _, context := range vcContexts {
+		fmt.Printf("vc_context_%s=%d\n", context, capabilities.VCContexts[context])
+	}
 	contexts := make([]string, 0, len(capabilities.VCVContexts))
 	for context := range capabilities.VCVContexts {
 		contexts = append(contexts, context)
