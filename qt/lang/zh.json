@@ -159,7 +159,7 @@
     "update.message": "新版本 {0} 已发布。",
     "update.openRelease": "打开发布页",
     "update.preserveNote": "更新后仍会保留当前的音源和设置。更新完成后，应用将自动重启。",
-    "update.suppressVersion": "在下一个版本发布前不再显示此更新通知",
+    "update.suppressVersion": "下个版本发布前不再通知",
     "update.title": "有新版本",
     "voicebankDetails.noReadme": "没有 README",
     "voicebankDetails.title": "音源详情"

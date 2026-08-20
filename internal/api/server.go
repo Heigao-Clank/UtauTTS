@@ -65,10 +65,10 @@ type Voicebank struct {
 	OtoFileCount    int                         `json:"oto_file_count"`
 	PhonemeCount    int                         `json:"phoneme_count"`
 	DiagnosticCount int                         `json:"diagnostic_count"`
-	AliasCounts     map[voicebank.AliasKind]int `json:"alias_counts,omitempty"`
-	VCVContexts     map[string]int              `json:"vcv_contexts,omitempty"`
-	HasInitialVCV   bool                        `json:"has_initial_vcv,omitempty"`
-	HasNContextVCV  bool                        `json:"has_n_context_vcv,omitempty"`
+	AliasCounts     map[voicebank.AliasKind]int `json:"alias_counts"`
+	VCVContexts     map[string]int              `json:"vcv_contexts"`
+	HasInitialVCV   bool                        `json:"has_initial_vcv"`
+	HasNContextVCV  bool                        `json:"has_n_context_vcv"`
 }
 
 type Server struct {

@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"utautts/internal/frontend"
@@ -45,6 +47,13 @@ func TestBuildPlacesMoraeAndPause(t *testing.T) {
 	}
 	if unit := got.Units[0]; unit.AliasKind != string(voicebank.AliasCV) || unit.FallbackTier != 1 || unit.CandidateCount != 3 || unit.TargetScore != 100 || unit.JoinScore != -2 || unit.JoinProbability != 0.75 || unit.PathScore != 98 {
 		t.Fatalf("selection score audit = %#v", unit)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"fallback_tier":0`)) {
+		t.Fatalf("primary fallback tier was omitted from plan JSON: %s", encoded)
 	}
 }
 

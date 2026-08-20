@@ -159,7 +159,7 @@
     "update.message": "新しいバージョン {0} が公開されています。",
     "update.openRelease": "リリースページを開く",
     "update.preserveNote": "アップデート後も現在のボイスバンクと設定は保持されます。アップデート終了後にアプリが自動的に再起動されます。",
-    "update.suppressVersion": "このバージョンの通知を、次のバージョンが公開されるまで表示しない",
+    "update.suppressVersion": "次のバージョンまで通知しない",
     "update.title": "アップデートのお知らせ",
     "voicebankDetails.noReadme": "READMEがありません",
     "voicebankDetails.title": "ボイスバンクの詳細"

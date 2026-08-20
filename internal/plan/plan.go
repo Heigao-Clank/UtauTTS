@@ -106,7 +106,7 @@ type Unit struct {
 	JoinProbability         float64 `json:"join_probability,omitempty"`
 	PathScore               float64 `json:"path_score"`
 	AliasKind               string  `json:"alias_kind,omitempty"`
-	FallbackTier            int     `json:"fallback_tier,omitempty"`
+	FallbackTier            int     `json:"fallback_tier"`
 }
 
 func Build(bank *voicebank.Bank, reading string, morae []frontend.Mora, selections []voicebank.Selection, cfg Config) (*Plan, error) {

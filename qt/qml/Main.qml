@@ -958,14 +958,6 @@ window.translator.load(window.appBackend.language);
                         break;
                     }
                 }
-                if (!downloadUrl) {
-                    for (const asset of assets) {
-                        if (asset && String(asset.name).endsWith(".zip") && asset.browser_download_url) {
-                            downloadUrl = String(asset.browser_download_url);
-                            break;
-                        }
-                    }
-                }
                 window.updateDownloadUrl = downloadUrl;
                 updateDialog.open();
             }

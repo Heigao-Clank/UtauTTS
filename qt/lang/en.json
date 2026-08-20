@@ -159,7 +159,7 @@
     "update.message": "A new version {0} is available.",
     "update.openRelease": "Open Release Page",
     "update.preserveNote": "Your voicebanks and settings will be preserved.The app will restart automatically after the update finishes.",
-    "update.suppressVersion": "Don't show this update again until the next version is released",
+    "update.suppressVersion": "Don't notify me until the next version",
     "update.title": "Update Available",
     "voicebankDetails.noReadme": "No README available",
     "voicebankDetails.title": "Voicebank Details"

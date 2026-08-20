@@ -336,6 +336,11 @@ func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
 	if len(first.Voicebanks) != 1 || first.Voicebanks[0].ID != "alpha" || first.Voicebanks[0].Name != "アルファ" {
 		t.Fatalf("voicebanks = %#v", first.Voicebanks)
 	}
+	for _, field := range []string{`"vcv_contexts":{}`, `"has_initial_vcv":false`, `"has_n_context_vcv":false`} {
+		if !strings.Contains(response.Body.String(), field) {
+			t.Fatalf("voicebank capability field %s was omitted: %s", field, response.Body.String())
+		}
+	}
 
 	makeBank("beta", "ベータ")
 	if first.Voicebanks[0].OtoFileCount != 1 || first.Voicebanks[0].PhonemeCount != 1 || first.Voicebanks[0].DiagnosticCount != 0 || first.Voicebanks[0].AliasCounts[voicebank.AliasCV] != 1 {
