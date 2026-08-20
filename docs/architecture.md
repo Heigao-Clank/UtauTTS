@@ -15,7 +15,7 @@ UtauTTSは、UTAUボイスバンクに収録された原音を選択・配置・
 
 標準の選択方式は `viterbi` です。各位置のtarget scoreと隣接原音のjoin scoreをフレーズ全体で評価します。`greedy` と `target-only` も互換用の選択方式として利用できます。
 
-VCVまたは語頭用alias、CV、ワイルドカードの順に候補の優先度を付けます。`AliasPolicy`は探索方式とは独立しており、`auto`（既定）、`vcv-prefer`、`cv-only`を選べます。`prefix.map` の指定音階aliasを優先し、ひらがな・カタカナの表記差は同じ優先度として扱います。促音に対応する原音がない場合は、無音の `<closure>` を挿入して発話全体の合成を継続します。選択結果のalias種別とfallback tierはPlanへ記録されます。
+VCV、VC+CV（CVVC）、CV、ワイルドカードの候補をモーラ単位の経路へまとめます。CVVCのVCは単独のモーラではなく、次のCVへ入る遷移ユニットとして扱います。`AliasPolicy`は探索方式とは独立しており、`auto`（既定）、`vcv-prefer`、`cvvc-prefer`、`cv-only`を選べます。`prefix.map` の指定音階aliasを優先し、ひらがな・カタカナの表記差は同じ優先度として扱います。促音に対応する原音がない場合は、無音の `<closure>` を挿入して発話全体の合成を継続します。選択結果のalias種別、遷移ユニット、fallback tierはPlanへ記録されます。
 
 ## Renderer
 

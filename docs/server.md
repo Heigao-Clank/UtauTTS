@@ -83,6 +83,8 @@ ID順にソートされた音源一覧です。
       "diagnostic_count": 3,
       "alias_counts": {"CV": 1200, "VCV": 1400, "VC": 40, "other": 0},
       "vcv_contexts": {"-": 50, "a": 280, "i": 270},
+      "vc_contexts": {"a": 8, "i": 7},
+      "has_vc": true,
       "has_initial_vcv": true,
       "has_n_context_vcv": true
     }
@@ -91,7 +93,7 @@ ID順にソートされた音源一覧です。
 ```
 
 `id` は `voicebank_id` に指定する値で、音源フォルダ名です。`phoneme_count` は全 `oto.ini` のエントリ数、`diagnostic_count` はoto.iniの診断で問題があるエントリ数です。
-`alias_counts` と `vcv_contexts` は音源のalias能力を表す診断情報で、実際の各モーラではaliasの存在と`oto.ini`設定が最終的な選択を決めます。
+`alias_counts`、`vcv_contexts`、`vc_contexts`は音源のalias能力を表す診断情報で、実際の各モーラではaliasの存在と`oto.ini`設定が最終的な選択を決めます。
 
 ### `POST /api/voicebanks`
 
@@ -158,16 +160,16 @@ ID順にソートされた音源一覧です。
 {
   "reading": "コンニチハ",
   "morae": [
-    {"position": 0, "mora": "コ", "pause": false},
-    {"position": 1, "mora": "ン", "pause": false},
-    {"position": 2, "mora": "ニ", "pause": false},
-    {"position": 3, "mora": "チ", "pause": false},
-    {"position": 4, "mora": "ハ", "pause": false}
+    {"position": 0, "mora": "コ", "consonant": "k", "vowel": "o", "pause": false},
+    {"position": 1, "mora": "ン", "consonant": "n", "vowel": "n", "pause": false},
+    {"position": 2, "mora": "ニ", "consonant": "n", "vowel": "i", "pause": false},
+    {"position": 3, "mora": "チ", "consonant": "ch", "vowel": "i", "pause": false},
+    {"position": 4, "mora": "ハ", "consonant": "h", "vowel": "a", "pause": false}
   ]
 }
 ```
 
-`pause` が `true` のモーラは休止です。`text` が空なら400、500文字超なら413、変換に失敗すると422です。
+`consonant` と `vowel` はCVVC候補生成に使う文脈です。`pause` が `true` のモーラは休止です。`text` が空なら400、500文字超なら413、変換に失敗すると422です。
 
 ### `POST /api/synthesize/audio`
 
@@ -197,7 +199,7 @@ ID順にソートされた音源一覧です。
 | `tone` | string | `C4` | `prefix.map` 使用時の音階 |
 | `model_id` | string | なし | `GET /api/models` の `id` |
 | `renderer` | string | 既定Renderer | `GET /api/renderers` の `id` |
-| `alias_policy` | string | `auto` | `auto`（VCV優先・CVへ局所fallback）、`vcv-prefer`（VCVをより強く優先）、`cv-only`（単独音のみ） |
+| `alias_policy` | string | `auto` | `auto`（VCV優先、次にCVVC、CVへ局所fallback）、`vcv-prefer`（VCVをより強く優先）、`cvvc-prefer`（CVVCをより強く優先）、`cv-only`（単独音のみ） |
 | `mora_duration_ms` | number | `140` | 基本モーラ長（0〜1000） |
 | `pause_duration_ms` | number | `180` | 句読点の休止長（0〜3000） |
 | `mora_durations_ms` | number[] | | モーラごとの長さ。値は0〜1000 |

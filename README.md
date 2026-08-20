@@ -14,7 +14,7 @@ UTAUボイスバンクに収録された原音を選択・配置・接続し、�
 
 モデルは音声波形や話者の声を生成しません。必要なモデル・Renderer・runtime assetが揃わない場合は、GUIでエラーの内容を確認してから `waveform` を明瞭度の基準にしてください。現在のRenderer IDは `waveform`、`openutau-classic-worldline-faithful`、CUDA版の `openutau-classic-worldline-faithful-gpu` です。CUDA版は対応する配布物にのみ含まれます。
 
-対応する音源形式は CV・VCV、複数の `oto.ini`、UTF-8・Shift_JIS、`prefix.map` です。CVVCのVC挿入は未対応です。
+対応する音源形式は CV・VCV・CVVC、複数の `oto.ini`、UTF-8・Shift_JIS、`prefix.map` です。CVVCは現在試験対応で、VC原音をモーラ間の遷移として配置し、利用できない境界ではVCVまたはCVへ局所的にfallbackします。`presamp.ini`の完全互換や音源固有のalias変換には対応していません。実音源評価が完了するまで、正式対応範囲は変更される可能性があります。
 
 ## ダウンロード
 

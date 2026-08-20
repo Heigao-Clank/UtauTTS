@@ -78,7 +78,7 @@
 | `--boundary-bridge-ms` | `0` | 位相を揃えた波形接続修復の最大幅（0で無効） |
 | `--boundary-bridge-threshold` | `0` | handcrafted join scoreがこの値以下のとき接続修復を適用 |
 | `--selection` | `viterbi` | 原音選択方式（`viterbi`、`greedy`、`target-only`） |
-| `--alias-policy` | `auto` | 連続音aliasの利用方針（`auto`、`vcv-prefer`、`cv-only`） |
+| `--alias-policy` | `auto` | VCV／CVVC／単独音aliasの利用方針（`auto`、`vcv-prefer`、`cvvc-prefer`、`cv-only`） |
 | `--join-model <path>` | | 学習済みjoin-costモデルJSON |
 | `--join-scale` | `0` | 学習済みlogitスコアの倍率（既定はモデル値または4） |
 | `--renderer-dir <dir>` | | Renderer pluginの検索directory（繰り返し指定可） |
