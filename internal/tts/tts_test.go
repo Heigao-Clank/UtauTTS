@@ -10,12 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"utautts/internal/audio"
 	"utautts/internal/frontend"
 	"utautts/internal/openjtalk"
 	"utautts/internal/plan"
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
+	"utautts/internal/voicebank"
 )
 
 func TestSynthesizeHonorsCanceledContextBeforeLoadingInputs(t *testing.T) {
@@ -315,5 +317,35 @@ func TestVoicebankCacheInvalidatedByClearCaches(t *testing.T) {
 	}
 	if first == third {
 		t.Fatal("voicebank cache survived ClearCaches")
+	}
+}
+
+func TestSynthesizePropagatesAliasPolicyIntoPlan(t *testing.T) {
+	root := t.TempDir()
+	samples := make([]int16, 8000)
+	for index := range samples {
+		samples[index] = int16(3000 * math.Sin(2*math.Pi*220*float64(index)/16000))
+	}
+	if err := audio.WriteWav(filepath.Join(root, "source.wav"), &audio.PCM{SampleRate: 16000, Channels: 1, Data: samples}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "oto.ini"), []byte(
+		"source.wav=- あ,0,100,0,50,10\n"+"source.wav=a か,0,100,0,50,10\n"+"source.wav=あ,0,100,0,50,10\n"+"source.wav=か,0,100,0,50,10\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Synthesize(Config{
+		VoicebankPath: root, Reading: "あか", MoraDurationMS: 100,
+		AliasPolicy: voicebank.AliasPolicyCVOnly,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Plan.AliasPolicy != string(voicebank.AliasPolicyCVOnly) || len(result.Plan.Units) != 2 {
+		t.Fatalf("plan policy/units = %#v", result.Plan)
+	}
+	for _, unit := range result.Plan.Units {
+		if unit.AliasKind != string(voicebank.AliasCV) {
+			t.Fatalf("cv-only unit = %#v", unit)
+		}
 	}
 }

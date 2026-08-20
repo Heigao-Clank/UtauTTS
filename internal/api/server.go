@@ -59,12 +59,16 @@ type Config struct {
 }
 
 type Voicebank struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Path            string `json:"path"`
-	OtoFileCount    int    `json:"oto_file_count"`
-	PhonemeCount    int    `json:"phoneme_count"`
-	DiagnosticCount int    `json:"diagnostic_count"`
+	ID              string                      `json:"id"`
+	Name            string                      `json:"name"`
+	Path            string                      `json:"path"`
+	OtoFileCount    int                         `json:"oto_file_count"`
+	PhonemeCount    int                         `json:"phoneme_count"`
+	DiagnosticCount int                         `json:"diagnostic_count"`
+	AliasCounts     map[voicebank.AliasKind]int `json:"alias_counts,omitempty"`
+	VCVContexts     map[string]int              `json:"vcv_contexts,omitempty"`
+	HasInitialVCV   bool                        `json:"has_initial_vcv,omitempty"`
+	HasNContextVCV  bool                        `json:"has_n_context_vcv,omitempty"`
 }
 
 type Server struct {
@@ -200,6 +204,7 @@ func inspectVoicebank(path string) (Voicebank, error) {
 	if err != nil {
 		return Voicebank{}, err
 	}
+	capabilities := bank.AliasCapabilities()
 	return Voicebank{
 		ID:              filepath.Base(bank.Root),
 		Name:            bank.Name,
@@ -207,6 +212,10 @@ func inspectVoicebank(path string) (Voicebank, error) {
 		OtoFileCount:    len(bank.OtoFiles),
 		PhonemeCount:    bank.EntryCount(),
 		DiagnosticCount: len(bank.Diagnostics),
+		AliasCounts:     capabilities.Counts,
+		VCVContexts:     capabilities.VCVContexts,
+		HasInitialVCV:   capabilities.HasInitialVCV,
+		HasNContextVCV:  capabilities.HasNContextVCV,
 	}, nil
 }
 
@@ -353,6 +362,7 @@ type SynthesisRequest struct {
 	ManualPitch        *prosody.ManualPitchFile `json:"manual_pitch"`
 	ModelID            string                   `json:"model_id"`
 	Renderer           string                   `json:"renderer"`
+	AliasPolicy        voicebank.AliasPolicy    `json:"alias_policy"`
 }
 
 func (s *Server) handleSynthesizeAudio(w http.ResponseWriter, r *http.Request) {
@@ -506,7 +516,7 @@ func (s *Server) synthesize(ctx context.Context, request SynthesisRequest) (*tts
 	}
 	result, rendererID, err := s.synthesisService().SynthesizeContext(ctx, synth.Request{
 		Text: request.Text, Kana: request.Kana, VoicebankID: request.VoicebankID,
-		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer,
+		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer, AliasPolicy: request.AliasPolicy,
 		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
 		MoraDurationsMS: request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
 		ApplyPitch: request.ApplyPitch, ManualPitch: request.ManualPitch,

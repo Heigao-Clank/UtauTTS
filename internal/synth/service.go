@@ -12,6 +12,7 @@ import (
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/tts"
+	"utautts/internal/voicebank"
 )
 
 // ErrUnavailableは解決失敗（ボイスバンク・プロソディモデル・レンダラプラグインが見つからない）
@@ -26,6 +27,7 @@ type Request struct {
 	Tone               string
 	ModelID            string
 	Renderer           string
+	AliasPolicy        voicebank.AliasPolicy
 	Dictionary         map[string]string
 	MoraDurationMS     float64
 	PauseDurationMS    float64
@@ -104,6 +106,7 @@ func (s *Service) config(request Request, requireVoicebank bool) (tts.Config, st
 		Reading:                 request.Kana,
 		Dictionary:              request.Dictionary,
 		Tone:                    request.Tone,
+		AliasPolicy:             request.AliasPolicy,
 		MoraDurationMS:          request.MoraDurationMS,
 		PauseDurationMS:         request.PauseDurationMS,
 		MoraDurationsMS:         request.MoraDurationsMS,

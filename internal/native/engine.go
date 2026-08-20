@@ -253,6 +253,7 @@ func (e *Engine) reading(text string, dictionary map[string]string) (string, err
 
 type synthesizeRequest struct {
 	Text, Kana, VoicebankID, Tone, ModelID, Renderer, OutputPath string
+	AliasPolicy                                                  voicebank.AliasPolicy
 	MoraDurationMS, PauseDurationMS, IntonationStrength          float64
 	MoraDurationsMS                                              []float64
 	ApplyPitch                                                   bool
@@ -268,6 +269,7 @@ func (r *synthesizeRequest) UnmarshalJSON(data []byte) error {
 		Tone               string                   `json:"tone"`
 		ModelID            string                   `json:"model_id"`
 		Renderer           string                   `json:"renderer"`
+		AliasPolicy        voicebank.AliasPolicy    `json:"alias_policy"`
 		OutputPath         string                   `json:"output_path"`
 		MoraDurationMS     float64                  `json:"mora_duration_ms"`
 		PauseDurationMS    float64                  `json:"pause_duration_ms"`
@@ -281,7 +283,7 @@ func (r *synthesizeRequest) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	*r = synthesizeRequest{Text: value.Text, Kana: value.Kana, VoicebankID: value.VoicebankID, Tone: value.Tone, ModelID: value.ModelID, Renderer: value.Renderer, OutputPath: value.OutputPath, MoraDurationMS: value.MoraDurationMS, PauseDurationMS: value.PauseDurationMS, MoraDurationsMS: value.MoraDurationsMS, IntonationStrength: value.IntonationStrength, ApplyPitch: value.ApplyPitch, ManualPitch: value.ManualPitch, Dictionary: value.Dictionary}
+	*r = synthesizeRequest{Text: value.Text, Kana: value.Kana, VoicebankID: value.VoicebankID, Tone: value.Tone, ModelID: value.ModelID, Renderer: value.Renderer, AliasPolicy: value.AliasPolicy, OutputPath: value.OutputPath, MoraDurationMS: value.MoraDurationMS, PauseDurationMS: value.PauseDurationMS, MoraDurationsMS: value.MoraDurationsMS, IntonationStrength: value.IntonationStrength, ApplyPitch: value.ApplyPitch, ManualPitch: value.ManualPitch, Dictionary: value.Dictionary}
 	return nil
 }
 
@@ -298,8 +300,8 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 	}
 	result, rendererID, err := e.synth.Synthesize(synth.Request{
 		Text: request.Text, Kana: request.Kana, VoicebankID: request.VoicebankID,
-		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer,
-		Dictionary: dictionaryMap(request.Dictionary),
+		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer, AliasPolicy: request.AliasPolicy,
+		Dictionary:     dictionaryMap(request.Dictionary),
 		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
 		MoraDurationsMS: request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
 		ApplyPitch: request.ApplyPitch, ManualPitch: request.ManualPitch,

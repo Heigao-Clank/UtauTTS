@@ -13,6 +13,7 @@ import (
 
 	"utautts/internal/audio"
 	"utautts/internal/plugin"
+	"utautts/internal/voicebank"
 )
 
 func TestSynthesisWaitHonorsRequestCancellation(t *testing.T) {
@@ -337,7 +338,7 @@ func TestVoicebankEndpointsDiscoverAndReloadDirectory(t *testing.T) {
 	}
 
 	makeBank("beta", "ベータ")
-	if first.Voicebanks[0].OtoFileCount != 1 || first.Voicebanks[0].PhonemeCount != 1 || first.Voicebanks[0].DiagnosticCount != 0 {
+	if first.Voicebanks[0].OtoFileCount != 1 || first.Voicebanks[0].PhonemeCount != 1 || first.Voicebanks[0].DiagnosticCount != 0 || first.Voicebanks[0].AliasCounts[voicebank.AliasCV] != 1 {
 		t.Fatalf("voicebank metadata = %#v", first.Voicebanks[0])
 	}
 

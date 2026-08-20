@@ -50,6 +50,7 @@ type Config struct {
 	BoundaryBridgeThreshold float64
 	PitchCurve              *render.PitchCurve
 	SelectionMode           voicebank.SelectionMode
+	AliasPolicy             voicebank.AliasPolicy
 	JoinModelPath           string
 	JoinScoreScale          float64
 }
@@ -230,7 +231,7 @@ func Synthesize(cfg Config) (*Result, error) {
 		joinCostMode = "none"
 	}
 	selections, err := bank.ResolveWithConfig(morae, voicebank.ResolveConfig{
-		Tone: cfg.Tone, Mode: cfg.SelectionMode, JoinModel: joinModel,
+		Tone: cfg.Tone, Mode: cfg.SelectionMode, AliasPolicy: cfg.AliasPolicy, JoinModel: joinModel,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolve voicebank units: %w", err)
@@ -273,6 +274,7 @@ func Synthesize(cfg Config) (*Result, error) {
 		MoraDurationsMS:  cfg.MoraDurationsMS,
 		Predictions:      predictions,
 		SelectionMode:    cfg.SelectionMode,
+		AliasPolicy:      cfg.AliasPolicy,
 		JoinCostMode:     joinCostMode,
 		JoinModelVersion: joinModelVersion,
 		JoinScoreScale:   joinModelScoreScale(joinModel),
