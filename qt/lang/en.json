@@ -46,9 +46,10 @@
     "main.param.renderer": "Renderer",
     "main.param.tone": "Pitch Reference",
     "main.param.voicebank": "Voicebank",
-    "main.param.aliasPolicy": "Continuous Voice",
+    "main.param.aliasPolicy": "Voicebank Format",
     "main.aliasPolicy.auto": "Automatic",
-    "main.aliasPolicy.vcvPrefer": "Prefer Continuous",
+    "main.aliasPolicy.vcvPrefer": "Prefer VCV",
+    "main.aliasPolicy.cvvcPrefer": "Prefer CVVC",
     "main.aliasPolicy.cvOnly": "CV Only",
     "main.pitch.range": "±300 cent",
     "main.pitch.title": "Intonation",
@@ -162,5 +163,6 @@
     "update.suppressVersion": "Don't notify me until the next version",
     "update.title": "Update Available",
     "voicebankDetails.noReadme": "No README available",
+    "voicebankDetails.capabilities": "Alias count: CV {0} / VCV {1} / VC {2}",
     "voicebankDetails.title": "Voicebank Details"
 }

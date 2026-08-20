@@ -1062,7 +1062,7 @@ window.translator.load(window.appBackend.language);
 
     function normalizeAliasPolicy(value) {
         const policy = String(value || "auto");
-        return ["auto", "vcv-prefer", "cv-only"].indexOf(policy) >= 0 ? policy : "auto";
+        return ["auto", "vcv-prefer", "cvvc-prefer", "cv-only"].indexOf(policy) >= 0 ? policy : "auto";
     }
 
     function utteranceIndex(id) {
@@ -1165,7 +1165,7 @@ window.translator.load(window.appBackend.language);
         }
         return {
             format: "utautts-project",
-            format_version: 3,
+            format_version: 4,
             app_version: Qt.application.version,
             utterances: savedUtterances,
             selected_index: utterances.count ? selectedIndex : 0

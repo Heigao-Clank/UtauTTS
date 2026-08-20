@@ -61,6 +61,20 @@ ApplicationWindow {
             }
             Label {
                 Layout.fillWidth: true
+                text: {
+                    if (!root.selectedVoicebank)
+                        return "";
+                    const counts = root.selectedVoicebank.alias_counts || {};
+                    return root.translator.tr("voicebankDetails.capabilities",
+                                              counts["CV"] || 0,
+                                              counts["VCV"] || 0,
+                                              counts["VC"] || 0);
+                }
+                wrapMode: Text.Wrap
+                color: palette.mid
+            }
+            Label {
+                Layout.fillWidth: true
                 text: "readme.txt"
                 font.bold: true
             }

@@ -46,9 +46,10 @@
     "main.param.renderer": "Renderer",
     "main.param.tone": "音高",
     "main.param.voicebank": "音源",
-    "main.param.aliasPolicy": "連続音",
+    "main.param.aliasPolicy": "原音形式",
     "main.aliasPolicy.auto": "自動",
-    "main.aliasPolicy.vcvPrefer": "連続音優先",
+    "main.aliasPolicy.vcvPrefer": "VCV優先",
+    "main.aliasPolicy.cvvcPrefer": "CVVC優先",
     "main.aliasPolicy.cvOnly": "単独音のみ",
     "main.pitch.range": "±300 cent",
     "main.pitch.title": "イントネーション",
@@ -162,5 +163,6 @@
     "update.suppressVersion": "次のバージョンまで通知しない",
     "update.title": "アップデートのお知らせ",
     "voicebankDetails.noReadme": "READMEがありません",
+    "voicebankDetails.capabilities": "alias数: CV {0} / VCV {1} / VC {2}",
     "voicebankDetails.title": "ボイスバンクの詳細"
 }
