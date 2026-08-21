@@ -62,6 +62,7 @@ type Voicebank struct {
 	ID              string                      `json:"id"`
 	Name            string                      `json:"name"`
 	Path            string                      `json:"path"`
+	Types           []voicebank.SubbankOption   `json:"types,omitempty"`
 	OtoFileCount    int                         `json:"oto_file_count"`
 	PhonemeCount    int                         `json:"phoneme_count"`
 	DiagnosticCount int                         `json:"diagnostic_count"`
@@ -211,6 +212,7 @@ func inspectVoicebank(path string) (Voicebank, error) {
 		ID:              filepath.Base(bank.Root),
 		Name:            bank.Name,
 		Path:            bank.Root,
+		Types:           bank.SubbankOptions(),
 		OtoFileCount:    len(bank.OtoFiles),
 		PhonemeCount:    bank.EntryCount(),
 		DiagnosticCount: len(bank.Diagnostics),
@@ -358,6 +360,7 @@ type SynthesisRequest struct {
 	Text               string                   `json:"text"`
 	VoicebankID        string                   `json:"voicebank_id"`
 	Tone               string                   `json:"tone"`
+	Color              string                   `json:"color"`
 	MoraDurationMS     float64                  `json:"mora_duration_ms"`
 	PauseDurationMS    float64                  `json:"pause_duration_ms"`
 	MoraDurationsMS    []float64                `json:"mora_durations_ms"`
@@ -367,6 +370,7 @@ type SynthesisRequest struct {
 	ModelID            string                   `json:"model_id"`
 	Renderer           string                   `json:"renderer"`
 	AliasPolicy        voicebank.AliasPolicy    `json:"alias_policy"`
+	AcousticMode       string                   `json:"acoustic_mode"`
 }
 
 func (s *Server) handleSynthesizeAudio(w http.ResponseWriter, r *http.Request) {
@@ -520,7 +524,8 @@ func (s *Server) synthesize(ctx context.Context, request SynthesisRequest) (*tts
 	}
 	result, rendererID, err := s.synthesisService().SynthesizeContext(ctx, synth.Request{
 		Text: request.Text, Kana: request.Kana, VoicebankID: request.VoicebankID,
-		Tone: request.Tone, ModelID: request.ModelID, Renderer: request.Renderer, AliasPolicy: request.AliasPolicy,
+		Tone: request.Tone, Color: request.Color, ModelID: request.ModelID, Renderer: request.Renderer,
+		AliasPolicy: request.AliasPolicy, AcousticMode: request.AcousticMode,
 		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
 		MoraDurationsMS: request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
 		ApplyPitch: request.ApplyPitch, ManualPitch: request.ManualPitch,

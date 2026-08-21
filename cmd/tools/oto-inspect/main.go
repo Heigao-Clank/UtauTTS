@@ -14,13 +14,15 @@ import (
 
 func main() {
 	var (
-		path        string
-		listOnly    bool
-		alias       string
-		kana        string
-		tone        string
-		aliasPolicy string
-		limit       int
+		path         string
+		listOnly     bool
+		alias        string
+		kana         string
+		tone         string
+		color        string
+		aliasPolicy  string
+		acousticMode string
+		limit        int
 	)
 
 	flag.StringVar(&path, "oto", "", "path to a voicebank directory or oto.ini")
@@ -28,7 +30,9 @@ func main() {
 	flag.StringVar(&alias, "alias", "", "filter by alias")
 	flag.StringVar(&kana, "kana", "", "resolve a kana reading and print selected aliases")
 	flag.StringVar(&tone, "tone", "C4", "voicebank tone used with prefix.map")
+	flag.StringVar(&color, "color", "", "voicebank subbank/color (character.yaml)")
 	flag.StringVar(&aliasPolicy, "alias-policy", string(voicebank.AliasPolicyAuto), "voicebank alias policy: auto, vcv-prefer, cvvc-prefer, or cv-only")
+	flag.StringVar(&acousticMode, "acoustic-selection", "dry-run", "acoustic candidate diagnostics: dry-run or apply")
 	flag.IntVar(&limit, "limit", 20, "maximum entries to show (0 means all)")
 	flag.Parse()
 
@@ -73,16 +77,16 @@ func main() {
 			log.Fatal(err)
 		}
 		selections, err := bank.ResolveWithConfig(morae, voicebank.ResolveConfig{
-			Tone: tone, AliasPolicy: voicebank.AliasPolicy(aliasPolicy),
+			Tone: tone, Color: color, AcousticMode: acousticMode, AliasPolicy: voicebank.AliasPolicy(aliasPolicy),
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
 		for _, selection := range selections {
 			if selection.Transition != nil {
-				fmt.Printf("%d\t%s\t%s\t%s\ttransition\n", selection.Position, selection.Mora.Text, selection.Transition.Alias, selection.Transition.Entry.Filename)
+				fmt.Printf("%d\t%s\t%s\t%s\ttransition\tstatus=%s\tacoustic_join=%.3f\n", selection.Position, selection.Mora.Text, selection.Transition.Alias, selection.Transition.Entry.Filename, selection.Transition.EntryStatus, selection.Transition.AcousticJoinScore)
 			}
-			fmt.Printf("%d\t%s\t%s\t%s\n", selection.Position, selection.Mora.Text, selection.Alias, selection.Entry.Filename)
+			fmt.Printf("%d\t%s\t%s\t%s\tstatus=%s\tsubbank=%s\tcolor=%s\tacoustic_target=%.3f\tmargin=%.3f\n", selection.Position, selection.Mora.Text, selection.Alias, selection.Entry.Filename, selection.EntryStatus, selection.SubbankID, selection.Color, selection.AcousticTargetScore, selection.SelectionMargin)
 		}
 		return
 	}
@@ -101,6 +105,11 @@ func main() {
 	fmt.Printf("vcv_has_initial=%t\n", capabilities.HasInitialVCV)
 	fmt.Printf("vcv_has_n_context=%t\n", capabilities.HasNContextVCV)
 	fmt.Printf("vc_has=%t\n", capabilities.HasVC)
+	fmt.Printf("character_yaml=%s\n", bank.CharacterYAML)
+	fmt.Printf("subbanks=%d\n", len(bank.Subbanks))
+	for _, subbank := range bank.Subbanks {
+		fmt.Printf("subbank_%s\tcolor=%s\tprefix=%s\tsuffix=%s\ttone=%s\n", subbank.ID, subbank.Color, subbank.Prefix, subbank.Suffix, subbank.Tone)
+	}
 	vcContexts := make([]string, 0, len(capabilities.VCContexts))
 	for context := range capabilities.VCContexts {
 		vcContexts = append(vcContexts, context)

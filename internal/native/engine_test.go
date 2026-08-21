@@ -105,6 +105,52 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	}
 }
 
+func TestEngineListsAllVoicebankTypes(t *testing.T) {
+	root := t.TempDir()
+	bankDir := filepath.Join(root, "teto")
+	if err := os.Mkdir(bankDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	samples := make([]int16, 400)
+	for index := range samples {
+		samples[index] = 4000
+	}
+	if err := audio.WriteWav(filepath.Join(bankDir, "a.wav"), &audio.PCM{SampleRate: 1000, Channels: 1, Data: samples}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=縺・0,0,0,0,0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bankDir, "character.yaml"), []byte("subbanks:\n- color: \"\"\n  suffix: \" normal\"\n- color: \"power\"\n  suffix: \" power\"\n- color: \"edge\"\n  suffix: \" edge\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := New(Config{VoiceDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultJSON, err := engine.Call("voicebanks", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Voicebanks []struct {
+			Types []struct {
+				ID    string `json:"id"`
+				Color string `json:"color"`
+			} `json:"types"`
+		} `json:"voicebanks"`
+	}
+	if err := json.Unmarshal(resultJSON, &result); err != nil {
+		t.Fatalf("voicebanks=%s: %v", resultJSON, err)
+	}
+	if len(result.Voicebanks) != 1 || len(result.Voicebanks[0].Types) != 3 {
+		t.Fatalf("voicebank types=%s", resultJSON)
+	}
+	if result.Voicebanks[0].Types[2].ID != "subbank-2" || result.Voicebanks[0].Types[2].Color != "edge" {
+		t.Fatalf("voicebank types=%s", resultJSON)
+	}
+}
+
 func TestEngineFallsBackToOpenJTalkForEnglish(t *testing.T) {
 	root := t.TempDir()
 	bankDir := filepath.Join(root, "bank")

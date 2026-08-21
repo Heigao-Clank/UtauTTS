@@ -23,6 +23,7 @@ func main() {
 		reading                 string
 		text                    string
 		tone                    string
+		color                   string
 		outPath                 string
 		planPath                string
 		moraMS                  float64
@@ -46,6 +47,7 @@ func main() {
 		boundaryBridgeThreshold float64
 		selectionMode           string
 		aliasPolicy             string
+		acousticMode            string
 		joinModelPath           string
 		joinScoreScale          float64
 		rendererDirectories     []string
@@ -58,6 +60,7 @@ func main() {
 	flag.StringVar(&reading, "kana", "", "kana reading to synthesize")
 	flag.StringVar(&text, "text", "", "Japanese text to synthesize")
 	flag.StringVar(&tone, "tone", "C4", "voicebank tone used with prefix.map")
+	flag.StringVar(&color, "color", "", "voicebank subbank/color (character.yaml)")
 	flag.StringVar(&outPath, "out", "", "output WAV path")
 	flag.StringVar(&planPath, "plan-out", "", "optional synthesis plan JSON path")
 	flag.Float64Var(&moraMS, "mora-ms", 140, "base mora duration in milliseconds")
@@ -81,6 +84,7 @@ func main() {
 	flag.Float64Var(&boundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair when handcrafted join score is at or below this value")
 	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
 	flag.StringVar(&aliasPolicy, "alias-policy", string(voicebank.AliasPolicyAuto), "voicebank alias policy: auto, vcv-prefer, cvvc-prefer, or cv-only")
+	flag.StringVar(&acousticMode, "acoustic-selection", "", "acoustic candidate diagnostics: dry-run or apply")
 	flag.StringVar(&joinModelPath, "join-model", "", "optional learned join-cost model JSON")
 	flag.Float64Var(&joinScoreScale, "join-scale", 0, "learned logit score scale (default: model or 4)")
 	flag.Func("renderer-dir", "renderer plugin directory (repeatable)", func(value string) error { rendererDirectories = append(rendererDirectories, value); return nil })
@@ -123,6 +127,7 @@ func main() {
 		Text:                    text,
 		Reading:                 reading,
 		Tone:                    tone,
+		Color:                   color,
 		MoraDurationMS:          moraMS,
 		PauseDurationMS:         pauseMS,
 		ReleaseMS:               releaseMS,
@@ -140,6 +145,7 @@ func main() {
 		BoundaryBridgeThreshold: boundaryBridgeThreshold,
 		SelectionMode:           voicebank.SelectionMode(selectionMode),
 		AliasPolicy:             voicebank.AliasPolicy(aliasPolicy),
+		AcousticMode:            acousticMode,
 		JoinModelPath:           joinModelPath,
 		JoinScoreScale:          joinScoreScale,
 	}

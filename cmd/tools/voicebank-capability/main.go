@@ -49,6 +49,8 @@ type report struct {
 	Root           string                      `json:"root"`
 	Corpus         string                      `json:"corpus"`
 	Tone           string                      `json:"tone"`
+	Color          string                      `json:"color,omitempty"`
+	AcousticMode   string                      `json:"acoustic_mode,omitempty"`
 	EntryCount     int                         `json:"entry_count"`
 	AliasCounts    map[voicebank.AliasKind]int `json:"alias_counts"`
 	VCVContexts    map[string]int              `json:"vcv_contexts"`
@@ -63,10 +65,12 @@ type report struct {
 }
 
 func main() {
-	var voicebankPath, corpusPath, tone, outputPath string
+	var voicebankPath, corpusPath, tone, color, acousticMode, outputPath string
 	flag.StringVar(&voicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&corpusPath, "corpus", "", "versioned evaluation corpus JSON")
 	flag.StringVar(&tone, "tone", "C4", "voicebank tone used with prefix.map")
+	flag.StringVar(&color, "color", "", "voicebank subbank/color (character.yaml)")
+	flag.StringVar(&acousticMode, "acoustic-selection", "dry-run", "acoustic candidate diagnostics: dry-run or apply")
 	flag.StringVar(&outputPath, "out", "", "output capability report JSON")
 	flag.Parse()
 	if voicebankPath == "" || corpusPath == "" || outputPath == "" {
@@ -83,7 +87,7 @@ func main() {
 	}
 	result := report{
 		Version: 1, Voicebank: bank.Name, Root: bank.Root, Corpus: corpus.Name,
-		Tone: tone, EntryCount: bank.EntryCount(),
+		Tone: tone, Color: color, AcousticMode: acousticMode, EntryCount: bank.EntryCount(),
 	}
 	capabilities := bank.AliasCapabilities()
 	result.AliasCounts = capabilities.Counts
@@ -107,7 +111,9 @@ func main() {
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: morae: %v", item.ID, err))
 			continue
 		}
-		audit, err := bank.AuditLattice(morae, tone, nil)
+		audit, err := bank.AuditLatticeWithConfig(morae, voicebank.ResolveConfig{
+			Tone: tone, Color: color, AcousticMode: acousticMode,
+		})
 		if err != nil {
 			result.Failures = append(result.Failures, fmt.Sprintf("%s: lattice: %v", item.ID, err))
 			continue

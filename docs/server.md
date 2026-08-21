@@ -95,6 +95,8 @@ ID順にソートされた音源一覧です。
 `id` は `voicebank_id` に指定する値で、音源フォルダ名です。`phoneme_count` は全 `oto.ini` のエントリ数、`diagnostic_count` はoto.iniの診断で問題があるエントリ数です。
 `alias_counts`、`vcv_contexts`、`vc_contexts`は音源のalias能力を表す診断情報で、実際の各モーラではaliasの存在と`oto.ini`設定が最終的な選択を決めます。
 
+`types` に `character.yaml` の全サブバンク（カラー、接頭辞・接尾辞、音域）が宣言順で含まれます。合成時はその `color` をリクエストの `color` に指定できます。
+
 ### `POST /api/voicebanks`
 
 音源パスを動的に登録します。既定では無効で、`--allow-voicebank-registration` を指定した場合のみ使えます。登録先は `--voice-dir` 以下に制限され、シンボリックリンク解決後に範囲外なら400で拒否されます。

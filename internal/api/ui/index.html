@@ -83,6 +83,10 @@
         <select id="syn-vb"></select>
       </div>
       <div>
+        <label for="syn-color">voicebank_type</label>
+        <select id="syn-color"></select>
+      </div>
+      <div>
         <label for="syn-model">model_id</label>
         <select id="syn-model"></select>
       </div>
@@ -145,6 +149,7 @@
 "use strict";
 const TOKEN_KEY = "utautts_auth_token";
 let token = "";
+let voicebankList = [];
 try { token = localStorage.getItem(TOKEN_KEY) || ""; } catch (_) {}
 document.getElementById("token").value = token;
 
@@ -200,9 +205,11 @@ async function loadVoicebanks() {
   try {
     const { data } = await api("/api/voicebanks");
     const list = data.voicebanks || [];
+    voicebankList = list;
     if (list.length === 0) {
       body.innerHTML = '<tr><td colspan="5" class="muted">音源が見つかりません</td></tr>';
       fillVoicebankSelect([]);
+      fillVoicebankTypeSelect(null);
       return;
     }
     body.innerHTML = list.map((vb) => (
@@ -223,7 +230,25 @@ function fillVoicebankSelect(list) {
     '<option value="' + escapeHtml(vb.id) + '">' + escapeHtml(vb.name) + "（" + escapeHtml(vb.id) + "）</option>"
   )).join("");
   if (previous && list.some((vb) => vb.id === previous)) select.value = previous;
+  fillVoicebankTypeSelect(list.find((vb) => vb.id === select.value) || list[0] || null);
 }
+
+function fillVoicebankTypeSelect(voicebank) {
+  const select = document.getElementById("syn-color");
+  const previous = select.value;
+  const types = voicebank && Array.isArray(voicebank.types) ? voicebank.types : [];
+  select.innerHTML = (types.length ? types : [{ color: "" }]).map((type) => (
+    '<option value="' + escapeHtml(type.color || "") + '">' +
+    escapeHtml(type.color || "Normal") + "</option>"
+  )).join("");
+  if (types.some((type) => (type.color || "") === previous))
+    select.value = previous;
+}
+
+document.getElementById("syn-vb").addEventListener("change", () => {
+  const voicebank = voicebankList.find((vb) => vb.id === document.getElementById("syn-vb").value);
+  fillVoicebankTypeSelect(voicebank || null);
+});
 
 async function loadModels() {
   const el = document.getElementById("model-list");
@@ -310,9 +335,11 @@ document.getElementById("ana-run").addEventListener("click", async () => {
 function buildSynthesisPayload() {
   const payload = { text: document.getElementById("syn-text").value };
   const voicebank = document.getElementById("syn-vb").value;
+  const color = document.getElementById("syn-color").value;
   const model = document.getElementById("syn-model").value;
   const renderer = document.getElementById("syn-renderer").value;
   if (voicebank) payload.voicebank_id = voicebank;
+  if (color) payload.color = color;
   if (model) payload.model_id = model;
   if (renderer) payload.renderer = renderer;
   payload.mora_duration_ms = Number(document.getElementById("syn-mora").value);

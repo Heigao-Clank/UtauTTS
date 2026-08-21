@@ -22,11 +22,13 @@ type report struct {
 }
 
 func main() {
-	var voicebankPath, text, reading, tone, modelPath, outputPath string
+	var voicebankPath, text, reading, tone, color, acousticMode, modelPath, outputPath string
 	flag.StringVar(&voicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
 	flag.StringVar(&text, "text", "", "Japanese text to inspect")
 	flag.StringVar(&reading, "kana", "", "kana reading to inspect")
 	flag.StringVar(&tone, "tone", "C4", "voicebank tone used with prefix.map")
+	flag.StringVar(&color, "color", "", "voicebank subbank/color (character.yaml)")
+	flag.StringVar(&acousticMode, "acoustic-selection", "dry-run", "acoustic candidate diagnostics: dry-run or apply")
 	flag.StringVar(&modelPath, "join-model", "", "optional learned join-cost model JSON")
 	flag.StringVar(&outputPath, "out", "", "output audit JSON")
 	flag.Parse()
@@ -55,7 +57,9 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	audit, err := bank.AuditLattice(morae, tone, model)
+	audit, err := bank.AuditLatticeWithConfig(morae, voicebank.ResolveConfig{
+		Tone: tone, Color: color, AcousticMode: acousticMode, JoinModel: model,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
