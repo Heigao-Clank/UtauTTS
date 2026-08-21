@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDrag>
 #include <QFile>
@@ -93,6 +94,7 @@ Backend::Backend(QObject *parent)
       m_language(QSettings().value("appearance/language", QStringLiteral("ja")).toString()),
       m_closeLogOnSuccess(QSettings().value("logging/closeOnSuccess", true).toBool()),
       m_updateCheckEnabled(QSettings().value("appearance/updateCheckEnabled", true).toBool()),
+      m_defaultVoicebankId(QSettings().value("voicebank/defaultId", QString()).toString().trimmed()),
       m_defaultMoraDuration(QSettings().value("synthesis/defaultMoraDuration", 120).toInt()),
       m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
       m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()),
@@ -230,6 +232,18 @@ void Backend::setUpdateCheckEnabled(bool value) {
     settings.setValue("appearance/updateCheckEnabled", value);
     settings.sync();
     emit updateSettingsChanged();
+}
+
+void Backend::setDefaultVoicebank(const QString &value) {
+    const QString normalized = value.trimmed();
+    if (m_defaultVoicebankId == normalized) {
+        return;
+    }
+    m_defaultVoicebankId = normalized;
+    QSettings settings;
+    settings.setValue("voicebank/defaultId", m_defaultVoicebankId);
+    settings.sync();
+    emit voicebankSettingsChanged();
 }
 
 void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch) {
@@ -588,6 +602,21 @@ void Backend::reloadVoicebanks() {
     ++m_activeCallCount;
     m_activeCalls.addFuture(future);
     watcher->setFuture(future);
+}
+
+bool Backend::openVoiceDirectory() {
+    const QDir voiceDirectory(resourceRoot().filePath(QStringLiteral("voice")));
+    if (!voiceDirectory.exists() && !QDir().mkpath(voiceDirectory.absolutePath())) {
+        setError(QStringLiteral("Failed to create the voice directory."));
+        return false;
+    }
+    const bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(voiceDirectory.absolutePath()));
+    if (!opened) {
+        setError(QStringLiteral("Failed to open the voice directory."));
+        return false;
+    }
+    setError({});
+    return true;
 }
 
 void Backend::analyze(const QString &text, const QString &requestId) {

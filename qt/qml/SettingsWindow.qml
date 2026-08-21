@@ -25,6 +25,7 @@ ApplicationWindow {
     color: palette.window
 
     property int currentPage: 0
+    property string pendingDefaultVoicebankId: ""
     property int pendingMoraDuration: 120
     property int pendingPauseDuration: 180
     property bool pendingApplyPitch: true
@@ -47,6 +48,7 @@ ApplicationWindow {
     }
 
     function loadCurrent() {
+        pendingDefaultVoicebankId = root.backend.defaultVoicebankId;
         pendingMoraDuration = root.backend.defaultMoraDuration;
         pendingPauseDuration = root.backend.defaultPauseDuration;
         pendingApplyPitch = root.backend.defaultApplyPitch;
@@ -61,6 +63,18 @@ ApplicationWindow {
         pendingRemoveUtteranceShortcut = root.backend.removeUtteranceShortcut;
         themeCombo.currentIndex = pendingDarkMode ? 1 : 0;
         languageCombo.currentIndex = root.languageCodes.indexOf(pendingLanguage);
+        defaultVoicebankCombo.currentIndex = root.defaultVoicebankIndex();
+    }
+
+    function defaultVoicebankIndex() {
+        const id = String(root.pendingDefaultVoicebankId || "");
+        if (!id.length)
+            return 0;
+        for (let index = 0; index < root.backend.voicebanks.length; ++index) {
+            if (root.backend.voicebanks[index].id === id)
+                return index + 1;
+        }
+        return 0;
     }
 
     function shortcutFromEvent(event) {
@@ -165,6 +179,26 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    text: root.translator.tr("settings.defaultVoicebank")
+                                    Layout.fillWidth: true
+                                }
+                                ComboBox {
+                                    id: defaultVoicebankCombo
+                                    Layout.preferredWidth: 240
+                                    model: [{
+                                        id: "",
+                                        name: root.translator.tr("settings.defaultVoicebank.auto")
+                                    }].concat(root.backend.voicebanks)
+                                    textRole: "name"
+                                    valueRole: "id"
+                                    currentIndex: root.defaultVoicebankIndex()
+                                    onActivated: root.pendingDefaultVoicebankId = currentValue
+                                }
+                            }
 
                             RowLayout {
                                 Layout.fillWidth: true

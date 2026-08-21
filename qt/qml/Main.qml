@@ -723,6 +723,11 @@ window.translator.load(window.appBackend.language);
                 onTriggered: projectOpenDialog.open()
             }
             MenuItem {
+                text: window.translator.tr("menu.file.openVoiceDirectory")
+                enabled: !window.appBackend.busy && !window.batchExportActive
+                onTriggered: window.appBackend.openVoiceDirectory()
+            }
+            MenuItem {
                 text: window.translator.tr("menu.file.save")
                 enabled: !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openProjectSaveDialog()
@@ -884,6 +889,7 @@ window.translator.load(window.appBackend.language);
         window.appBackend.setLanguage(settingsWindow.pendingLanguage);
         window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
         window.appBackend.setUpdateCheckEnabled(settingsWindow.pendingUpdateCheckEnabled);
+        window.appBackend.setDefaultVoicebank(settingsWindow.pendingDefaultVoicebankId);
         window.appBackend.setShortcutSequences(settingsWindow.pendingSynthesizeShortcut,
                                                settingsWindow.pendingSaveProjectShortcut,
                                                settingsWindow.pendingReloadVoicebanksShortcut,
@@ -996,6 +1002,12 @@ window.translator.load(window.appBackend.language);
             if (window.appBackend.voicebanks[i].id === id)
                 return window.appBackend.voicebanks[i];
         return null;
+    }
+
+    function defaultVoicebank() {
+        const configured = String(window.appBackend.defaultVoicebankId || "");
+        const selected = configured.length ? window.voicebankById(configured) : null;
+        return selected || (window.appBackend.voicebanks.length ? window.appBackend.voicebanks[0] : null);
     }
 
     function modelById(id) {
@@ -1433,13 +1445,14 @@ window.translator.load(window.appBackend.language);
     }
 
     function assignDefaultVoicebank(suppressDirty) {
-        if (!utterances.count || !window.appBackend.voicebanks.length)
+        const voice = window.defaultVoicebank();
+        if (!utterances.count || !voice)
             return;
         for (let i = 0; i < utterances.count; ++i) {
             const item = utterances.get(i);
             if (!item.voicebankId || !window.voicebankById(item.voicebankId)) {
-                utterances.setProperty(i, "voicebankId", window.appBackend.voicebanks[0].id);
-                utterances.setProperty(i, "imagePath", window.appBackend.voicebanks[0].image_path || "");
+                utterances.setProperty(i, "voicebankId", voice.id);
+                utterances.setProperty(i, "imagePath", voice.image_path || "");
                 markUtteranceDirty(i, suppressDirty !== true);
             }
         }
@@ -1631,7 +1644,7 @@ window.translator.load(window.appBackend.language);
     }
 
     function addUtterance(markDirty) {
-        const voice = window.appBackend.voicebanks.length ? window.appBackend.voicebanks[0] : null;
+        const voice = window.defaultVoicebank();
         utterances.append({
             utteranceId: "utterance-" + nextUtteranceId++,
             content: "",

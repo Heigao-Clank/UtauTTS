@@ -24,6 +24,7 @@ class Backend final : public QObject {
     Q_PROPERTY(QVariantList renderers READ renderers NOTIFY metadataChanged)
     Q_PROPERTY(QVariantList dictionaryEntries READ dictionaryEntries NOTIFY dictionaryChanged)
     Q_PROPERTY(QString defaultRenderer READ defaultRenderer NOTIFY metadataChanged)
+    Q_PROPERTY(QString defaultVoicebankId READ defaultVoicebankId NOTIFY voicebankSettingsChanged)
     Q_PROPERTY(bool cudaAvailable READ cudaAvailable NOTIFY metadataChanged)
     Q_PROPERTY(QString analysisRequestId READ analysisRequestId NOTIFY analysisChanged)
     Q_PROPERTY(QString analysisSourceText READ analysisSourceText NOTIFY analysisChanged)
@@ -56,6 +57,7 @@ public:
     QVariantList renderers() const { return m_renderers; }
     QVariantList dictionaryEntries() const { return m_dictionaryEntries; }
     QString defaultRenderer() const { return m_defaultRenderer; }
+    QString defaultVoicebankId() const { return m_defaultVoicebankId; }
     bool cudaAvailable() const { return m_cudaAvailable; }
     QString analysisRequestId() const { return m_analysisRequestId; }
     QString analysisSourceText() const { return m_analysisSourceText; }
@@ -80,6 +82,7 @@ public:
 
     Q_INVOKABLE void initialize();
     Q_INVOKABLE void reloadVoicebanks();
+    Q_INVOKABLE bool openVoiceDirectory();
     Q_INVOKABLE void analyze(const QString &text, const QString &requestId);
     Q_INVOKABLE void predictProsody(const QVariantMap &request);
     Q_INVOKABLE void synthesize(const QVariantMap &request);
@@ -106,6 +109,7 @@ public:
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
     Q_INVOKABLE void setUpdateCheckEnabled(bool value);
     Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);
+    Q_INVOKABLE void setDefaultVoicebank(const QString &value);
     Q_INVOKABLE void setShortcutSequences(const QString &synthesize,
                                           const QString &saveProject,
                                           const QString &reloadVoicebanks,
@@ -127,6 +131,7 @@ signals:
     void logSettingsChanged();
     void updateSettingsChanged();
     void synthesisDefaultsChanged();
+    void voicebankSettingsChanged();
     void shortcutSettingsChanged();
     void dictionaryChanged();
     void logsChanged();
@@ -147,6 +152,7 @@ private:
     int m_activeCallCount = 0;
     QVariantList m_voicebanks, m_models, m_renderers, m_dictionaryEntries;
     QString m_defaultRenderer;
+    QString m_defaultVoicebankId;
     bool m_cudaAvailable = false;
     QString m_analysisRequestId, m_analysisSourceText, m_analysisJson;
     QString m_prosodyRequestId, m_prosodyJson;
