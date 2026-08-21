@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"utautts/internal/connection"
 	"utautts/internal/oto"
@@ -22,13 +23,17 @@ type Diagnostic struct {
 }
 
 type Bank struct {
-	Root        string
-	Name        string
-	OtoFiles    []string
-	Entries     map[string][]oto.Entry
-	PrefixMap   map[string]Affix
-	Diagnostics []Diagnostic
-	extractor   *connection.Extractor
+	Root            string
+	Name            string
+	OtoFiles        []string
+	Entries         map[string][]oto.Entry
+	PrefixMap       map[string]Affix
+	Subbanks        []Subbank
+	CharacterYAML   string
+	Diagnostics     []Diagnostic
+	extractor       *connection.Extractor
+	validationMu    sync.Mutex
+	validationCache map[oto.Entry]cachedEntryValidation
 }
 
 func Load(root string) (*Bank, error) {
@@ -87,8 +92,11 @@ func Load(root string) (*Bank, error) {
 				if !sourcePathWithin(absRoot, entry.Filename) {
 					return nil, fmt.Errorf("oto entry %q in %s points outside voicebank root", entry.Filename, path)
 				}
+				entry.SourceGroup = sourceGroupForOto(absRoot, path)
+				entriesForAlias := bank.Entries[alias]
+				entriesForAlias = append(entriesForAlias, entry)
+				bank.Entries[alias] = entriesForAlias
 			}
-			bank.Entries[alias] = append(bank.Entries[alias], entries...)
 		}
 		for _, diagnostic := range ini.Diagnostics {
 			bank.Diagnostics = append(bank.Diagnostics, Diagnostic{
@@ -99,6 +107,14 @@ func Load(root string) (*Bank, error) {
 		}
 	}
 	return bank, nil
+}
+
+func sourceGroupForOto(root, otoPath string) string {
+	relative, err := filepath.Rel(root, filepath.Dir(otoPath))
+	if err != nil || relative == "." || relative == "" {
+		return "root"
+	}
+	return filepath.ToSlash(relative)
 }
 
 func sourcePathWithin(root, candidate string) bool {

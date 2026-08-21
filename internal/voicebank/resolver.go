@@ -30,6 +30,22 @@ type Selection struct {
 	TransitionJoinScore       float64
 	TransitionJoinProbability float64
 	PathScore                 float64
+	SubbankID                 string
+	Color                     string
+	RequestedTone             string
+	ResolvedTone              string
+	EntryStatus               string
+	EntryValidation           []string
+	CandidateRejections       []CandidateRejection
+	AcousticTargetScore       float64
+	AcousticJoinScore         float64
+	SelectionMargin           float64
+}
+
+type CandidateRejection struct {
+	Alias  string
+	Source string
+	Reason string
 }
 
 const maxCandidatesPerPosition = 32
@@ -43,20 +59,27 @@ const (
 )
 
 type ResolveConfig struct {
-	Tone        string
-	Mode        SelectionMode
-	AliasPolicy AliasPolicy
-	JoinModel   *connection.LearnedModel
+	Tone         string
+	Color        string
+	Mode         SelectionMode
+	AliasPolicy  AliasPolicy
+	AcousticMode string
+	JoinModel    *connection.LearnedModel
 }
 
 type MissingAliasError struct {
-	Position   int
-	Mora       string
-	Candidates []string
+	Position            int
+	Mora                string
+	Candidates          []string
+	CandidateRejections []CandidateRejection
 }
 
 func (e *MissingAliasError) Error() string {
-	return fmt.Sprintf("no voicebank entry for mora %q at position %d (tried: %s)", e.Mora, e.Position, strings.Join(e.Candidates, ", "))
+	message := fmt.Sprintf("no voicebank entry for mora %q at position %d (tried: %s)", e.Mora, e.Position, strings.Join(e.Candidates, ", "))
+	if len(e.CandidateRejections) > 0 {
+		message += fmt.Sprintf("; rejected %d unusable candidate(s)", len(e.CandidateRejections))
+	}
+	return message
 }
 
 func (b *Bank) Resolve(morae []frontend.Mora) ([]Selection, error) {
@@ -82,30 +105,53 @@ func (b *Bank) ResolveWithConfig(morae []frontend.Mora, cfg ResolveConfig) ([]Se
 	if !policy.valid() {
 		return nil, fmt.Errorf("unknown alias policy %q", policy)
 	}
-	layers, err := b.candidateLayersWithPolicy(morae, cfg.Tone, policy)
+	if !validAcousticMode(cfg.AcousticMode) {
+		return nil, fmt.Errorf("unknown acoustic selection mode %q", cfg.AcousticMode)
+	}
+	layers, err := b.candidateLayersWithPolicyMode(morae, cfg.Tone, cfg.Color, policy, cfg.AcousticMode)
 	if err != nil {
 		return nil, err
 	}
 	if b.extractor == nil {
 		b.extractor = connection.NewExtractor()
 	}
-	return selectBestPaths(layers, mode, cfg.JoinModel, b.extractor), nil
+	return selectBestPathsWithAcoustic(layers, mode, cfg.JoinModel, b.extractor, cfg.AcousticMode), nil
 }
 
 func (b *Bank) candidateLayers(morae []frontend.Mora, tone string) ([][]Selection, error) {
-	return b.candidateLayersWithPolicy(morae, tone, AliasPolicyAuto)
+	return b.candidateLayersWithPolicy(morae, tone, "", AliasPolicyAuto)
 }
 
-func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, policy AliasPolicy) ([][]Selection, error) {
+func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone, color string, policy AliasPolicy) ([][]Selection, error) {
+	return b.candidateLayersWithPolicyMode(morae, tone, color, policy, "")
+}
+
+func (b *Bank) candidateLayersWithPolicyMode(morae []frontend.Mora, tone, color string, policy AliasPolicy, acousticMode string) ([][]Selection, error) {
+	if !validAcousticMode(acousticMode) {
+		return nil, fmt.Errorf("unknown acoustic selection mode %q", acousticMode)
+	}
 	layers := make([][]Selection, 0, len(morae))
-	affix, hasAffix := b.AffixForTone(tone)
+	affix, subbank, hasAffix := b.AffixForToneAndColor(tone, color)
+	requestedTone := strings.ToUpper(strings.TrimSpace(tone))
+	if requestedTone == "" {
+		requestedTone = "C4"
+	}
+	resolvedTone := requestedTone
+	if subbank.Tone != "" {
+		resolvedTone = subbank.Tone
+	}
+	if strings.TrimSpace(color) != "" && len(b.Subbanks) > 0 && !hasAffix {
+		return nil, fmt.Errorf("voicebank color %q has no subbank for tone %q", color, tone)
+	}
 	previousVowel := ""
 	phraseStart := true
+	var previousLayer []Selection
 	for position, mora := range morae {
 		if mora.Pause {
 			layers = append(layers, nil)
 			previousVowel = ""
 			phraseStart = true
+			previousLayer = nil
 			continue
 		}
 
@@ -116,30 +162,74 @@ func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, pol
 		}
 		transitionSpecs := vcAliasCandidates(previousVowel, consonant, policy)
 		if hasAffix {
-			candidateSpecs = affixCandidates(candidateSpecs, affix)
-			transitionSpecs = affixCandidates(transitionSpecs, affix)
+			strictSubbank := subbank.ID != "" && subbank.ID != "prefix.map"
+			if strictSubbank {
+				affixedCandidates := affixCandidatesWithFallback(candidateSpecs, affix, false)
+				affixedTransitions := affixCandidatesWithFallback(transitionSpecs, affix, false)
+				if hasUsableCandidateEntries(b, affixedCandidates) {
+					candidateSpecs = affixedCandidates
+				} else {
+					// Some OpenUtau banks describe a tone-range subbank in
+					// character.yaml but keep its aliases un-suffixed in a
+					// dedicated oto directory. Keep that compatibility fallback
+					// only when no usable affixed source exists at this position.
+					candidateSpecs = affixCandidatesWithFallback(candidateSpecs, affix, true)
+				}
+				if hasUsableCandidateEntries(b, affixedTransitions) {
+					transitionSpecs = affixedTransitions
+				} else {
+					transitionSpecs = affixCandidatesWithFallback(transitionSpecs, affix, true)
+				}
+			} else {
+				candidateSpecs = affixCandidatesWithFallback(candidateSpecs, affix, true)
+				transitionSpecs = affixCandidatesWithFallback(transitionSpecs, affix, true)
+			}
 		}
 		allSpecs := append(append([]aliasCandidate{}, candidateSpecs...), transitionSpecs...)
 		candidates := candidateNames(allSpecs)
 		var candidatesAtPosition []Selection
-		for _, candidate := range candidateSpecs {
-			entries := b.Entries[candidate.name]
+		var rejections []CandidateRejection
+		type validatedEntry struct {
+			entry      oto.Entry
+			validation EntryValidation
+		}
+		validatedEntries := func(alias string, entries []oto.Entry) []validatedEntry {
+			valid := make([]validatedEntry, 0, len(entries))
 			for _, entry := range entries {
+				validation := b.validateEntry(entry)
+				if validation.Status == "unusable" {
+					rejections = append(rejections, CandidateRejection{Alias: alias, Source: entry.Filename, Reason: validation.Reason})
+					continue
+				}
+				valid = append(valid, validatedEntry{entry: entry, validation: validation})
+			}
+			return valid
+		}
+		for _, candidate := range candidateSpecs {
+			entries := validatedEntries(candidate.name, b.Entries[candidate.name])
+			for _, validated := range entries {
+				entry, validation := validated.entry, validated.validation
 				main := Selection{
 					Position: position, Mora: mora, Alias: candidate.name, Kind: candidate.kind,
 					FallbackTier: candidate.tier, Entry: entry, Candidates: candidates,
 					TargetScore: candidateScore(candidate.tier, entry),
+					SubbankID:   subbank.ID, Color: subbank.Color, RequestedTone: requestedTone,
+					ResolvedTone: resolvedTone, EntryStatus: validation.Status, EntryValidation: validation.Checks,
 				}
 				candidatesAtPosition = append(candidatesAtPosition, main)
 				if candidate.kind != AliasCV || isWildcardAlias(candidate.name) || len(transitionSpecs) == 0 {
 					continue
 				}
 				for _, transitionSpec := range transitionSpecs {
-					for _, transitionEntry := range b.Entries[transitionSpec.name] {
+					for _, validatedTransition := range validatedEntries(transitionSpec.name, b.Entries[transitionSpec.name]) {
+						transitionEntry, transitionValidation := validatedTransition.entry, validatedTransition.validation
 						transition := Selection{
 							Position: position, Mora: mora, Alias: transitionSpec.name, Kind: AliasVC,
 							FallbackTier: transitionSpec.tier, Entry: transitionEntry, Candidates: candidates,
 							TargetScore: candidateScore(transitionSpec.tier, transitionEntry),
+							SubbankID:   subbank.ID, Color: subbank.Color, RequestedTone: requestedTone,
+							ResolvedTone: resolvedTone, EntryStatus: transitionValidation.Status,
+							EntryValidation: transitionValidation.Checks,
 						}
 						composite := main
 						composite.Composite = true
@@ -148,6 +238,12 @@ func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, pol
 						candidatesAtPosition = append(candidatesAtPosition, composite)
 					}
 				}
+			}
+		}
+		for index := range candidatesAtPosition {
+			candidatesAtPosition[index].CandidateRejections = append([]CandidateRejection(nil), rejections...)
+			if candidatesAtPosition[index].Transition != nil {
+				candidatesAtPosition[index].Transition.CandidateRejections = append([]CandidateRejection(nil), rejections...)
 			}
 		}
 		if len(candidatesAtPosition) == 0 {
@@ -159,17 +255,19 @@ func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, pol
 					TargetScore: 100,
 				}}
 				layers = append(layers, candidatesAtPosition)
+				previousLayer = candidatesAtPosition
 				previousVowel = mora.Vowel
 				phraseStart = false
 				continue
 			}
-			return nil, &MissingAliasError{Position: position, Mora: mora.Text, Candidates: candidates}
+			return nil, &MissingAliasError{Position: position, Mora: mora.Text, Candidates: candidates, CandidateRejections: rejections}
 		}
 		applyCompositePreferences(candidatesAtPosition, policy)
+		b.populateAcousticScores(candidatesAtPosition, previousLayer, acousticMode)
 		if len(candidatesAtPosition) > maxCandidatesPerPosition {
 			sort.SliceStable(candidatesAtPosition, func(i, j int) bool {
-				left := candidatesAtPosition[i].TargetScore + candidatesAtPosition[i].PreferenceScore
-				right := candidatesAtPosition[j].TargetScore + candidatesAtPosition[j].PreferenceScore
+				left := localCandidateScore(candidatesAtPosition[i], acousticMode)
+				right := localCandidateScore(candidatesAtPosition[j], acousticMode)
 				return left > right
 			})
 			candidatesAtPosition = candidatesAtPosition[:maxCandidatesPerPosition]
@@ -181,6 +279,7 @@ func (b *Bank) candidateLayersWithPolicy(morae []frontend.Mora, tone string, pol
 			}
 		}
 		layers = append(layers, candidatesAtPosition)
+		previousLayer = candidatesAtPosition
 		previousVowel = mora.Vowel
 		phraseStart = false
 	}
@@ -215,6 +314,25 @@ func candidateScore(candidateTier int, entry oto.Entry) float64 {
 	return score
 }
 
+func localCandidateScore(candidate Selection, acousticMode string) float64 {
+	score := candidate.TargetScore + candidate.PreferenceScore
+	if acousticMode == AcousticModeApply {
+		score += candidate.AcousticTargetScore
+	}
+	return score
+}
+
+func hasUsableCandidateEntries(bank *Bank, candidates []aliasCandidate) bool {
+	for _, candidate := range candidates {
+		for _, entry := range bank.Entries[candidate.name] {
+			if bank.validateEntry(entry).Status != "unusable" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 type aliasCandidate struct {
 	name string
 	tier int
@@ -222,12 +340,16 @@ type aliasCandidate struct {
 }
 
 func affixCandidates(base []aliasCandidate, affix Affix) []aliasCandidate {
+	return affixCandidatesWithFallback(base, affix, true)
+}
+
+func affixCandidatesWithFallback(base []aliasCandidate, affix Affix, allowUnprefixed bool) []aliasCandidate {
 	result := make([]aliasCandidate, 0, len(base)*2)
 	for _, candidate := range base {
-		result = append(result,
-			aliasCandidate{name: affix.Prefix + candidate.name + affix.Suffix, tier: candidate.tier, kind: candidate.kind},
-			aliasCandidate{name: candidate.name, tier: candidate.tier + 1, kind: candidate.kind},
-		)
+		result = append(result, aliasCandidate{name: affix.Prefix + candidate.name + affix.Suffix, tier: candidate.tier, kind: candidate.kind})
+		if allowUnprefixed {
+			result = append(result, aliasCandidate{name: candidate.name, tier: candidate.tier + 1, kind: candidate.kind})
+		}
 	}
 	return uniqueCandidates(result)
 }

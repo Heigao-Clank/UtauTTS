@@ -26,6 +26,7 @@ type Entry struct {
 	Overlap      float64
 	OtoPath      string
 	Line         int
+	SourceGroup string
 }
 
 type Diagnostic struct {

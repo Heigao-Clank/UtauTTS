@@ -1,6 +1,7 @@
 package voicebank
 
 import (
+	"fmt"
 	"math"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,9 @@ import (
 )
 
 type LatticeAudit struct {
+	Tone                    string          `json:"tone,omitempty"`
+	Color                   string          `json:"color,omitempty"`
+	AcousticMode            string          `json:"acoustic_mode,omitempty"`
 	VCVSelectedPositions    int             `json:"vcv_selected_positions"`
 	CVVCSelectedPositions   int             `json:"cvvc_selected_positions"`
 	CVSelectedPositions     int             `json:"cv_selected_positions"`
@@ -36,6 +40,11 @@ type PositionAudit struct {
 	SelectedComposite    bool             `json:"selected_composite,omitempty"`
 	SelectedTransition   string           `json:"selected_transition,omitempty"`
 	SelectedFallbackTier int              `json:"selected_fallback_tier"`
+	SelectedSubbankID    string           `json:"selected_subbank_id,omitempty"`
+	SelectedColor        string           `json:"selected_color,omitempty"`
+	RequestedTone        string           `json:"requested_tone,omitempty"`
+	ResolvedTone         string           `json:"resolved_tone,omitempty"`
+	SelectedMargin       float64          `json:"selected_margin,omitempty"`
 	Position             int              `json:"position"`
 	Mora                 string           `json:"mora"`
 	CandidateCount       int              `json:"candidate_count"`
@@ -53,46 +62,65 @@ type PositionAudit struct {
 }
 
 type CandidateAudit struct {
-	Index                  int     `json:"index"`
-	Alias                  string  `json:"alias"`
-	AliasKind              string  `json:"alias_kind"`
-	Composite              bool    `json:"composite,omitempty"`
-	TransitionAlias        string  `json:"transition_alias,omitempty"`
-	FallbackTier           int     `json:"fallback_tier"`
-	Source                 string  `json:"source"`
-	OtoPath                string  `json:"oto_path"`
-	OtoLine                int     `json:"oto_line"`
-	TargetScore            float64 `json:"target_score"`
-	SourceGroup            string  `json:"source_group"`
-	SourceF0Hz             float64 `json:"source_f0_hz"`
-	PitchValid             bool    `json:"pitch_valid"`
-	BestHandcraftedJoin    float64 `json:"best_handcrafted_join"`
-	BestLearnedJoin        float64 `json:"best_learned_join,omitempty"`
-	BestLearnedProbability float64 `json:"best_learned_probability,omitempty"`
+	Index                  int                  `json:"index"`
+	Alias                  string               `json:"alias"`
+	AliasKind              string               `json:"alias_kind"`
+	Composite              bool                 `json:"composite,omitempty"`
+	TransitionAlias        string               `json:"transition_alias,omitempty"`
+	FallbackTier           int                  `json:"fallback_tier"`
+	Source                 string               `json:"source"`
+	OtoPath                string               `json:"oto_path"`
+	OtoLine                int                  `json:"oto_line"`
+	TargetScore            float64              `json:"target_score"`
+	SubbankID              string               `json:"subbank_id,omitempty"`
+	Color                  string               `json:"color,omitempty"`
+	EntryStatus            string               `json:"entry_status,omitempty"`
+	EntryValidation        []string             `json:"entry_validation,omitempty"`
+	CandidateRejections    []CandidateRejection `json:"candidate_rejections,omitempty"`
+	AcousticTargetScore    float64              `json:"acoustic_target_score,omitempty"`
+	AcousticJoinScore      float64              `json:"acoustic_join_score,omitempty"`
+	SelectionMargin        float64              `json:"selection_margin,omitempty"`
+	SourceGroup            string               `json:"source_group"`
+	SourceF0Hz             float64              `json:"source_f0_hz"`
+	PitchValid             bool                 `json:"pitch_valid"`
+	BestHandcraftedJoin    float64              `json:"best_handcrafted_join"`
+	BestLearnedJoin        float64              `json:"best_learned_join,omitempty"`
+	BestLearnedProbability float64              `json:"best_learned_probability,omitempty"`
 }
 
 // AuditLatticeは保持された全候補と各候補への最良の入エッジを報告する。
 // 診断専用であり、合成では依然として正確なViterbiパスを使う。
 func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connection.LearnedModel) (*LatticeAudit, error) {
-	layers, err := b.candidateLayers(morae, tone)
+	return b.AuditLatticeWithConfig(morae, ResolveConfig{Tone: tone, JoinModel: model})
+}
+
+func (b *Bank) AuditLatticeWithConfig(morae []frontend.Mora, cfg ResolveConfig) (*LatticeAudit, error) {
+	policy := cfg.AliasPolicy
+	if policy == "" {
+		policy = AliasPolicyAuto
+	}
+	if !policy.valid() {
+		return nil, fmt.Errorf("unknown alias policy %q", policy)
+	}
+	layers, err := b.candidateLayersWithPolicyMode(morae, cfg.Tone, cfg.Color, policy, cfg.AcousticMode)
 	if err != nil {
 		return nil, err
 	}
 	if b.extractor == nil {
 		b.extractor = connection.NewExtractor()
 	}
-	targetPath := selectBestPaths(layers, SelectionTargetOnly, nil, b.extractor)
-	handcraftedPath := selectBestPaths(layers, SelectionViterbi, nil, b.extractor)
+	targetPath := selectBestPathsWithAcoustic(layers, SelectionTargetOnly, nil, b.extractor, cfg.AcousticMode)
+	handcraftedPath := selectBestPathsWithAcoustic(layers, SelectionViterbi, nil, b.extractor, cfg.AcousticMode)
 	var learnedPath []Selection
-	if model != nil {
-		learnedPath = selectBestPaths(layers, SelectionViterbi, model, b.extractor)
+	if cfg.JoinModel != nil {
+		learnedPath = selectBestPathsWithAcoustic(layers, SelectionViterbi, cfg.JoinModel, b.extractor, cfg.AcousticMode)
 	}
 	targetByPosition := selectionsByPosition(targetPath)
 	handcraftedByPosition := selectionsByPosition(handcraftedPath)
 	learnedByPosition := selectionsByPosition(learnedPath)
 	cache := connection.NewExtractor()
 	pitchCache := map[candidatePitchKey]candidatePitch{}
-	result := &LatticeAudit{}
+	result := &LatticeAudit{Tone: cfg.Tone, Color: cfg.Color, AcousticMode: cfg.AcousticMode}
 	for layerIndex, layer := range layers {
 		if len(layer) == 0 {
 			continue
@@ -111,7 +139,12 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 			position.SelectedTransition = selected.Transition.Alias
 		}
 		position.SelectedFallbackTier = selected.FallbackTier
-		if model != nil {
+		position.SelectedSubbankID = selected.SubbankID
+		position.SelectedColor = selected.Color
+		position.RequestedTone = selected.RequestedTone
+		position.ResolvedTone = selected.ResolvedTone
+		position.SelectedMargin = selected.SelectionMargin
+		if cfg.JoinModel != nil {
 			position.LearnedSelected = candidateIndex(layer, learnedByPosition[layer[0].Position])
 		}
 		minimum, maximum := layer[0].TargetScore, layer[0].TargetScore
@@ -152,7 +185,12 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 				Source:    relativePath(b.Root, candidate.Entry.Filename),
 				OtoPath:   relativePath(b.Root, candidate.Entry.OtoPath), OtoLine: candidate.Entry.Line,
 				TargetScore: candidate.TargetScore, SourceGroup: group,
-				SourceF0Hz: measuredPitch.Hz, PitchValid: measuredPitch.Valid,
+				SubbankID: candidate.SubbankID, Color: candidate.Color,
+				EntryStatus: candidate.EntryStatus, EntryValidation: append([]string(nil), candidate.EntryValidation...),
+				CandidateRejections: append([]CandidateRejection(nil), candidate.CandidateRejections...),
+				AcousticTargetScore: candidate.AcousticTargetScore, AcousticJoinScore: candidate.AcousticJoinScore,
+				SelectionMargin: candidate.SelectionMargin,
+				SourceF0Hz:      measuredPitch.Hz, PitchValid: measuredPitch.Valid,
 			}
 			if candidate.Transition != nil {
 				audit.TransitionAlias = candidate.Transition.Alias
@@ -163,8 +201,8 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 					incoming = candidate.Transition.Entry
 				}
 				audit.BestHandcraftedJoin = bestIncoming(layers[layerIndex-1], incoming, cache, nil).score
-				if model != nil {
-					best := bestIncoming(layers[layerIndex-1], incoming, cache, model)
+				if cfg.JoinModel != nil {
+					best := bestIncoming(layers[layerIndex-1], incoming, cache, cfg.JoinModel)
 					audit.BestLearnedJoin, audit.BestLearnedProbability = best.score, best.probability
 				}
 			}
@@ -213,10 +251,10 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 				result.CVSelectedPositions++
 			}
 		}
-		if model != nil && position.LearnedSelected != position.TargetSelected {
+		if cfg.JoinModel != nil && position.LearnedSelected != position.TargetSelected {
 			result.LearnedChanges++
 		}
-		if model != nil && position.LearnedSelected != position.HandcraftedSelected {
+		if cfg.JoinModel != nil && position.LearnedSelected != position.HandcraftedSelected {
 			result.LearnedFromHandcrafted++
 		}
 		result.Positions = append(result.Positions, position)
@@ -225,6 +263,9 @@ func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connectio
 }
 
 func sourceGroup(root string, entry oto.Entry) string {
+	if entry.SourceGroup != "" {
+		return entry.SourceGroup
+	}
 	relative := relativePath(root, entry.OtoPath)
 	directory := filepath.ToSlash(filepath.Dir(relative))
 	if directory == "." || directory == "" {

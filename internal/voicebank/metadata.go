@@ -15,6 +15,11 @@ type Affix struct {
 }
 
 func (b *Bank) loadMetadata() {
+	if subbanks, path, diagnostics := loadCharacterYAML(b.Root); path != "" {
+		b.CharacterYAML = path
+		b.Subbanks = subbanks
+		b.Diagnostics = append(b.Diagnostics, diagnostics...)
+	}
 	if path := findRootFile(b.Root, "character.txt"); path != "" {
 		if text, err := readMetadata(path); err == nil {
 			for _, line := range strings.Split(text, "\n") {
@@ -79,19 +84,35 @@ func findRootFile(root, name string) string {
 }
 
 func (b *Bank) AffixForTone(tone string) (Affix, bool) {
-	if len(b.PrefixMap) == 0 {
-		return Affix{}, false
-	}
+	affix, _, ok := b.AffixForToneAndColor(tone, "")
+	return affix, ok
+}
+
+func (b *Bank) AffixForToneAndColor(tone, color string) (Affix, Subbank, bool) {
 	tone = strings.ToUpper(strings.TrimSpace(tone))
 	if tone == "" {
 		tone = "C4"
 	}
+	if len(b.Subbanks) > 0 {
+		if subbank, ok := selectSubbank(b.Subbanks, tone, color); ok {
+			if subbank.Tone == "" {
+				subbank.Tone = tone
+			}
+			return Affix{Prefix: subbank.Prefix, Suffix: subbank.Suffix}, subbank, true
+		}
+		if strings.TrimSpace(color) != "" {
+			return Affix{}, Subbank{}, false
+		}
+	}
+	if len(b.PrefixMap) == 0 {
+		return Affix{}, Subbank{}, false
+	}
 	if affix, ok := b.PrefixMap[tone]; ok {
-		return affix, true
+		return affix, Subbank{ID: "prefix.map", Prefix: affix.Prefix, Suffix: affix.Suffix, Tone: tone}, true
 	}
 	target, ok := toneNumber(tone)
 	if !ok {
-		return Affix{}, false
+		return Affix{}, Subbank{}, false
 	}
 	bestDistance := int(^uint(0) >> 1)
 	bestTone := ""
@@ -113,7 +134,83 @@ func (b *Bank) AffixForTone(tone string) (Affix, bool) {
 			found = true
 		}
 	}
+	return best, Subbank{ID: "prefix.map", Prefix: best.Prefix, Suffix: best.Suffix, Tone: bestTone}, found
+}
+
+func selectSubbank(subbanks []Subbank, tone, color string) (Subbank, bool) {
+	color = strings.TrimSpace(color)
+	var best Subbank
+	found := false
+	bestDistance := int(^uint(0) >> 1)
+	target, targetOK := toneNumber(tone)
+	for _, candidate := range subbanks {
+		if strings.TrimSpace(candidate.Color) != color {
+			continue
+		}
+		distance := 0
+		if targetOK {
+			distance = subbankToneDistance(candidate, target)
+		}
+		if !found || distance < bestDistance || (distance == bestDistance && candidate.Order < best.Order) {
+			best, bestDistance, found = candidate, distance, true
+			if targetOK {
+				best.Tone = toneAtSubbankDistance(candidate, target)
+			}
+		}
+	}
 	return best, found
+}
+
+func toneAtSubbankDistance(subbank Subbank, target int) string {
+	if len(subbank.ToneRanges) == 0 {
+		return toneName(target)
+	}
+	best := target
+	bestDistance := int(^uint(0) >> 1)
+	for _, toneRange := range subbank.ToneRanges {
+		value := target
+		if value < toneRange.Low {
+			value = toneRange.Low
+		} else if value > toneRange.High {
+			value = toneRange.High
+		}
+		distance := value - target
+		if distance < 0 {
+			distance = -distance
+		}
+		if distance < bestDistance {
+			best, bestDistance = value, distance
+		}
+	}
+	return toneName(best)
+}
+
+func toneName(number int) string {
+	if number < 0 {
+		return ""
+	}
+	names := []string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
+	octave := number/12 - 1
+	return names[number%12] + strconv.Itoa(octave)
+}
+
+func subbankToneDistance(subbank Subbank, target int) int {
+	if len(subbank.ToneRanges) == 0 {
+		return 0
+	}
+	best := int(^uint(0) >> 1)
+	for _, toneRange := range subbank.ToneRanges {
+		distance := 0
+		if target < toneRange.Low {
+			distance = toneRange.Low - target
+		} else if target > toneRange.High {
+			distance = target - toneRange.High
+		}
+		if distance < best {
+			best = distance
+		}
+	}
+	return best
 }
 
 func toneNumber(tone string) (int, bool) {

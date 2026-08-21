@@ -25,9 +25,11 @@ type Request struct {
 	Kana               string
 	VoicebankID        string
 	Tone               string
+	Color              string
 	ModelID            string
 	Renderer           string
 	AliasPolicy        voicebank.AliasPolicy
+	AcousticMode       string
 	Dictionary         map[string]string
 	MoraDurationMS     float64
 	PauseDurationMS    float64
@@ -106,7 +108,9 @@ func (s *Service) config(request Request, requireVoicebank bool) (tts.Config, st
 		Reading:                 request.Kana,
 		Dictionary:              request.Dictionary,
 		Tone:                    request.Tone,
+		Color:                   request.Color,
 		AliasPolicy:             request.AliasPolicy,
+		AcousticMode:            request.AcousticMode,
 		MoraDurationMS:          request.MoraDurationMS,
 		PauseDurationMS:         request.PauseDurationMS,
 		MoraDurationsMS:         request.MoraDurationsMS,

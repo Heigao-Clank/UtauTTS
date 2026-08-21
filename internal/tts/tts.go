@@ -26,6 +26,7 @@ type Config struct {
 	Reading                 string
 	Dictionary              map[string]string
 	Tone                    string
+	Color                   string
 	MoraDurationMS          float64
 	PauseDurationMS         float64
 	MoraDurationsMS         []float64
@@ -51,6 +52,7 @@ type Config struct {
 	PitchCurve              *render.PitchCurve
 	SelectionMode           voicebank.SelectionMode
 	AliasPolicy             voicebank.AliasPolicy
+	AcousticMode            string
 	JoinModelPath           string
 	JoinScoreScale          float64
 }
@@ -231,7 +233,8 @@ func Synthesize(cfg Config) (*Result, error) {
 		joinCostMode = "none"
 	}
 	selections, err := bank.ResolveWithConfig(morae, voicebank.ResolveConfig{
-		Tone: cfg.Tone, Mode: cfg.SelectionMode, AliasPolicy: cfg.AliasPolicy, JoinModel: joinModel,
+		Tone: cfg.Tone, Color: cfg.Color, Mode: cfg.SelectionMode, AliasPolicy: cfg.AliasPolicy,
+		AcousticMode: cfg.AcousticMode, JoinModel: joinModel,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolve voicebank units: %w", err)
@@ -275,6 +278,9 @@ func Synthesize(cfg Config) (*Result, error) {
 		Predictions:      predictions,
 		SelectionMode:    cfg.SelectionMode,
 		AliasPolicy:      cfg.AliasPolicy,
+		Tone:             cfg.Tone,
+		Color:            cfg.Color,
+		AcousticMode:     cfg.AcousticMode,
 		JoinCostMode:     joinCostMode,
 		JoinModelVersion: joinModelVersion,
 		JoinScoreScale:   joinModelScoreScale(joinModel),
