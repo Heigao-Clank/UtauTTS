@@ -45,6 +45,8 @@
     "main.param.pauseDuration": "停顿时长",
     "main.param.renderer": "渲染器",
     "main.param.tone": "基准音高",
+    "main.param.voicebankType": "音源类型",
+    "main.color.default": "默认",
     "main.param.voicebank": "音源",
     "main.param.aliasPolicy": "音源格式",
     "main.aliasPolicy.auto": "自动",
@@ -165,6 +167,8 @@
     "update.preserveNote": "更新后仍会保留当前的音源和设置。更新完成后，应用将自动重启。",
     "update.suppressVersion": "下个版本发布前不再通知",
     "update.title": "有新版本",
+    "voicebank.loading": "正在加载音源…",
+    "voicebank.loadingDetail": "正在扫描 oto.ini 和音源元数据。",
     "voicebankDetails.noReadme": "没有 README",
     "voicebankDetails.capabilities": "alias数量: CV {0} / VCV {1} / VC {2}",
     "voicebankDetails.title": "音源详情"

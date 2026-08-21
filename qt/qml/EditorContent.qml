@@ -14,6 +14,7 @@ import QtMultimedia
         property alias modelCombo: modelCombo
         property alias rendererCombo: rendererCombo
         property alias toneField: toneField
+        property alias colorCombo: colorCombo
         property alias intonationInput: intonationInput
         property alias intonationSlider: intonationSlider
         property alias moraInput: moraInput
@@ -291,6 +292,14 @@ import QtMultimedia
                                 window.updateSetting("voicebankId", currentValue);
                                 const voice = window.voicebankById(currentValue);
                                 window.utterancesModel.setProperty(window.selectedIndex, "imagePath", voice ? voice.image_path : "");
+
+                                const item = window.current();
+                                if (!window.voicebankHasColor(currentValue, item.color || "")) {
+                                    const options = window.voicebankTypeOptions(currentValue);
+                                    window.updateSetting("color", options.length ? options[0].color : "");
+                                }
+                                Qt.callLater(() => window.selectCombo(colorCombo,
+                                        window.typeIdForColor(currentValue, window.current().color || "")));
                             }
                         }
 
@@ -380,6 +389,28 @@ import QtMultimedia
                                 horizontalAlignment: TextInput.AlignRight
                                 text: "C4"
                                 onEditingFinished: window.updateSetting("tone", text)
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                text: window.translator.tr("main.param.voicebankType")
+                                Layout.fillWidth: true
+                            }
+                            ComboBox {
+                                id: colorCombo
+                                Layout.fillWidth: true
+                                model: window.voicebankTypeOptions(
+                                            window.utterancesModel.count ? window.current().voicebankId : "",
+                                            window.utterancesModel.count ? window.current().color || "" : "")
+                                textRole: "display_name"
+                                valueRole: "id"
+                                onActivated: {
+                                    const type = window.voicebankTypeOptionAt(window.current().voicebankId,
+                                            currentIndex, window.current().color || "");
+                                    window.updateSetting("color", type ? type.color : "");
+                                }
                             }
                         }
 

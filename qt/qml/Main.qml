@@ -49,6 +49,7 @@ ApplicationWindow {
     property double updateDownloadReceived: 0
     property double updateDownloadTotal: 0
     property bool updateSuppressVersion: false
+    property bool voicebankReloadActive: false
 
     property alias utterancesModel: utterances
     property alias playerMedia: player
@@ -107,7 +108,7 @@ ApplicationWindow {
     Shortcut {
         sequence: window.qtShortcutSequence(window.appBackend.reloadVoicebanksShortcut)
         enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
-        onActivated: window.appBackend.reloadVoicebanks()
+        onActivated: window.reloadVoicebanks()
     }
 
     Shortcut {
@@ -502,6 +503,40 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: voicebankReloadDialog
+        title: window.translator.tr("menu.file.reloadVoicebanks")
+        modal: true
+        width: Math.min(window.width - 40, 440)
+        anchors.centerIn: Overlay.overlay
+        closePolicy: Popup.NoAutoClose
+        standardButtons: Dialog.NoButton
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: window.translator.tr("voicebank.loading")
+                wrapMode: Text.WordWrap
+            }
+
+            ProgressBar {
+                Layout.fillWidth: true
+                indeterminate: true
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: window.translator.tr("voicebank.loadingDetail")
+                color: window.mutedText
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
+    }
+
     Connections {
         target: window.appBackend
 
@@ -522,6 +557,10 @@ window.translator.load(window.appBackend.language);
         }
 
         function onMetadataChanged() {
+            if (window.voicebankReloadActive) {
+                window.voicebankReloadActive = false;
+                voicebankReloadDialog.close();
+            }
             const suppressDirty = !window.metadataInitialized;
             window.assignDefaultVoicebank(suppressDirty);
             window.assignDefaultSynthesisSettings(suppressDirty);
@@ -683,6 +722,10 @@ window.translator.load(window.appBackend.language);
         }
 
         function onErrorChanged() {
+            if (window.voicebankReloadActive && window.appBackend.error.length) {
+                window.voicebankReloadActive = false;
+                voicebankReloadDialog.close();
+            }
             if (window.batchExportActive && !window.appBackend.busy
                     && window.pendingUtteranceId.length && window.appBackend.error.length)
                 window.finishBatchExport(false);
@@ -757,7 +800,7 @@ window.translator.load(window.appBackend.language);
             MenuItem {
                 text: window.translator.tr("menu.file.reloadVoicebanks")
                 enabled: !window.appBackend.busy
-                onTriggered: window.appBackend.reloadVoicebanks()
+                onTriggered: window.reloadVoicebanks()
             }
             MenuSeparator {}
             MenuItem {
@@ -1004,6 +1047,87 @@ window.translator.load(window.appBackend.language);
         return null;
     }
 
+    function reloadVoicebanks() {
+        if (window.appBackend.busy || window.batchExportActive)
+            return;
+        window.voicebankReloadActive = true;
+        voicebankReloadDialog.open();
+        window.appBackend.reloadVoicebanks();
+    }
+
+    function voicebankTypeOptions(id, selectedColor) {
+        const voice = window.voicebankById(id);
+        const raw = voice && voice.types ? voice.types : [];
+        const options = [];
+        for (let index = 0; index < raw.length; ++index) {
+            const source = raw[index] || {};
+            const color = String(source.color || "");
+            const optionId = String(source.id || ("subbank-" + index));
+            options.push({
+                id: optionId,
+                color: color,
+                display_name: color.length ? color : window.translator.tr("main.color.default")
+            });
+        }
+        if (!options.length) {
+            options.push({
+                id: "__default__",
+                color: "",
+                display_name: window.translator.tr("main.color.default")
+            });
+        }
+
+        // Preserve a color from an older project if its metadata was removed
+        // or renamed.  It remains selectable for compatibility, while new
+        // selections are limited to the types advertised by the voicebank.
+        if (selectedColor !== undefined && selectedColor !== null) {
+            const selected = String(selectedColor || "");
+            let found = false;
+            for (let index = 0; index < options.length; ++index) {
+                if (options[index].color === selected) {
+                    found = true;
+                    break;
+                }
+            }
+            if (selected.length && !found) {
+                options.push({
+                    id: "__custom__:" + selected,
+                    color: selected,
+                    display_name: selected
+                });
+            }
+        }
+        return options;
+    }
+
+    function voicebankTypeOptionAt(id, index, selectedColor) {
+        const options = window.voicebankTypeOptions(id, selectedColor);
+        return index >= 0 && index < options.length ? options[index] : null;
+    }
+
+    function voicebankHasColor(id, color) {
+        const target = String(color || "");
+        const voice = window.voicebankById(id);
+        const raw = voice && voice.types ? voice.types : [];
+        if (!raw.length)
+            return target === "";
+        for (let index = 0; index < raw.length; ++index) {
+            if (String((raw[index] || {}).color || "") === target)
+                return true;
+        }
+        return false;
+    }
+
+    function typeIdForColor(id, color) {
+        const target = String(color || "");
+        const options = window.voicebankTypeOptions(id, target);
+        for (let index = 0; index < options.length; ++index) {
+            if (options[index].color === target)
+                return options[index].id;
+        }
+        return options.length ? options[0].id : "";
+    }
+
     function defaultVoicebank() {
         const configured = String(window.appBackend.defaultVoicebankId || "");
         const selected = configured.length ? window.voicebankById(configured) : null;
@@ -1157,6 +1281,7 @@ window.translator.load(window.appBackend.language);
                 renderer_id: item.renderer || "",
                 alias_policy: window.normalizeAliasPolicy(item.aliasPolicy),
                 tone: item.tone || "C4",
+                color: item.color || "",
                 mora_duration_ms: item.moraDuration,
                 pause_duration_ms: item.pauseDuration,
                 intonation: item.intonation,
@@ -1177,7 +1302,7 @@ window.translator.load(window.appBackend.language);
         }
         return {
             format: "utautts-project",
-            format_version: 4,
+            format_version: 5,
             app_version: Qt.application.version,
             utterances: savedUtterances,
             selected_index: utterances.count ? selectedIndex : 0
@@ -1281,6 +1406,7 @@ window.translator.load(window.appBackend.language);
                 renderer: rendererId,
                 aliasPolicy: window.normalizeAliasPolicy(saved.alias_policy),
                 tone: String(saved.tone || "C4"),
+                color: String(saved.color || ""),
                 moraDuration: window.projectNumber(saved.mora_duration_ms, window.appBackend.defaultMoraDuration, 20, 1000, true),
                 pauseDuration: window.projectNumber(saved.pause_duration_ms, window.appBackend.defaultPauseDuration, 0, 3000, true),
                 intonation: window.projectNumber(saved.intonation, 1, 0, 2, false),
@@ -1325,7 +1451,7 @@ window.translator.load(window.appBackend.language);
         if (item[name] === value)
             return;
         utterances.setProperty(selectedIndex, name, value);
-        if (["voicebankId", "modelId", "renderer", "aliasPolicy", "tone", "moraDuration", "pauseDuration",
+        if (["voicebankId", "modelId", "renderer", "aliasPolicy", "tone", "color", "moraDuration", "pauseDuration",
              "intonation", "applyPitch"].indexOf(name) >= 0)
             clearAutomaticProsody(selectedIndex);
         if (name === "moraDuration")
@@ -1333,7 +1459,7 @@ window.translator.load(window.appBackend.language);
         else if (name === "pauseDuration")
             editorContent.pitchEditor.defaultPauseDuration = value;
         markUtteranceDirty(selectedIndex);
-        if (["voicebankId", "aliasPolicy", "modelId", "renderer", "tone", "moraDuration",
+        if (["voicebankId", "aliasPolicy", "modelId", "renderer", "tone", "color", "moraDuration",
              "pauseDuration", "intonation", "applyPitch"].indexOf(name) >= 0) {
             const updated = utterances.get(selectedIndex);
             if (!window.batchExportActive && updated.content.trim() && updated.reading)
@@ -1521,6 +1647,13 @@ window.translator.load(window.appBackend.language);
         editorContent.pitchEditor.moraDurations = window.displayedMoraDurations(item);
         editorContent.pitchEditor.moraPositions = window.displayedMoraPositions(item);
         selectCombo(editorContent.voiceCombo, item.voicebankId);
+        Qt.callLater(function() {
+            if (window.selectedIndex !== index || !utterances.count)
+                return;
+            const selected = window.current();
+            window.selectCombo(editorContent.colorCombo,
+                    window.typeIdForColor(selected.voicebankId, selected.color || ""));
+        });
         selectCombo(editorContent.aliasPolicyCombo, window.normalizeAliasPolicy(item.aliasPolicy));
         selectCombo(editorContent.modelCombo, item.modelId);
         selectCombo(editorContent.rendererCombo, item.renderer);
@@ -1664,6 +1797,7 @@ window.translator.load(window.appBackend.language);
             renderer: window.appBackend.renderers.length ? window.defaultRendererId() : "",
             aliasPolicy: "auto",
             tone: "C4",
+            color: "",
             moraDuration: window.appBackend.defaultMoraDuration,
             pauseDuration: window.appBackend.defaultPauseDuration,
             intonation: 1,
@@ -1800,6 +1934,7 @@ window.translator.load(window.appBackend.language);
             renderer: item.renderer,
             alias_policy: window.normalizeAliasPolicy(item.aliasPolicy),
             tone: item.tone,
+            color: item.color || "",
             mora_duration_ms: item.moraDuration,
             pause_duration_ms: item.pauseDuration,
             mora_durations_ms: manualDurations,

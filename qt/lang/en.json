@@ -45,6 +45,8 @@
     "main.param.pauseDuration": "Pause Duration",
     "main.param.renderer": "Renderer",
     "main.param.tone": "Pitch Reference",
+    "main.param.voicebankType": "Voicebank Type",
+    "main.color.default": "Normal",
     "main.param.voicebank": "Voicebank",
     "main.param.aliasPolicy": "Voicebank Format",
     "main.aliasPolicy.auto": "Automatic",
@@ -165,6 +167,8 @@
     "update.preserveNote": "Your voicebanks and settings will be preserved.The app will restart automatically after the update finishes.",
     "update.suppressVersion": "Don't notify me until the next version",
     "update.title": "Update Available",
+    "voicebank.loading": "Loading voicebanks…",
+    "voicebank.loadingDetail": "Scanning oto.ini files and voicebank metadata.",
     "voicebankDetails.noReadme": "No README available",
     "voicebankDetails.capabilities": "Alias count: CV {0} / VCV {1} / VC {2}",
     "voicebankDetails.title": "Voicebank Details"
