@@ -14,9 +14,10 @@ type Corpus struct {
 }
 
 type CorpusCase struct {
-	ID   string   `json:"id"`
-	Text string   `json:"text"`
-	Tags []string `json:"tags,omitempty"`
+	ID      string   `json:"id"`
+	Text    string   `json:"text"`
+	Reading string   `json:"reading,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
 }
 
 func LoadCorpus(path string) (*Corpus, error) {

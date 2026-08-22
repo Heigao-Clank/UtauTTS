@@ -17,13 +17,16 @@ func (paths *pathList) String() string         { return strings.Join(*paths, ","
 func (paths *pathList) Set(value string) error { *paths = append(*paths, value); return nil }
 
 type systemInfo struct {
-	Renderer         string `json:"renderer"`
-	JoinModel        bool   `json:"join_model"`
-	JoinModelPath    string `json:"join_model_path,omitempty"`
-	ProsodyModel     bool   `json:"prosody_model,omitempty"`
-	ProsodyPath      string `json:"prosody_model_path,omitempty"`
-	ProsodyPitchOnly bool   `json:"prosody_pitch_only,omitempty"`
-	PitchContourPath string `json:"pitch_contour_path,omitempty"`
+	Renderer            string  `json:"renderer"`
+	AliasPolicy         string  `json:"alias_policy,omitempty"`
+	CVVCTransitionGain  float64 `json:"cvvc_transition_gain,omitempty"`
+	CVVCPreBoundaryFade bool    `json:"cvvc_pre_boundary_fade,omitempty"`
+	JoinModel           bool    `json:"join_model"`
+	JoinModelPath       string  `json:"join_model_path,omitempty"`
+	ProsodyModel        bool    `json:"prosody_model,omitempty"`
+	ProsodyPath         string  `json:"prosody_model_path,omitempty"`
+	ProsodyPitchOnly    bool    `json:"prosody_pitch_only,omitempty"`
+	PitchContourPath    string  `json:"pitch_contour_path,omitempty"`
 }
 type answerTrial struct {
 	ID      int        `json:"id"`
@@ -190,6 +193,15 @@ func main() {
 
 func systemName(system systemInfo) string {
 	name := system.Renderer
+	if system.AliasPolicy != "" && system.AliasPolicy != "auto" {
+		name += "+alias:" + system.AliasPolicy
+	}
+	if system.CVVCTransitionGain > 0 && system.CVVCTransitionGain < 1 {
+		name += fmt.Sprintf("+vc-gain:%.2f", system.CVVCTransitionGain)
+	}
+	if system.CVVCPreBoundaryFade {
+		name += "+vc-pre-boundary-fade"
+	}
 	if system.JoinModel {
 		name += "+learned"
 		if system.JoinModelPath != "" {
