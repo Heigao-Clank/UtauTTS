@@ -165,12 +165,8 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Worldlineは全ユニットを1つの出力にミックスし、各サンプル位置をフレーズの
-	// サンプルレートで解釈する。そのため、異なるレートの録音はここでフレーズの
-	// レートにリサンプリングされ、一時コピーとしてbridgeに渡される。リサンプリング
-	// されたユニットではFRQファイルが意図的に破棄される。元のfrq位置は
-	// リサンプリング後の音声と一致しなくなり、Worldlineはリサンプリング後の波形
-	// 自体からF0を再測定するためである。
+	// 全ユニットをフレーズのレートへ統一してからbridgeへ渡す。
+	// 再サンプル後は位置が合わないFRQを捨て、波形からF0を再測定する。
 	normalizedSources := make(map[string]string)
 	for index := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[index]
@@ -223,19 +219,14 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		var envelopePoints []worldlineEnvelopePoint
 		pitchLengthMS := 0.0
 		if strings.HasPrefix(engine, "classic-worldline-") {
-			// OpenUtauのResamplerItemはbend配列をスケール前の元のpreutterance
-			// から開始し、resamplerに50ms単位で丸めたバッファを要求する。その後
-			// convergenceミキサーが先頭の余分な部分をスキップする。
+			// OpenUtau互換でbendを元のpreutteranceから始め、余分な先頭を後で飛ばす。
 			pitchLeadingMS := unit.PreutteranceMS
 			skipMS = math.Max(0, pitchLeadingMS-timing.preutteranceMS)
 			pitchStartMS = unit.NoteStartMS - pitchLeadingMS
 			durCorrection := 0.0
 			if faithfulClassic {
 				phoneTiming := classicTimings[i]
-				// クラシックのタイミングテーブルはpreutterをピッチ先行量（下の
-				// openUtauClassicTimings）以下に保つため、skipMSは非負に保たれる。
-				// このガードにより、呼び出し側に依存せずにその不変条件を局所的に
-				// 維持する。
+				// 呼び出し側に依存せず、クラシック方式のskipMSを非負に保つ。
 				skipMS = math.Max(0, pitchLeadingMS-phoneTiming.preutter)
 				durCorrection = phoneTiming.preutter - phoneTiming.tailIntrude + phoneTiming.tailOverlap
 				envelopePoints = openUtauEnvelopeFromTiming(*unit, phoneTiming)
@@ -477,13 +468,8 @@ func measureWorldlinePitches(synthesisPlan *plan.Plan, cache *sourceCache) ([]fl
 	return stabilizeWorldlinePitches(values), sampleRate, nil
 }
 
-// stabilizeWorldlinePitchesは、音源ピッチをWorldlineに渡す前に、短い録音で最も
-// 起こりやすいピッチトラッカーの失敗を取り除く。母音に強いフォルマントや不規則な
-// 波形があると、有声ユニットが隣の倍音関係の周期（例えば約3/2倍や2倍）で検出
-// されることがある。その値を目標ピッチとして扱うと、本来自然な録音を数半音ずらす
-// ことになる。低周波側をローカルの基準点として残し、高周波側のみを折り畳む。この
-// 一方向の規則は非常に短いフレーズで重要である。2ユニットのフレーズで互いに補正し
-// 合って両方のピッチが入れ替わってはならない。
+// stabilizeWorldlinePitchesは短い有声録音の倍音誤検出を補正する。
+// 相互補正を避けるため低周波側を基準に高周波側だけを折り畳む。
 func stabilizeWorldlinePitches(values []float64) []float64 {
 	result := append([]float64(nil), values...)
 	for index, value := range values {

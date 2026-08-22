@@ -7,8 +7,7 @@ import (
 	"utautts/internal/pitch"
 )
 
-// Frameは波形領域のレベル、ピッチ、および粗いスペクトル形状を表す。
-// スペクトル値はdB単位で、オプションで平均正規化できる。
+// Frameは波形領域のレベル、ピッチ、粗いスペクトル形状を表す。
 type Frame struct {
 	Valid      bool      `json:"valid"`
 	RMSDB      float64   `json:"rms_db"`

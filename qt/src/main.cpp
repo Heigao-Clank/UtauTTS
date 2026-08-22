@@ -77,7 +77,7 @@ bool updateInProgress() {
 #endif
     return true;
 }
-} // namespace
+}
 
 int main(int argc, char *argv[]) {
     QQuickStyle::setStyle("Fusion");

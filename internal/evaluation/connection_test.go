@@ -45,7 +45,7 @@ func TestAnalyzeExcludesPhraseStartFromSummary(t *testing.T) {
 
 func TestAnalyzeMeasuresRenderedHandoffRange(t *testing.T) {
 	data := make([]int16, 4000)
-	for i := 1680; i < len(data); i++ { // 210 ms at 8 kHz
+	for i := 1680; i < len(data); i++ { // 8 kHzで210 ms
 		data[i] = 16000
 	}
 	p := &plan.Plan{Units: []plan.Unit{

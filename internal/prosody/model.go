@@ -37,8 +37,7 @@ type Model struct {
 	DurationWeights      map[string]float64 `json:"duration_weights"`
 	PitchWeights         map[string]float64 `json:"pitch_weights,omitempty"`
 	EnergyWeights        map[string]float64 `json:"energy_weights,omitempty"`
-	// MoraDurationはマルチタスクモデルの継続時間ヘッド。SequencePitchと同じ移植可能なTCN表現を
-	// 使うが、出力はピッチ係数ではなくモーラ長の乗算係数になる。
+	// MoraDurationはモーラ長の倍率を出すマルチタスクモデルの継続時間ヘッド。
 	MoraDuration   *SequencePitchModel  `json:"mora_duration,omitempty"`
 	SequencePitch  *SequencePitchModel  `json:"sequence_pitch,omitempty"`
 	FramePitch     *FramePitchModel     `json:"frame_pitch,omitempty"`
@@ -294,8 +293,7 @@ func (m *Model) PredictWithFeatures(morae []frontend.Mora, frames []FeatureFrame
 	return result
 }
 
-// RequiresExternalFeaturesは、エクスポートされたシーケンスモデルがモーラのみのGoフロントエンドでは
-// 導出できない言語入力を使用するかどうかを返す。
+// RequiresExternalFeaturesはGoフロントエンドだけでは得られない入力の有無を返す。
 func (m *Model) RequiresExternalFeatures() bool {
 	if m.StandardAccent != nil {
 		return true
@@ -324,8 +322,7 @@ func (m *Model) RequiresExternalFeatures() bool {
 	return false
 }
 
-// HasFrameContourは、モデルがレンダラー向けのフレームピッチ曲線を生成するかどうかを返す。
-// 学習済みモデルまたはstandard-accentベースラインのどちらかを指す。
+// HasFrameContourはモデルがフレームピッチ曲線を生成するかを返す。
 func (m *Model) HasFrameContour() bool {
 	return m != nil && (m.FramePitch != nil || m.PhrasePitch != nil || m.StandardAccent != nil)
 }
@@ -905,8 +902,7 @@ func featuresFor(morae []frontend.Mora, position int) map[string]float64 {
 	return result
 }
 
-// indexedFeatureVectorsは、静的モーラ特徴を合成ごとに一度だけ変換し、フレームごとにmapを
-// 再構築・マージすることを避ける。mora_progressなどのフレーム特徴はフレームループ側で追加する。
+// indexedFeatureVectorsは静的モーラ特徴を一度だけ変換し、フレームごとのmap生成を避ける。
 type indexedFeature struct {
 	column int
 	value  float64

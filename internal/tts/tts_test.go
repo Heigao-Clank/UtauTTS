@@ -297,9 +297,7 @@ func TestConvertToReadingUsesBuiltInTokenizer(t *testing.T) {
 }
 
 func TestConvertToReadingReportsOpenJTalkFallback(t *testing.T) {
-	// 数字は内蔵フロントエンドではトークナイズできない。フォールバック先を存在しないヘルパーに
-	// 向けることで、このチェックアウトに同梱のOpen JTalkヘルパーの有無にかかわらず、
-	// 合成エラーを決定的にする。
+	// 存在しないhelperを指定し、同梱物に依存せずフォールバック失敗を再現する。
 	_, err := ConvertToReading("2024年です。", nil, openjtalk.Config{
 		HelperPath: filepath.Join(t.TempDir(), "missing-helper"),
 	})

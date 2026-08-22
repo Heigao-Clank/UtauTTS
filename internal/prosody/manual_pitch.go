@@ -11,9 +11,7 @@ import (
 
 const ManualPitchVersion = 1
 
-// ManualPitchFileは個々のモーラのピッチへの編集を格納する。Centsはレンダラー/モデルの
-// ベースラインからの相対オフセット。相対で保持することで、学習済みの輪郭を使いながら
-// 違和感のある部分だけをユーザーが修正できる。
+// ManualPitchFileはモデル輪郭に対するモーラ単位の相対補正を保持する。
 type ManualPitchFile struct {
 	Version int                `json:"version"`
 	Reading string             `json:"reading,omitempty"`
@@ -69,8 +67,7 @@ func (file *ManualPitchFile) Validate() error {
 	return nil
 }
 
-// Curveはモーラ中心の編集を滑らかな10msフレーム輪郭に変換する。未指定位置はゼロなので、
-// 疎なファイルで選択したモーラのみを補正できる。休止はタイミングに反映されるが点は与えない。
+// Curveは疎なモーラ補正を滑らかな10msフレーム輪郭へ変換する。
 func (file *ManualPitchFile) Curve(morae []frontend.Mora, timings []MoraTiming, durationMS float64) (*PitchContour, error) {
 	if file == nil || len(file.Points) == 0 {
 		return nil, nil

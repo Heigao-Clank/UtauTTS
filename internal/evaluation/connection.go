@@ -41,8 +41,8 @@ type Metric struct {
 	F0DeltaCents    float64 `json:"f0_delta_cents,omitempty"`
 }
 
-// Analyzeは各ユニット境界周辺の波形の不連続性を測定する。サマリ値は隣接ユニットのみを
-// 含み、フレーズ開始部はポーズ後のアタック診断用にBoundariesに残す。
+// Analyzeはユニット境界の波形不連続を測定する。
+// フレーズ先頭は集計せず、ポーズ後の診断用にBoundariesへ残す。
 func Analyze(pcm *audio.PCM, synthesisPlan *plan.Plan) (*Report, error) {
 	if pcm == nil || pcm.SampleRate <= 0 || pcm.Channels <= 0 || len(pcm.Data) == 0 {
 		return nil, errors.New("empty audio")
@@ -151,8 +151,7 @@ func derivativeMetrics(wave []float64) (peak, rms float64) {
 func handoffRange(unit plan.Unit) (float64, float64) {
 	preutterance := unit.PreutteranceMS
 	overlap := unit.OverlapMS
-	// Renderは正規化済みタイミングをこれらのフィールドに記録する。TimingScaleは、
-	// レンダリングされたゼロ値と、監査フィールドのない古い未レンダリングのPlanを区別する。
+	// TimingScaleで監査情報のない旧Planとレンダリング済みのゼロ値を区別する。
 	if unit.TimingScale > 0 {
 		preutterance = unit.EffectivePreutteranceMS
 		overlap = unit.EffectiveOverlapMS

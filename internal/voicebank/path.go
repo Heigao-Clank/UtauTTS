@@ -14,9 +14,7 @@ type pathState struct {
 	joinProbability float64
 }
 
-// selectBestPathsは各フレーズを候補ラティスとして扱う。CandidateScoreは
-// ターゲットコストの基準、joinScoreはペア間の連結スコア。両者を分離することで、
-// 探索を変更せずにどちらかのヒューリスティックを学習モデルに置き換えられる。
+// selectBestPathsは候補コストと接続スコアを分離したラティス探索を行う。
 func selectBestPaths(layers [][]Selection, mode SelectionMode, model *connection.LearnedModel, extractor *connection.Extractor) []Selection {
 	return selectBestPathsWithAcoustic(layers, mode, model, extractor, "")
 }

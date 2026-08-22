@@ -2,8 +2,7 @@ package render
 
 import "math"
 
-// wsolaStretchはretimeヘルパーが使う既定の時間領域ストレッチ関数。常に成功する
-// ため、下のエラーを返すヘルパー群は失敗しうるGPU系でも同じ形で使える。
+// wsolaStretchは失敗しうるGPU実装と同じ形で使えるCPUストレッチ関数。
 func wsolaStretch(source []float64, targetFrames, sampleRate int) ([]float64, error) {
 	return wsola(source, targetFrames, sampleRate), nil
 }

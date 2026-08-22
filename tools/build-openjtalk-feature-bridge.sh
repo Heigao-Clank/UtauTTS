@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds the Linux utautts-openjtalk-features onefile helper with PyInstaller.
-# Mirrors tools/build-openjtalk-feature-bridge.ps1 for the Linux platform.
+# Linux向けutautts-openjtalk-featuresをPyInstallerで単一ファイル化する。
 
-# Environment:
-#   PYTHON   - python interpreter with pip (default: /opt/utautts-py/bin/python)
+# PYTHON: pipを利用できるPython（既定: /opt/utautts-py/bin/python）
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python_bin="${PYTHON:-/opt/utautts-py/bin/python}"

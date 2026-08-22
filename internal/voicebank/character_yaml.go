@@ -6,15 +6,13 @@ import (
 	"strings"
 )
 
-// ToneRange is an inclusive range of MIDI-style note numbers.
+// ToneRangeはMIDIノート番号の範囲を表す。
 type ToneRange struct {
 	Low  int `json:"low"`
 	High int `json:"high"`
 }
 
-// Subbank contains the small, selection-relevant part of an OpenUtau
-// character.yaml subbank declaration. Unknown YAML fields are intentionally
-// ignored so ordinary UTAU voicebanks remain compatible.
+// Subbankは原音選択に必要なcharacter.yamlの情報を保持する。
 type Subbank struct {
 	ID         string
 	Color      string
@@ -26,9 +24,7 @@ type Subbank struct {
 	Tone       string
 }
 
-// SubbankOption is the stable, UI/API-facing part of a character.yaml
-// subbank.  Tone is intentionally omitted: a single color can cover several
-// tone ranges and the resolver chooses the range for the requested note.
+// SubbankOptionはUIとAPIへ公開するサブバンク情報。
 type SubbankOption struct {
 	ID         string      `json:"id"`
 	Color      string      `json:"color"`
@@ -37,9 +33,7 @@ type SubbankOption struct {
 	ToneRanges []ToneRange `json:"tone_ranges,omitempty"`
 }
 
-// SubbankOptions returns all selectable subbanks in declaration order.  A
-// copy is returned so callers (notably the Qt/native metadata bridge) cannot
-// mutate resolver state accidentally.
+// SubbankOptionsは選択可能なサブバンクのコピーを宣言順で返す。
 func (b *Bank) SubbankOptions() []SubbankOption {
 	if b == nil || len(b.Subbanks) == 0 {
 		return nil
@@ -87,8 +81,7 @@ func loadCharacterYAML(root string) ([]Subbank, string, []Diagnostic) {
 			return
 		}
 		if len(current.ToneRanges) == 0 {
-			// A subbank without a range is valid in OpenUtau and means all
-			// tones. Keep it representable rather than silently discarding it.
+			// 音域未指定は全音域として扱う。
 			current.ToneRanges = []ToneRange{{Low: -1 << 30, High: 1<<30 - 1}}
 		}
 		subbanks = append(subbanks, *current)
@@ -172,9 +165,9 @@ func assignSubbankField(subbank *Subbank, line string) error {
 	case "suffix":
 		subbank.Suffix = value
 	case "tone_ranges":
-		// The list items are parsed by loadCharacterYAML.
+		// リスト要素は呼び出し側で解析済み。
 	default:
-		// Unknown fields are intentionally ignored.
+		// 未知フィールドは互換性のため無視する。
 	}
 	return nil
 }

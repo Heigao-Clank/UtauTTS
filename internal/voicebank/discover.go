@@ -24,9 +24,7 @@ type Presentation struct {
 	ReadmeText    string
 }
 
-// Discoverはroot直下のvoicebankを探す。展開時にトップディレクトリが
-// 二重になったvoice/bank/bank/oto.ini形式も1段だけ内側を確認する。
-// root自体がvoicebankなら、それを唯一の結果として返す。
+// Discoverはroot直下と二重展開された1階層内側から音源を探す。
 func Discover(root string) ([]Summary, error) {
 	if root == "" {
 		root = "voice"
@@ -82,8 +80,7 @@ func inspectDiscoveredRoot(root string) (Summary, error) {
 			}
 		}
 	}
-	// Preserve support for voicebanks that intentionally keep multiple oto.ini
-	// files below their root; the wrapper form above is preferred when present.
+	// 直下に複数のoto.iniを持つ音源も受け入れる。
 	return Inspect(root)
 }
 
@@ -100,9 +97,7 @@ func hasDirectOto(root string) bool {
 	return false
 }
 
-// ResolveDirectoryは設定されたvoiceディレクトリをプロセスの作業ディレクトリから独立させる。
-// 開発時は既存の作業ディレクトリ配下のパスを優先し、パッケージ化されたアプリでは
-// 実行ファイルの隣のパスを使う。
+// ResolveDirectoryは開発時の作業ディレクトリを優先し、次に実行ファイル基準で解決する。
 func ResolveDirectory(configured string) string {
 	if configured == "" {
 		configured = "voice"
@@ -123,8 +118,7 @@ func ResolveDirectory(configured string) string {
 
 var errOtoFound = errors.New("oto.ini found")
 
-// Inspectはピッカーにvoicebankを表示するのに足るメタデータのみを読む。
-// Loadと異なり、oto.iniの全エントリをパースしない。
+// Inspectはoto.ini全体を解析せず、音源一覧に必要なメタデータだけを読む。
 func Inspect(root string) (Summary, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {

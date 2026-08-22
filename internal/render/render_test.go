@@ -804,8 +804,7 @@ func TestChooseBoundaryRepairKeepsNormalOrImprovesPeak(t *testing.T) {
 	for index := range previousWave {
 		previousWave[index] = 0.2 * math.Sin(2*math.Pi*float64(index)/20)
 	}
-	// 局所的なインパルスが境界の過渡応答を表す。整列した音源テールがこれを低減する
-	// はずであり、そうでない場合は通常接続がフォールバックとなる。
+	// 境界のインパルスが減らなければ通常接続へ戻ることを確認する。
 	mix[110] += 0.8
 	previous := renderedUnit{
 		unit: plan.Unit{DurationMS: 80}, timing: effectiveTiming{preutteranceMS: 20}, wave: previousWave,

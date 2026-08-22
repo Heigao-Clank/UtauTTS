@@ -3,12 +3,8 @@ using System.Runtime.InteropServices;
 
 namespace UtauTTS.WorldlineBridge;
 
-// Dependency-free port of the important shape of OpenUtau's
-// CLASSIC + built-in worldline + convergence path: render each phone through
-// the native Resample entry point, align overlapping periodic segments, apply
-// envelopes, and only then concatenate. The faithful-phase engine uses the
-// narrow-band phase convergence employed by OpenUtau's SharpWavtool; the older
-// engines retain bounded normalized correlation for controlled comparisons.
+// OpenUtauのCLASSIC＋worldline＋convergence接続を依存なしで再現する。
+// faithful-phaseはSharpWavtool相当、旧方式は比較用の正規化相関を使う。
 internal static class ClassicWorldline {
     private const int MaxResampleWorkers = 16;
 
@@ -128,9 +124,7 @@ internal static class ClassicWorldline {
         Skip = (int)Math.Round(unit.SkipMs * manifest.SampleRate / 1000.0),
     };
 
-    // worldline's classic Resample entry point has process-global FFT state and
-    // is not safe to call concurrently from one loaded module. Loading private
-    // copies gives every worker an isolated copy of that state.
+    // ResampleはFFT状態を共有するため、DLLコピーごとにワーカーを分離する。
     private static Segment[] ResampleUnitsIsolated(Manifest manifest) {
         var workerCount = Math.Min(manifest.Units.Length,
             Math.Min(Environment.ProcessorCount, MaxResampleWorkers));

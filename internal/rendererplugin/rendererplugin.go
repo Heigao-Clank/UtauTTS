@@ -1,6 +1,4 @@
-// Package rendererpluginは、診断・評価用のコマンドラインツール向けにレンダラプラグインを
-// 解決する。本番のエントリポイントは、pluginパッケージとttsパッケージの同等のヘルパーを
-// 直接使用する。
+// Package rendererpluginは診断・評価ツール向けにレンダラープラグインを解決する。
 package rendererplugin
 
 import (

@@ -1077,9 +1077,7 @@ window.translator.load(window.appBackend.language);
             });
         }
 
-        // Preserve a color from an older project if its metadata was removed
-        // or renamed.  It remains selectable for compatibility, while new
-        // selections are limited to the types advertised by the voicebank.
+        // 現メタデータにない旧プロジェクトの音源タイプも復元できるよう残す。
         if (selectedColor !== undefined && selectedColor !== null) {
             const selected = String(selectedColor || "");
             let found = false;

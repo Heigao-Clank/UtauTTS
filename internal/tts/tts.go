@@ -116,17 +116,14 @@ func resolveProsodyModel(cfg Config) (*prosody.Model, error) {
 	return loadProsodyModelCached(cfg.ProsodyModelPath)
 }
 
-// resolveProsodyFeaturesは、呼び出し側が事前計算していない場合にモデルが必要とする
-// モーラ単位のアクセント特徴を供給する。Open JTalkは実行時テキストを解析し、アライメントが
-// 失敗した場合は読みを解析するため、かなのみのリクエストでも機能する。
+// resolveProsodyFeaturesは未指定のモーラ単位アクセント特徴をOpen JTalkで補う。
 func resolveProsodyFeatures(cfg Config, model *prosody.Model, morae []frontend.Mora, reading string) ([]prosody.FeatureFrame, error) {
 	if model == nil || !model.RequiresExternalFeatures() || len(cfg.ProsodyFeatures) > 0 {
 		return cfg.ProsodyFeatures, nil
 	}
 	runtimeText := frontend.ApplyDictionary(cfg.Text, cfg.Dictionary)
 	if strings.TrimSpace(runtimeText) == "" {
-		// かなのみのリクエストには表層テキストがない。Open JTalkは指定された読みを解析できる
-		// ため、ここで空文字を渡すと合成開始前に失敗するのを防ぐ。
+		// かなだけの入力では読みを表層テキストとして解析する。
 		runtimeText = reading
 	}
 	runtimeConfig := openjtalk.Config{
@@ -151,9 +148,7 @@ func analyzeAndAlignRuntimeFeatures(ctx context.Context, morae []frontend.Mora, 
 	return alignRuntimeProsodyFeatures(morae, analysis)
 }
 
-// ApplyRendererはcatalogからrendererIDを解決し（未指定ならカタログ既定値を使用）、
-// cfgのレンダラ依存フィールドを埋める。ユーザー指定のworldlineパスは
-// レンダラマニフェストのアセットより優先される。
+// ApplyRendererはrendererIDを解決してcfgへ反映する。指定パスを同梱資源より優先する。
 func ApplyRenderer(cfg *Config, catalog *plugin.Catalog, rendererID, worldlinePath, worldlineBridgePath string) error {
 	if catalog == nil {
 		return errors.New("renderer catalog is not initialized")
@@ -862,10 +857,7 @@ func effectiveIntonationStrength(cfg Config) float64 {
 	return cfg.IntonationStrength
 }
 
-// scaleAutomaticPitchCurveは、ユーザー指定の強度をモデルコンターに適用する。
-// 0は自動コンターを無効化し、1はモデル出力を維持し、1超は強調する。
-// 手動のピッチオフセットはこの関数の後にマージされるため、グローバル制御によって
-// 意図せず増幅されることはない。
+// scaleAutomaticPitchCurveは自動輪郭だけに強度を適用し、手動補正は増幅しない。
 func scaleAutomaticPitchCurve(curve *render.PitchCurve, strength float64) *render.PitchCurve {
 	if curve == nil || len(curve.Cents) == 0 {
 		return curve

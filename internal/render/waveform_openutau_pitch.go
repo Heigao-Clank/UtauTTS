@@ -2,8 +2,7 @@ package render
 
 import "math"
 
-// smoothAndLimitPitchCurveは入力のピッチカーブを書き換えずに、ガウス平滑化と
-// フレーム毎のスルーレート制限を適用する。
+// smoothAndLimitPitchCurveは入力を保ったまま平滑化と変化量制限を適用する。
 func smoothAndLimitPitchCurve(curve *PitchCurve, sigmaMS, maxCentsPer10MS float64) *PitchCurve {
 	if curve == nil || curve.FrameMS <= 0 || len(curve.Cents) == 0 {
 		return curve
@@ -41,9 +40,7 @@ func smoothAndLimitPitchCurve(curve *PitchCurve, sigmaMS, maxCentsPer10MS float6
 	return result
 }
 
-// ConstrainPitchCurveは、学習済み輪郭レンダラーが使うのと同じ保守的な平滑化と
-// スルーレート制限を、外部で編集された輪郭に適用する。renderに置くことで、手動の
-// GUI/CLI編集も学習済み輪郭と同じアーティファクト対策に従う。
+// ConstrainPitchCurveは外部編集した輪郭にも学習済み輪郭と同じ制限を適用する。
 func ConstrainPitchCurve(curve *PitchCurve, sigmaMS, maxCentsPer10MS float64) *PitchCurve {
 	return smoothAndLimitPitchCurve(curve, sigmaMS, maxCentsPer10MS)
 }

@@ -169,10 +169,7 @@ func (b *Bank) candidateLayersWithPolicyMode(morae []frontend.Mora, tone, color 
 				if hasUsableCandidateEntries(b, affixedCandidates) {
 					candidateSpecs = affixedCandidates
 				} else {
-					// Some OpenUtau banks describe a tone-range subbank in
-					// character.yaml but keep its aliases un-suffixed in a
-					// dedicated oto directory. Keep that compatibility fallback
-					// only when no usable affixed source exists at this position.
+					// 専用oto配下に接辞なしaliasを置くOpenUtau音源へフォールバックする。
 					candidateSpecs = affixCandidatesWithFallback(candidateSpecs, affix, true)
 				}
 				if hasUsableCandidateEntries(b, affixedTransitions) {
@@ -286,9 +283,7 @@ func (b *Bank) candidateLayersWithPolicyMode(morae []frontend.Mora, tone, color 
 	return layers, nil
 }
 
-// candidateScoreは言語的な候補優先度とoto.iniの基本的な整合性を組み合わせる。
-// 主に重複録音の間の選択に使われ、設定が悪いVCVエントリは
-// 使用可能なフォールバックに負けることを許す。
+// candidateScoreはalias優先度とoto.iniの整合性から重複候補を選ぶ。
 func candidateScore(candidateTier int, entry oto.Entry) float64 {
 	score := 100 - float64(candidateTier)*10
 	if entry.Preutterance >= 0 {

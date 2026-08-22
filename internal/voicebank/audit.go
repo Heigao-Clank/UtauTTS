@@ -88,8 +88,7 @@ type CandidateAudit struct {
 	BestLearnedProbability float64              `json:"best_learned_probability,omitempty"`
 }
 
-// AuditLatticeは保持された全候補と各候補への最良の入エッジを報告する。
-// 診断専用であり、合成では依然として正確なViterbiパスを使う。
+// AuditLatticeは診断用に全候補と各候補への最良の入エッジを返す。
 func (b *Bank) AuditLattice(morae []frontend.Mora, tone string, model *connection.LearnedModel) (*LatticeAudit, error) {
 	return b.AuditLatticeWithConfig(morae, ResolveConfig{Tone: tone, JoinModel: model})
 }

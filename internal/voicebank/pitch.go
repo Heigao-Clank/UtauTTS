@@ -27,8 +27,7 @@ type candidatePitch struct {
 	Valid bool
 }
 
-// measureCandidateF0は母音領域の中央値F0を推定する。純粋に診断用であり、
-// 読み込めない・無音・無声の候補も有効なラティスエントリとして残し、Valid=falseで報告する。
+// measureCandidateF0は診断用に母音領域の中央値F0を推定する。
 func measureCandidateF0(entry oto.Entry, cache map[candidatePitchKey]candidatePitch) candidatePitch {
 	if entry.Filename == "" {
 		return candidatePitch{}

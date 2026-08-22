@@ -53,8 +53,7 @@ type Plan struct {
 	Units                   []Unit                   `json:"units"`
 }
 
-// BoundaryBridgeはレンダラが適用する任意の短い遷移補正を記録する。モーラを追加したり
-// 言語単位の並びを変えたりはしない。
+// BoundaryBridgeはレンダラーが適用する短い遷移補正を記録する。
 type BoundaryBridge struct {
 	UnitIndex   int     `json:"unit_index"`
 	Position    int     `json:"position"`
@@ -68,8 +67,7 @@ type BoundaryBridge struct {
 	Kind        string  `json:"kind"`
 }
 
-// BoundaryRepairDecisionは、通常接続と補正接続の候補選択を記録する。意図的に未修正の
-// 接続を採用した判断も含む。
+// BoundaryRepairDecisionは通常接続と補正接続の選択結果を記録する。
 type BoundaryRepairDecision struct {
 	UnitIndex        int     `json:"unit_index"`
 	Position         int     `json:"position"`

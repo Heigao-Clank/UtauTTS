@@ -20,8 +20,7 @@ type FramePitchSweepCase struct {
 	Cents       []float64 `json:"cents"`
 }
 
-// DeterministicFramePitchSweepは、モーラあたり1値による近似ではなく、実際の
-// ユニット内の丘状変化と不連続な段差を表現できるフレーム時間単位の輪郭を生成する。
+// DeterministicFramePitchSweepはユニット内の丘状変化と段差を持つフレーム輪郭を生成する。
 func DeterministicFramePitchSweep(durationMS, frameMS float64) []FramePitchSweepCase {
 	if durationMS <= 0 || frameMS <= 0 {
 		return nil
@@ -64,8 +63,7 @@ func DeterministicFramePitchSweep(durationMS, frameMS float64) []FramePitchSweep
 	)
 }
 
-// DeterministicPitchSweepはレンダラ診断用の輪郭を返す。定数値は輪郭形状とは独立に
-// ピッチシフトの損傷を測定し、hillとstepは緩やかな変化と急激な変化の挙動を明らかにする。
+// DeterministicPitchSweepは一定値・丘状・段差のレンダラー診断輪郭を返す。
 func DeterministicPitchSweep(morae []frontend.Mora) []PitchSweepCase {
 	voiced := make([]int, 0, len(morae))
 	for index, mora := range morae {

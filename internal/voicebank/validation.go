@@ -12,18 +12,14 @@ import (
 	"utautts/internal/oto"
 )
 
-// EntryValidation describes the result of the inexpensive source-file checks
-// performed before an oto entry is admitted to the resolver lattice.
+// EntryValidationは原音候補へ追加する前の検査結果。
 type EntryValidation struct {
 	Status string
 	Checks []string
 	Reason string
 }
 
-// validateEntry is intentionally conservative for synthetic/in-memory Banks:
-// entries without a provenance and without an existing source file are left
-// as unknown so resolver fixtures retain their old behavior. Banks loaded from
-// disk always carry OtoPath and are validated.
+// メモリ上のテスト音源は出典を確認できないためunknownのまま扱う。
 func (b *Bank) validateEntry(entry oto.Entry) EntryValidation {
 	if b.Root == "" {
 		return EntryValidation{Status: "unknown"}

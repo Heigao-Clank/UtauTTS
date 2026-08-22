@@ -11,7 +11,7 @@ import (
 	"utautts/internal/oto"
 )
 
-// Boundaryはユニットが隣接ユニットと接合されるときに使われるフレーム群を格納する。
+// Boundaryはユニット接合部のフレーム群を保持する。
 type Boundary struct {
 	Incoming     acoustic.Frame
 	Outgoing     acoustic.Frame
@@ -19,7 +19,7 @@ type Boundary struct {
 	outgoingWave []float64
 }
 
-// PairFeaturesはモデル入力と現在のヒューリスティック入力の両方を兼ねる。
+// PairFeaturesはモデルとヒューリスティックで共有する入力。
 type PairFeatures struct {
 	PreviousOutgoing    acoustic.Frame `json:"previous_outgoing"`
 	CurrentIncoming     acoustic.Frame `json:"current_incoming"`
@@ -32,8 +32,7 @@ type PairFeatures struct {
 	ForwardInSource     bool           `json:"forward_in_source"`
 }
 
-// LearningFeaturesはモデルに公開しても安全な音響のみの部分集合。
-// ソース連続性は弱い学習ラベルを定義するため除外されている。
+// LearningFeaturesは弱い正解ラベルに使うソース連続性を除いたモデル入力。
 type LearningFeatures struct {
 	PreviousOutgoing    acoustic.Frame `json:"previous_outgoing"`
 	CurrentIncoming     acoustic.Frame `json:"current_incoming"`
@@ -60,7 +59,7 @@ func (features LearningFeatures) Valid() bool {
 	return features.PreviousOutgoing.Valid && features.CurrentIncoming.Valid
 }
 
-// ExtractorはWAV分析結果をキャッシュする。すべてのユニットが多数のペアに関与するため。
+// Extractorは複数ペアで使うWAV分析結果をキャッシュする。
 type Extractor struct {
 	mutex sync.Mutex
 	cache map[oto.Entry]Boundary
@@ -106,7 +105,7 @@ func (e *Extractor) Pair(previous, current oto.Entry) PairFeatures {
 	return result
 }
 
-// HandcraftedScoreは学習コネクションモデルが上回るべき基準点。
+// HandcraftedScoreは学習モデルとの比較基準となる。
 func HandcraftedScore(features PairFeatures) float64 {
 	score := 0.0
 	if features.ForwardInSource {

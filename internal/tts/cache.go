@@ -12,10 +12,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-// GUIは同じボイスバンク・テキスト・モデルで複数のバリエーションを合成する。
-// コストの高い不変な入力をリクエスト間で保持する。これらのキャッシュは意図的に
-// プロセスローカルであり、ユーザーがボイスバンクディレクトリを更新した後に
-// ClearCachesが呼ばれる。
+// GUIの反復合成で変わらない高コストな入力をプロセス内に保持する。
 
 const maxAnalysisCacheEntries = 512
 
@@ -122,8 +119,7 @@ func analyzeOpenJTalkCached(ctx context.Context, text string, cfg openjtalk.Conf
 	return analysis, nil
 }
 
-// ClearCachesは、ボイスバンクやランタイムリソースの更新後に不変な合成入力を破棄する。
-// 実行中の合成はローカルポインタを安全に保持したままである。
+// ClearCachesは音源やランタイム資源の更新後に合成入力を破棄する。
 func ClearCaches() {
 	synthesisCache.Lock()
 	synthesisCache.banks = make(map[string]*voicebank.Bank)

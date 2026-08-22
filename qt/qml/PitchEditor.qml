@@ -136,11 +136,7 @@ Item {
         const maximumGap = root.maximumMoraDuration;
         const cursor = (x - root.sidePadding) / root.durationScale;
         if (moveFollowing) {
-            /*
-             * Shift: the operated word slides together with everything
-             * after it, so the tail keeps its shape and only the gap
-             * opened in front of the operated word changes.
-             */
+            // Shift時は操作語以降をまとめて動かし、前方の間隔だけを変える。
             const lower = index > 0
                           ? positions[index - 1] + minimumGap - positions[index]
                           : -positions[index];
@@ -153,11 +149,7 @@ Item {
             for (let position = index; position < count; ++position)
                 positions[position] += clamped;
         } else {
-            /*
-             * Normal: the vertical line marks the word's reading start, so
-             * dragging moves that line alone; the gaps on either side of
-             * it change and every other word stays in place.
-             */
+            // 通常時は語頭線だけを動かし、他の語位置を維持する。
             const following = index + 1 < count ? positions[index + 1] : root.endTime();
             const lower = Math.max(index > 0 ? positions[index - 1] + minimumGap : 0,
                                    following - maximumGap);
@@ -520,59 +512,6 @@ Item {
                     onCanceled: dragging = false;
                 }
             }
-
-            /*
-            Row {
-                anchors.left: parent.left
-                anchors.leftMargin: root.sidePadding
-                anchors.bottom: parent.bottom
-                height: 50
-
-                Repeater {
-                    model: root.morae
-                    delegate: Column {
-                        id: pointColumn
-                        required property var modelData
-                        required property int index
-                        width: root.moraWidth
-                        spacing: 1
-
-                        Text {
-                            width: parent.width
-                            text: pointColumn.modelData.mora || root.translator.tr("pitch.emptyMora")
-                            horizontalAlignment: Text.AlignHCenter
-                            color: root.labelColor
-                            elide: Text.ElideRight
-                        }
-                        TextInput {
-                            width: parent.width - 8
-                            height: 24
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            visible: root.pointIsEditable(pointColumn.index)
-                            text: pointColumn.index < root.points.length ? Math.round(root.points[pointColumn.index]).toString() : "0"
-                            horizontalAlignment: TextInput.AlignHCenter
-                            color: root.labelColor
-                            selectByMouse: true
-                            validator: IntValidator {
-                                bottom: -300
-                                top: 300
-                            }
-                            onEditingFinished: {
-                                const parsed = parseInt(text);
-                                if (isNaN(parsed)) {
-                                    text = Math.round(root.points[pointColumn.index]).toString();
-                                    return;
-                                }
-                                const values = root.points.slice();
-                                values[pointColumn.index] = Math.max(-300, Math.min(300, parsed));
-                                root.points = values;
-                                root.pointsEdited(values.slice());
-                            }
-                        }
-                    }
-                }
-            }
-            */
 
             MouseArea {
                 anchors.fill: canvas

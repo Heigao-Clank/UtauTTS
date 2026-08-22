@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// FeatureCaseは1発話と、それに整列されたモーラレベルの言語特徴。
+// FeatureCaseは1発話と整列済みのモーラ単位言語特徴。
 type FeatureCase struct {
 	ID       string         `json:"id"`
 	Text     string         `json:"text,omitempty"`
@@ -15,7 +15,7 @@ type FeatureCase struct {
 	Features []FeatureFrame `json:"features"`
 }
 
-// FeatureCorpusはフレームレベルのprosodyモデルが使う、移植可能なOpen JTalk特徴交換フォーマット。
+// FeatureCorpusはフレーム単位モデル向けのOpen JTalk特徴交換形式。
 type FeatureCorpus struct {
 	Version int           `json:"version"`
 	Name    string        `json:"name,omitempty"`
@@ -55,8 +55,7 @@ func LoadFeatureCorpus(path string) (*FeatureCorpus, error) {
 	return &corpus, nil
 }
 
-// Selectは明示的なID、または正規化されたテキスト・読みの完全一致でケースを返す。
-// ケースが1件だけのコーパスはセレクタなしでも一意に決まる。
+// SelectはIDまたは正規化したテキスト・読みの完全一致でケースを返す。
 func (c *FeatureCorpus) Select(caseID, text, reading string) (*FeatureCase, error) {
 	if c == nil {
 		return nil, fmt.Errorf("prosody feature corpus is nil")

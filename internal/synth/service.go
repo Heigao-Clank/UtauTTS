@@ -1,7 +1,4 @@
-// Package synthは、Qt GUIバックエンドとHTTPサーバが共有するトランスポート非依存の
-// 合成オーケストレータである。ボイスバンク・プロソディモデル・レンダラプラグインを解決し、
-// ttsパッケージにディスパッチする。呼び出し側は自身のリクエストのデコード・検証・
-// レスポンスエンコードのみを扱えばよい。
+// Package synthはGUIとHTTPサーバで共有する合成処理を提供する。
 package synth
 
 import (
@@ -15,11 +12,10 @@ import (
 	"utautts/internal/voicebank"
 )
 
-// ErrUnavailableは解決失敗（ボイスバンク・プロソディモデル・レンダラプラグインが見つからない）
-// を表す。HTTP呼び出し側は合成失敗とは異なるクライアントエラーを返せる。
+// ErrUnavailableは音源・モデル・レンダラープラグインの解決失敗を表す。
 var ErrUnavailable = errors.New("unavailable")
 
-// Requestは、共有のトランスポート非依存な合成・プレビューリクエストである。
+// Requestは合成とプレビューで共有する入力。
 type Request struct {
 	Text               string
 	Kana               string
@@ -39,14 +35,12 @@ type Request struct {
 	ManualPitch        *prosody.ManualPitchFile
 }
 
-// VoicebankResolverはボイスバンクIDをそのルートパスにマッピングする。空のIDは
-// デフォルトのボイスバンクを選択する。
+// VoicebankResolverは音源IDをルートパスへ解決する。空なら既定音源を選ぶ。
 type VoicebankResolver interface {
 	Resolve(id string) (path string, ok bool)
 }
 
-// Serviceはプラグインカタログとボイスバンクリゾルバに対してリクエスト入力を解決し、
-// ttsパッケージにディスパッチする。
+// Serviceは入力を解決してttsパッケージへ渡す。
 type Service struct {
 	catalog             *plugin.Catalog
 	renderer            string
@@ -84,8 +78,7 @@ func (s *Service) SynthesizeContext(ctx context.Context, request Request) (*tts.
 	return result, rendererID, nil
 }
 
-// PredictProsodyはリクエストを解決してプロソディをプレビューする。音声の合成や
-// ボイスバンクの読み込みは行わない。
+// PredictProsodyは音声や音源を読み込まずにプロソディを返す。
 func (s *Service) PredictProsody(request Request) (*tts.ProsodyPreview, string, error) {
 	cfg, rendererID, err := s.config(request, false)
 	if err != nil {
@@ -145,8 +138,7 @@ func (s *Service) rendererID(requested string) string {
 	return s.renderer
 }
 
-// modelPathはプロソディモデルIDをファイルパスに解決する。空または"none"のIDは
-// モデルなしを選択する。
+// modelPathはモデルIDをパスへ解決する。空または"none"ならモデルを使わない。
 func (s *Service) modelPath(id string) (string, error) {
 	if id == "" || id == "none" {
 		return "", nil
@@ -158,8 +150,7 @@ func (s *Service) modelPath(id string) (string, error) {
 	return model.Path, nil
 }
 
-// ModelAvailableは、リクエストがプロソディモデルを選択するかどうかを返す。呼び出し側が返す
-// "prosody_model_applied"フィールドと一致する。
+// ModelAvailableはリクエストがプロソディモデルを選択するかを返す。
 func (s *Service) ModelAvailable(id string) bool {
 	if id == "" || id == "none" {
 		return false

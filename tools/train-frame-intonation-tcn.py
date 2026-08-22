@@ -42,9 +42,7 @@ from torch_device import device_description, move_batch, resolve_device
 
 
 FRAME_MS = 10.0
-# Keep the first renderer-facing model deliberately gentle.  Wider contours
-# remain available through --low-cents/--high-cents once listening confirms
-# that the renderer can tolerate them.
+# 初期モデルはレンダラーの耐性確認前なので抑揚幅を控えめにする。
 DEFAULT_LOW_CENTS = -250.0
 DEFAULT_HIGH_CENTS = 250.0
 DEFAULT_FMIN_HZ = 50.0
@@ -82,8 +80,7 @@ def deterministic_split(records: Sequence[dict]) -> tuple[list[dict], list[dict]
         held_out = {id(item) for item in validation}
         train = [item for item in records if id(item) not in held_out]
     elif len(records) == 1:
-        # A one-utterance smoke corpus cannot have a disjoint holdout.  Keep
-        # the behavior useful and make the leakage explicit in training JSON.
+        # 1発話では分離できないため、学習JSONへリークを明記して兼用する。
         train = list(records)
         validation = list(records)
     if not train or not validation:
@@ -159,8 +156,7 @@ def token_features(tokens: Sequence[dict], position: int) -> dict[str, float]:
     else:
         result["next=<EOS>"] = 1.0
 
-    # These names are kept stable even when Open JTalk is unavailable.  Zero
-    # is a useful explicit value for an unannotated synthetic token.
+    # Open JTalkがなくても特徴名を固定し、未注釈値は0とする。
     phrase_length = max(1, int(current.get("accent_phrase_length", len(tokens))))
     phrase_position = int(current.get("accent_phrase_position", position + 1))
     nucleus = int(current.get("accent_nucleus", 0))
@@ -330,7 +326,7 @@ def _resolve_audio_path(path: str | Path, dataset_path: str | Path | None = None
     if raw.is_absolute():
         candidates.append(raw)
     else:
-        # JSONL uses Windows separators even when invoked from a POSIX shell.
+        # POSIX実行時もJSONL内のWindowsパスを解決する。
         normalized = Path(str(path).replace("\\", "/"))
         candidates.extend([raw, normalized])
         if audio_root:
@@ -343,8 +339,7 @@ def _resolve_audio_path(path: str | Path, dataset_path: str | Path | None = None
     for candidate in candidates:
         if candidate.exists() and candidate.is_file():
             return candidate.resolve()
-    # Return the most useful path for the error below instead of silently
-    # selecting an unrelated file with the same basename.
+    # 同名の別ファイルを選ばず、エラー表示に最も有用な候補を返す。
     return candidates[0] if candidates else raw
 
 
@@ -425,10 +420,7 @@ class WorldlineF0:
                 return np.zeros(0, dtype=np.float64)
             return np.ctypeslib.as_array(output, shape=(count,)).copy()
         finally:
-            # worldline's bridge releases F0 buffers with CoTaskMemFree.  On
-            # Windows this also avoids retaining one native array per JSUT
-            # utterance during a several-thousand-record training run.  Keep
-            # the adapter usable on non-Windows hosts and in ctypes fakes.
+            # F0バッファを解放し、大規模学習時の蓄積を防ぐ。
             ole32 = getattr(getattr(ctypes, "windll", None), "ole32", None)
             free = getattr(ole32, "CoTaskMemFree", None)
             if free is not None:
@@ -472,9 +464,7 @@ def _autocorrelation_pitch(windowed: np.ndarray, sample_rate: int, fmin: float, 
     maximum_lag = min(len(windowed) - 2, int(sample_rate / fmin))
     if maximum_lag <= minimum_lag:
         return 0.0
-    # FFT autocorrelation keeps the fallback usable for a full JSUT corpus;
-    # the previous Python loop over every lag made a native-library failure
-    # quadratic in the number of records.
+    # ネイティブ処理失敗時も全JSUTを処理できるようFFT自己相関を使う。
     fft_size = 1 << (2 * len(windowed) - 1).bit_length()
     spectrum = np.fft.rfft(windowed, fft_size)
     correlation = np.fft.irfft(spectrum * np.conj(spectrum), fft_size)[: len(windowed)]
@@ -487,8 +477,7 @@ def _autocorrelation_pitch(windowed: np.ndarray, sample_rate: int, fmin: float, 
     correlations = correlation[lags] / denominator
     best_offset = int(np.argmax(correlations))
     best = float(correlations[best_offset])
-    # A low normalized correlation is overwhelmingly likely to be unvoiced;
-    # the threshold is intentionally conservative to avoid voiced-mask noise.
+    # 低相関は無声として除外し、voiced maskのノイズを抑える。
     if best < 0.30:
         return 0.0
     lag = float(minimum_lag + best_offset)
@@ -617,8 +606,7 @@ def extract_record_f0(
     frame_times = utterance_frame_times(record, frame_ms)
     if f0_provider is not None:
         track = np.asarray(f0_provider(samples, sample_rate, frame_ms), dtype=np.float64)
-        # An injected provider may return exactly the requested frame grid or
-        # an audio-aligned full track.  Handle both without special casing.
+        # 注入providerは要求グリッドまたは音声全体の系列を返せる。
         if len(track) == len(frame_times):
             f0 = track
         else:
@@ -747,9 +735,7 @@ def macro_log_f0(
         positions = np.arange(index, end)
         measured = positions[valid[index:end]]
         if len(measured):
-            # np.interp deliberately extends the nearest voiced value to a
-            # phrase edge and bridges consonants. This is a control contour,
-            # not a claim that an unvoiced frame has measurable F0.
+            # 制御輪郭なので、無声区間と句端は最近傍の有声F0で補間する。
             phrase = np.interp(positions, measured, log_values[measured])
             width = min(len(phrase), max(1, int(round(smooth_ms / max(frame_ms, 1e-6)))))
             if width % 2 == 0:
@@ -897,10 +883,7 @@ def sequence_loss(
         low /= max(1.0, target_scale)
         high /= max(1.0, target_scale)
         targets = targets.clamp(float(low), float(high))
-        # Clamping the prediction here creates a zero-gradient trap whenever
-        # an early update overshoots the bounds. Keep the target bounded, but
-        # let the loss pull an out-of-range prediction back. Export/runtime
-        # clamping remains the renderer-facing safety limit.
+        # 予測値のclampは勾配を止めるため、targetと出力時だけ制限する。
         predicted_for_loss = predicted
     else:
         predicted_for_loss = predicted
@@ -976,8 +959,7 @@ def export_model(
         "input_weights": model.input.weight.detach().cpu().double().tolist(),
         "input_bias": model.input.bias.detach().cpu().double().tolist(),
         "layers": _layers_for_export(model),
-        # Training uses normalized cents; weights are restored to cents here
-        # so existing Go runtimes can consume this JSON without a scale change.
+        # 既存Goランタイム互換のため、正規化centを元の尺度へ戻す。
         "output_weight": output_weight,
         "output_bias": output_bias,
         "frame_ms": float(args.frame_ms),

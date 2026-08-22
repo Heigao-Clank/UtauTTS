@@ -19,9 +19,7 @@ func validAcousticMode(mode string) bool {
 	return mode == "" || mode == AcousticModeDryRun || mode == AcousticModeApply
 }
 
-// populateAcousticScores calculates deliberately small, explainable scores.
-// Dry-run records them without changing the existing target/join decisions;
-// apply mode lets path.go add the same values to the normal scores.
+// 音響スコアは既存の選択を支配しない小さな補正値に留める。
 func (b *Bank) populateAcousticScores(candidates []Selection, previous []Selection, mode string) {
 	if len(candidates) == 0 {
 		return
@@ -68,8 +66,7 @@ func (b *Bank) populateAcousticScores(candidates []Selection, previous []Selecti
 		}
 	}
 
-	// A margin is a diagnostic property of the lattice, not a hidden hard
-	// threshold. Record the gap between the best and second-best local option.
+	// marginは閾値ではなく、局所候補の1位と2位の差を示す診断値。
 	best, second := math.Inf(-1), math.Inf(-1)
 	for _, candidate := range candidates {
 		score := candidate.TargetScore + candidate.PreferenceScore

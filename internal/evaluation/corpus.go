@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// Corpusは、客観評価と聴取評価に用いる、バージョン管理された再現可能な発話集合。
+// Corpusは客観評価と聴取評価に使う再現可能な発話集合。
 type Corpus struct {
 	Version int          `json:"version"`
 	Name    string       `json:"name"`

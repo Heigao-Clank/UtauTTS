@@ -37,18 +37,13 @@ const (
 	CVVCTimingSequential = "sequential"
 )
 
-// MaxIntonationStrengthはユーザー向けイントネーション制御の上限値。1.0が従来の
-// 強さに相当し、1を超える値は生成された輪郭とレンダラー側の補正を増幅する。
+// MaxIntonationStrengthはユーザー向けイントネーション制御の上限値。
 const MaxIntonationStrength = 2.0
 
-// defaultReleaseMSは、呼び出し側が明示的に設定しなかった場合に適用されるユニットの
-// リリースエンベロープ。0は「リリースなし」を意味する有効な明示値であり、それを
-// 望む呼び出し側はReleaseSetを設定する必要がある。
+// defaultReleaseMSは未指定時のリリース長。明示的な0にはReleaseSetを使う。
 const defaultReleaseMS = 20.0
 
-// rendererImplementationsは、この実行ファイルがディスパッチ可能なbackend文字列の
-// 唯一の情報源。表示名や宣言された機能は各レンダラーのplugin.jsonに属し、この
-// マップに無いbackendを持つレンダラーマニフェストは検出時に拒否される。
+// rendererImplementationsは実行可能なbackendの一覧。表示情報はplugin.jsonに置く。
 var rendererImplementations = map[string]func(*plan.Plan, Config) (*audio.PCM, error){
 	"waveform":                                renderWaveform,
 	"openutau-classic-worldline-faithful":     renderOpenUtauClassicWorldlineFaithful,
@@ -63,8 +58,7 @@ func IsKnownRenderer(id string) bool {
 	return ok
 }
 
-// CUDAAvailableは、オプションのCUDAレンダラーライブラリと互換デバイスがこの
-// マシンで利用可能かどうかを返す。
+// CUDAAvailableはCUDAレンダラーと互換デバイスの利用可否を返す。
 func CUDAAvailable() bool {
 	return gpuWaveformAvailable() == nil
 }
@@ -97,10 +91,7 @@ func newSourceCache() sourceCache {
 	}
 }
 
-// WAV音源はプロセスローカルなキャッシュでレンダーごとに一度デコードされ、下の共有
-// グローバルキャッシュでもう一度デコードされる。GUIは同じ音声バンクを繰り返し合成
-// するため、デコード済みの録音をレンダー間で保持すれば、プレビューのたびに全ファイル
-// を読み直す必要がなくなる。
+// 音源録音は候補探索とレンダリングで再利用されるため、デコード結果を保持する。
 const maxWAVCacheBytes = 256 << 20 // デコード済み音源 256 MiB
 
 type wavCacheEntry struct {
@@ -135,9 +126,7 @@ func (c *wavCache) evict() {
 	}
 }
 
-// loadWAVCachedはWAVを一度デコードしてレンダー間で再利用する。エントリはパスに
-// サイズと更新時刻を加えたキーで管理され、編集された録音は自動的に検出され、バイト
-// 予算に応じて最も古いものから追い出される。
+// loadWAVCachedはサイズと更新時刻で変更を検知し、古いWAVから追い出す。
 func loadWAVCached(path string) (*audio.PCM, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -166,8 +155,7 @@ func loadWAVCached(path string) (*audio.PCM, error) {
 	return pcm, nil
 }
 
-// ClearWAVCacheはキャッシュ済みの音源録音をすべて破棄する。利用可能な音声バンクが
-// 変わったときに呼び出し、削除された録音が保持されないようにする。
+// ClearWAVCacheは音源更新後にキャッシュ済み録音を破棄する。
 func ClearWAVCache() {
 	globalWAVCache.mu.Lock()
 	defer globalWAVCache.mu.Unlock()
@@ -278,9 +266,7 @@ type preparedWaveformUnit struct {
 	effectiveConsonantFrames int
 }
 
-// 各ユニットはCUDAストリームと複数のデバイスバッファを所有する。ワーカー数を
-// 固定することで、長いパッセージで一度に数百のストリームが生成されるのを防ぎつつ、
-// コンシューマGPUを飽和させるのに十分な独立した作業量を確保する。
+// CUDA資源の過剰生成を防ぎつつGPUを活用できる数に制限する。
 const maxParallelGPUUnits = 32
 
 func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRetime bool, retime func([]float64, int, int, int, int) ([]float64, error)) (*audio.PCM, error) {
@@ -676,9 +662,7 @@ func unitsShareHandoff(previous, next plan.Unit) bool {
 }
 
 func fadeInDurationMS(timing effectiveTiming) float64 {
-	// 一部の CV 音源は preutterance が 0 だったり、overlap を preutterance と等しく
-	// 設定している。下限が無いと、次のユニットのエンベロープゲインがまだ 0 のときに
-	// 前のユニットがちょうど途切れ、可聴なクリックが生じる。
+	// 特殊なoto設定でも前後のゲインが同時に0にならないよう重なりを確保する。
 	return math.Max(6, timing.preutteranceMS-timing.overlapMS)
 }
 
@@ -715,11 +699,8 @@ func resampleForPitch(source []float64, factor float64) []float64 {
 	return linearResample(source, max(16, int(math.Round(float64(len(source))/factor))))
 }
 
-// resampleForPitchCurveは時間変化するピッチ係数でsourceをストレッチする。
-// baseFactorは一定のモーラ単位の係数で、フレームピッチカーブはsourceが占める
-// フレーズ時刻の窓[startMS, startMS+spanMS]でサンプリングしたサンプル毎の乗数を
-// 加える。可変レートのマッピングは1/f(t)を積分するため、平坦なカーブは
-// resampleForPitchと同じ結果になる。
+// resampleForPitchCurveは1/f(t)を積分し、時間変化するピッチでsourceを伸縮する。
+// 平坦なカーブはresampleForPitchと同じ結果になる。
 func resampleForPitchCurve(source []float64, baseFactor float64, curve *PitchCurve, startMS, spanMS float64) []float64 {
 	if len(source) < 16 || baseFactor <= 0 {
 		return append([]float64(nil), source...)

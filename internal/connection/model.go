@@ -222,8 +222,7 @@ func (model *LearnedModel) Predict(features LearningFeatures) float64 {
 	return sigmoid(model.Bias + dotVector(model.Weights, vector))
 }
 
-// LearnedScoreはモデル確率を継続ボーナスと同じ有界スケールにマッピングする。
-// 不確かな小さなモデルがtarget costを支配したりパス探索を不安定にしないよう、logitはクリップされる。
+// LearnedScoreはクリップしたlogitを接続ボーナスと同じ尺度へ変換する。
 func LearnedScore(features PairFeatures, model *LearnedModel) (score, probability float64) {
 	if features.ForwardInSource {
 		score += 8

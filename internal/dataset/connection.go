@@ -1,4 +1,4 @@
-// Package datasetはUTAU音声バンクから学習例を構築します。
+// Package datasetはUTAU音源から学習例を構築する。
 package dataset
 
 import (
@@ -64,8 +64,8 @@ type naturalPair struct {
 	groupID     string
 }
 
-// BuildConnections は同一録音からの隣接ユニットを弱い正例ラベルとして用いる。
-// 負例は右側のエイリアスクラスを維持しつつ、別の WAV から取得する。
+// BuildConnectionsは同一録音の隣接ユニットを弱い正例として使う。
+// 負例は右側のaliasクラスを保ったまま別のWAVから取る。
 func BuildConnections(bank *voicebank.Bank, config ConnectionConfig) ([]ConnectionRecord, ConnectionReport) {
 	if config.NegativesPerPositive < 0 {
 		config.NegativesPerPositive = 0
@@ -218,7 +218,7 @@ func invalidFeatures(features connection.LearningFeatures) bool {
 	return !features.Valid()
 }
 
-// AliasKey は CV および VCV エイリアスに共通する、モーラを含む末尾部分を抽出する。
+// AliasKeyはCVとVCVのaliasからモーラを含む共通末尾を抽出する。
 func AliasKey(alias string) string {
 	fields := strings.Fields(strings.TrimSpace(alias))
 	if len(fields) == 0 {

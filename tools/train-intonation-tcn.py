@@ -181,8 +181,7 @@ def centered(values, mask):
 
 def sequence_loss(predicted, targets, mask, bounded_target=None):
     predicted = centered(predicted, mask)
-    # Pitch ratios are utterance-relative. Removing the voiced mean prevents the
-    # network from spending capacity on an offset discarded by Go inference.
+    # 発話内の有声平均を除き、推論時に捨てるオフセットを学習させない。
     targets = centered(targets, mask)
     if bounded_target is not None:
         low, high = bounded_target
