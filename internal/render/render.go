@@ -24,6 +24,7 @@ type Config struct {
 	Backend                 string
 	WorldlinePath           string
 	WorldlineBridgePath     string
+	WorldlineExactLength    bool
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
 	CVVCTiming              string

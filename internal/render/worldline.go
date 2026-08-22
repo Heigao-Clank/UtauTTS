@@ -238,6 +238,9 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 			}
 			requiredLength = math.Max(unit.DurationMS+durCorrection+skipMS, unit.ConsonantMS)
 			requiredLength = math.Ceil(requiredLength/50+0.5) * 50
+			if cfg.WorldlineExactLength {
+				requiredLength = unit.DurationMS
+			}
 			lengthMS = timing.preutteranceMS + unit.DurationMS + cfg.ReleaseMS
 			consonantVelocity = 100
 		}

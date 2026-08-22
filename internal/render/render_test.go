@@ -732,6 +732,28 @@ func TestStretchPreservesPrefixAndLength(t *testing.T) {
 	}
 }
 
+func TestStretchWSOLAAnchoredUsesOneContinuousOutput(t *testing.T) {
+	source := make([]float64, 1000)
+	for index := range source {
+		source[index] = 0.5 * math.Sin(2*math.Pi*float64(index)/50)
+	}
+	first := StretchWSOLAAnchored(source, 300, 1000, []int{0, 300, 700, 1000}, []int{0, 100, 200, 300})
+	second := StretchWSOLAAnchored(source, 300, 1000, []int{0, 300, 700, 1000}, []int{0, 100, 200, 300})
+	if len(first) != 300 {
+		t.Fatalf("length = %d, want 300", len(first))
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Fatal("anchored stretch is not deterministic")
+	}
+	energy := 0.0
+	for _, value := range first {
+		energy += value * value
+	}
+	if energy < 1 {
+		t.Fatalf("output energy = %f", energy)
+	}
+}
+
 func TestBridgeEnvelopeIsBoundedAndFadesAtEdges(t *testing.T) {
 	if got := bridgeEnvelope(0, 9); got != 0 {
 		t.Fatalf("start envelope = %f, want 0", got)

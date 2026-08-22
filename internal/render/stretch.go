@@ -7,6 +7,33 @@ func wsolaStretch(source []float64, targetFrames, sampleRate int) ([]float64, er
 	return wsola(source, targetFrames, sampleRate), nil
 }
 
+// StretchWSOLAは実験・診断処理から標準WSOLAを再利用する。
+func StretchWSOLA(source []float64, targetFrames, sampleRate int) []float64 {
+	return wsola(source, targetFrames, sampleRate)
+}
+
+// StretchWSOLAAnchoredは連続波形を分割せず、指定した時間写像に沿って伸縮する。
+func StretchWSOLAAnchored(source []float64, targetFrames, sampleRate int, sourceAnchors, targetAnchors []int) []float64 {
+	if len(sourceAnchors) < 2 || len(sourceAnchors) != len(targetAnchors) {
+		return wsola(source, targetFrames, sampleRate)
+	}
+	for index := 1; index < len(sourceAnchors); index++ {
+		if sourceAnchors[index] <= sourceAnchors[index-1] || targetAnchors[index] <= targetAnchors[index-1] {
+			return wsola(source, targetFrames, sampleRate)
+		}
+	}
+	segment := 0
+	return wsolaMapped(source, targetFrames, sampleRate, func(output int) float64 {
+		for segment+1 < len(targetAnchors)-1 && output > targetAnchors[segment+1] {
+			segment++
+		}
+		leftTarget, rightTarget := targetAnchors[segment], targetAnchors[segment+1]
+		leftSource, rightSource := sourceAnchors[segment], sourceAnchors[segment+1]
+		progress := float64(output-leftTarget) / float64(max(1, rightTarget-leftTarget))
+		return float64(leftSource) + progress*float64(rightSource-leftSource)
+	})
+}
+
 func retimeWithCompressedPrefixUsing(source []float64, targetFrames, sourcePrefixFrames, targetPrefixFrames, sampleRate int, stretch func([]float64, int, int) ([]float64, error)) ([]float64, error) {
 	if targetFrames <= 0 || len(source) == 0 {
 		return nil, nil
@@ -122,6 +149,13 @@ func declickJoin(wave []float64, position, radius int) {
 }
 
 func wsola(source []float64, targetFrames, sampleRate int) []float64 {
+	ratio := float64(len(source)) / float64(targetFrames)
+	return wsolaMapped(source, targetFrames, sampleRate, func(output int) float64 {
+		return float64(output) * ratio
+	})
+}
+
+func wsolaMapped(source []float64, targetFrames, sampleRate int, sourcePosition func(int) float64) []float64 {
 	if targetFrames <= 0 || len(source) == 0 {
 		return nil
 	}
@@ -137,13 +171,11 @@ func wsola(source []float64, targetFrames, sampleRate int) []float64 {
 	}
 	synthesisHop := max(1, window/2)
 	search := max(1, min(msToFrames(5, sampleRate), window/4))
-	ratio := float64(len(source)) / float64(targetFrames)
-
 	accumulator := make([]float64, targetFrames+window)
 	weights := make([]float64, len(accumulator))
 	previousSource := 0
 	for outputPosition := 0; outputPosition < targetFrames; outputPosition += synthesisHop {
-		expected := int(math.Round(float64(outputPosition) * ratio))
+		expected := int(math.Round(sourcePosition(outputPosition)))
 		maxStart := max(0, len(source)-window)
 		expected = min(expected, maxStart)
 		start := expected
