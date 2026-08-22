@@ -175,7 +175,7 @@ func TestOpenUtauEnvelopeUsesNextPhoneTailTiming(t *testing.T) {
 		{NoteStartMS: 0, DurationMS: 100, PreutteranceMS: 30, OverlapMS: 5},
 		{NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
 	}
-	timings, phraseStart := openUtauClassicTimings(units)
+	timings, phraseStart := openUtauClassicTimings(units, CVVCTimingLegacy)
 	if timings[0].tailIntrude != 40 || timings[0].tailOverlap != 10 || !timings[1].overlapped || phraseStart != -30 {
 		t.Fatalf("timing = %+v %+v phraseStart=%.1f", timings[0], timings[1], phraseStart)
 	}
@@ -194,7 +194,7 @@ func TestOpenUtauClassicTimingsKeepMoraTimingAcrossCVVCTransition(t *testing.T) 
 		{Position: 1, Role: "transition", NoteStartMS: 100, DurationMS: 30, PreutteranceMS: 50, OverlapMS: 20},
 		{Position: 1, Role: "mora", NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
 	}
-	timings, phraseStart := openUtauClassicTimings(units)
+	timings, phraseStart := openUtauClassicTimings(units, CVVCTimingLegacy)
 	if timings[1].preutter != 50 || timings[1].overlap != 20 {
 		t.Fatalf("transition timing = %+v", timings[1])
 	}
@@ -203,6 +203,60 @@ func TestOpenUtauClassicTimingsKeepMoraTimingAcrossCVVCTransition(t *testing.T) 
 	}
 	if timings[0].tailIntrude != 50 || timings[0].tailOverlap != 20 || phraseStart != -30 {
 		t.Fatalf("mora tail timing = %+v phraseStart=%.1f", timings[0], phraseStart)
+	}
+}
+
+func TestOpenUtauClassicSequentialCVVCTimingChainsTransitionAndMainPhone(t *testing.T) {
+	units := []plan.Unit{
+		{Position: 0, Role: "mora", NoteStartMS: 0, DurationMS: 100, PreutteranceMS: 30, OverlapMS: 5},
+		{Position: 1, Role: "transition", NoteStartMS: 100, DurationMS: 30, PreutteranceMS: 50, OverlapMS: 20},
+		{Position: 1, Role: "mora", NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
+	}
+	timings, phraseStart := openUtauClassicTimings(units, CVVCTimingSequential)
+	if timings[0].tailIntrude != 50 || timings[0].tailOverlap != 20 {
+		t.Fatalf("previous mora tail timing = %+v", timings[0])
+	}
+	if timings[1].tailIntrude != 20 || timings[1].tailOverlap != 5 {
+		t.Fatalf("transition tail timing = %+v", timings[1])
+	}
+	if timings[2].preutter != 20 || timings[2].overlap != 5 || !timings[2].overlapped {
+		t.Fatalf("main timing = %+v", timings[2])
+	}
+	if phraseStart != -30 {
+		t.Fatalf("phrase start = %.1f", phraseStart)
+	}
+}
+
+func TestOpenUtauClassicSequentialTimingDoesNotChangeNonCVVCSequence(t *testing.T) {
+	units := []plan.Unit{
+		{Position: 0, Role: "mora", NoteStartMS: 0, DurationMS: 100, PreutteranceMS: 30, OverlapMS: 5},
+		{Position: 1, Role: "mora", NoteStartMS: 100, DurationMS: 100, PreutteranceMS: 40, OverlapMS: 10},
+	}
+	legacy, legacyStart := openUtauClassicTimings(units, CVVCTimingLegacy)
+	sequential, sequentialStart := openUtauClassicTimings(units, CVVCTimingSequential)
+	if !reflect.DeepEqual(legacy, sequential) || legacyStart != sequentialStart {
+		t.Fatalf("non-CVVC timing changed: legacy=%+v sequential=%+v", legacy, sequential)
+	}
+}
+
+func TestWorldlineRejectsUnknownCVVCTimingBeforeResolvingAssets(t *testing.T) {
+	_, err := renderWorldlineEngine(&plan.Plan{Units: []plan.Unit{{Role: "mora"}}}, Config{CVVCTiming: "unknown"}, "classic-worldline-faithful", true)
+	if err == nil || !strings.Contains(err.Error(), "unknown CVVC timing mode") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCVVCPreBoundaryEnvelopeEndsAtFollowingMoraBoundary(t *testing.T) {
+	points := []worldlineEnvelopePoint{
+		{XMS: -80, Y: 0}, {XMS: -50, Y: 1}, {XMS: 0, Y: 1},
+		{XMS: 10, Y: 1}, {XMS: 30, Y: 0},
+	}
+	got := cvvcPreBoundaryEnvelope(points, openUtauClassicTiming{tailOverlap: 20})
+	if got[2].XMS != -20 || got[3].XMS != -20 || got[4].XMS != 0 {
+		t.Fatalf("unexpected pre-boundary envelope: %+v", got)
+	}
+	if points[4].XMS != 30 {
+		t.Fatal("input envelope was mutated")
 	}
 }
 

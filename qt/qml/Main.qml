@@ -1198,7 +1198,7 @@ window.translator.load(window.appBackend.language);
 
     function normalizeAliasPolicy(value) {
         const policy = String(value || "auto");
-        return ["auto", "vcv-prefer", "cvvc-prefer", "cv-only"].indexOf(policy) >= 0 ? policy : "auto";
+        return ["auto", "legacy", "cvvc-enhanced", "vcv-prefer", "cvvc-prefer", "cv-only"].indexOf(policy) >= 0 ? policy : "auto";
     }
 
     function utteranceIndex(id) {

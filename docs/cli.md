@@ -78,7 +78,7 @@
 | `--boundary-bridge-ms` | `0` | 位相を揃えた波形接続修復の最大幅（0で無効） |
 | `--boundary-bridge-threshold` | `0` | handcrafted join scoreがこの値以下のとき接続修復を適用 |
 | `--selection` | `viterbi` | 原音選択方式（`viterbi`、`greedy`、`target-only`） |
-| `--alias-policy` | `auto` | VCV／CVVC／単独音aliasの利用方針（`auto`、`vcv-prefer`、`cvvc-prefer`、`cv-only`） |
+| `--alias-policy` | `auto` | 音源適応モード。`auto`はVC/VCV収録比から自動選択、`legacy`はv0.0.9互換、`cvvc-enhanced`はCVVC優先・sequential timing・VC音量35%。詳細指定として`vcv-prefer`、`cvvc-prefer`、`cv-only`も利用可能 |
 | `--join-model <path>` | | 学習済みjoin-costモデルJSON |
 | `--join-scale` | `0` | 学習済みlogitスコアの倍率（既定はモデル値または4） |
 | `--renderer-dir <dir>` | | Renderer pluginの検索directory（繰り返し指定可） |

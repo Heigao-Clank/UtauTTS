@@ -45,6 +45,9 @@ func main() {
 		worldlineBridgePath     string
 		boundaryBridgeMS        float64
 		boundaryBridgeThreshold float64
+		cvvcTiming              string
+		cvvcTransitionGain      float64
+		cvvcPreBoundaryFade     bool
 		selectionMode           string
 		aliasPolicy             string
 		acousticMode            string
@@ -82,8 +85,11 @@ func main() {
 	flag.StringVar(&worldlineBridgePath, "worldline-bridge", "", "path to utautts-worldline-bridge executable")
 	flag.Float64Var(&boundaryBridgeMS, "boundary-bridge-ms", 0, "maximum width for phase-aligned waveform boundary repair candidates (0 disables)")
 	flag.Float64Var(&boundaryBridgeThreshold, "boundary-bridge-threshold", 0, "apply boundary repair when handcrafted join score is at or below this value")
+	flag.StringVar(&cvvcTiming, "cvvc-timing", render.CVVCTimingLegacy, "CVVC timing: legacy or sequential")
+	flag.Float64Var(&cvvcTransitionGain, "cvvc-transition-gain", 1, "CVVC transition volume multiplier (0..1)")
+	flag.BoolVar(&cvvcPreBoundaryFade, "cvvc-pre-boundary-fade", false, "fade CVVC transitions out before the following CV consonant")
 	flag.StringVar(&selectionMode, "selection", string(voicebank.SelectionViterbi), "unit selection: viterbi, greedy, or target-only")
-	flag.StringVar(&aliasPolicy, "alias-policy", string(voicebank.AliasPolicyAuto), "voicebank alias policy: auto, vcv-prefer, cvvc-prefer, or cv-only")
+	flag.StringVar(&aliasPolicy, "alias-policy", string(voicebank.AliasPolicyAuto), "voicebank mode: auto, legacy, cvvc-enhanced, vcv-prefer, cvvc-prefer, or cv-only")
 	flag.StringVar(&acousticMode, "acoustic-selection", "", "acoustic candidate diagnostics: dry-run or apply")
 	flag.StringVar(&joinModelPath, "join-model", "", "optional learned join-cost model JSON")
 	flag.Float64Var(&joinScoreScale, "join-scale", 0, "learned logit score scale (default: model or 4)")
@@ -143,6 +149,9 @@ func main() {
 		IntonationStrength:      intonationStrength,
 		BoundaryBridgeMS:        boundaryBridgeMS,
 		BoundaryBridgeThreshold: boundaryBridgeThreshold,
+		CVVCTiming:              cvvcTiming,
+		CVVCTransitionGain:      cvvcTransitionGain,
+		CVVCPreBoundaryFade:     cvvcPreBoundaryFade,
 		SelectionMode:           voicebank.SelectionMode(selectionMode),
 		AliasPolicy:             voicebank.AliasPolicy(aliasPolicy),
 		AcousticMode:            acousticMode,

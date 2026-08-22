@@ -69,6 +69,21 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	if synthesisPlan == nil || len(synthesisPlan.Units) == 0 {
 		return nil, errors.New("empty synthesis plan")
 	}
+	if cfg.CVVCTiming == "" {
+		cfg.CVVCTiming = CVVCTimingLegacy
+	}
+	if cfg.CVVCTiming != CVVCTimingLegacy && cfg.CVVCTiming != CVVCTimingSequential {
+		return nil, fmt.Errorf("unknown CVVC timing mode %q", cfg.CVVCTiming)
+	}
+	if cfg.CVVCTransitionGain == 0 {
+		cfg.CVVCTransitionGain = 1
+	}
+	if cfg.CVVCTransitionGain < 0 || cfg.CVVCTransitionGain > 1 {
+		return nil, fmt.Errorf("CVVC transition gain must be between 0 and 1; got %.3f", cfg.CVVCTransitionGain)
+	}
+	synthesisPlan.CVVCTiming = cfg.CVVCTiming
+	synthesisPlan.CVVCTransitionGain = cfg.CVVCTransitionGain
+	synthesisPlan.CVVCPreBoundaryFade = cfg.CVVCPreBoundaryFade
 	library, err := resolveWorldlineLibrary(cfg.WorldlinePath)
 	if err != nil {
 		return nil, err
@@ -94,7 +109,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	phraseStartMS := 0.0
 	faithfulClassic := strings.HasPrefix(engine, "classic-worldline-faithful")
 	if faithfulClassic {
-		classicTimings, phraseStartMS = openUtauClassicTimings(synthesisPlan.Units)
+		classicTimings, phraseStartMS = openUtauClassicTimings(synthesisPlan.Units, cfg.CVVCTiming)
 	}
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
@@ -202,6 +217,9 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		lengthMS := requiredLength
 		pitchStartMS := positionMS
 		volume, modulation, tempo := 100.0, 0.0, 120.0
+		if unit.Role == "transition" {
+			volume *= cfg.CVVCTransitionGain
+		}
 		var envelopePoints []worldlineEnvelopePoint
 		pitchLengthMS := 0.0
 		if strings.HasPrefix(engine, "classic-worldline-") {
@@ -221,6 +239,9 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 				skipMS = math.Max(0, pitchLeadingMS-phoneTiming.preutter)
 				durCorrection = phoneTiming.preutter - phoneTiming.tailIntrude + phoneTiming.tailOverlap
 				envelopePoints = openUtauEnvelopeFromTiming(*unit, phoneTiming)
+				if cfg.CVVCPreBoundaryFade && unit.Role == "transition" {
+					envelopePoints = cvvcPreBoundaryEnvelope(envelopePoints, phoneTiming)
+				}
 				pitchLengthMS = envelopePoints[4].XMS + pitchLeadingMS
 				positionMS = unit.NoteStartMS - phoneTiming.preutter - phraseStartMS
 			}
@@ -312,7 +333,7 @@ type openUtauClassicTiming struct {
 	overlapped  bool
 }
 
-func openUtauClassicTimings(units []plan.Unit) ([]openUtauClassicTiming, float64) {
+func openUtauClassicTimings(units []plan.Unit, cvvcTiming string) ([]openUtauClassicTiming, float64) {
 	result := make([]openUtauClassicTiming, len(units))
 	previous := -1
 	first := -1
@@ -364,7 +385,7 @@ func openUtauClassicTimings(units []plan.Unit) ([]openUtauClassicTiming, float64
 				result[previous].tailOverlap = math.Max(result[previous].tailOverlap, math.Max(autoOverlap, 0))
 			}
 		}
-		if unit.Role != "transition" {
+		if unit.Role != "transition" || cvvcTiming == CVVCTimingSequential {
 			previous = index
 		}
 	}
@@ -393,6 +414,19 @@ func openUtauEnvelopeFromTiming(unit plan.Unit, timing openUtauClassicTiming) []
 		{XMS: p0, Y: 0}, {XMS: p1, Y: 1}, {XMS: p2, Y: 1},
 		{XMS: p3, Y: 1}, {XMS: p4, Y: 0},
 	}
+}
+
+func cvvcPreBoundaryEnvelope(points []worldlineEnvelopePoint, timing openUtauClassicTiming) []worldlineEnvelopePoint {
+	if len(points) != 5 {
+		return points
+	}
+	result := append([]worldlineEnvelopePoint(nil), points...)
+	fadeOut := math.Max(5, timing.tailOverlap)
+	fadeStart := math.Max(result[1].XMS, -fadeOut)
+	result[2].XMS = fadeStart
+	result[3].XMS = fadeStart
+	result[4].XMS = 0
+	return result
 }
 
 func resolveWorldlineBridge(configured string) (string, error) {

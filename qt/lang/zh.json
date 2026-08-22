@@ -50,6 +50,8 @@
     "main.param.voicebank": "音源",
     "main.param.aliasPolicy": "音源格式",
     "main.aliasPolicy.auto": "自动",
+    "main.aliasPolicy.legacy": "传统兼容",
+    "main.aliasPolicy.cvvcEnhanced": "CVVC清晰化",
     "main.aliasPolicy.vcvPrefer": "优先VCV",
     "main.aliasPolicy.cvvcPrefer": "优先CVVC",
     "main.aliasPolicy.cvOnly": "仅单独音",

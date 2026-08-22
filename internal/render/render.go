@@ -26,8 +26,16 @@ type Config struct {
 	WorldlineBridgePath     string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
+	CVVCTiming              string
+	CVVCTransitionGain      float64
+	CVVCPreBoundaryFade     bool
 	PitchCurve              *PitchCurve
 }
+
+const (
+	CVVCTimingLegacy     = "legacy"
+	CVVCTimingSequential = "sequential"
+)
 
 // MaxIntonationStrengthはユーザー向けイントネーション制御の上限値。1.0が従来の
 // 強さに相当し、1を超える値は生成された輪郭とレンダラー側の補正を増幅する。

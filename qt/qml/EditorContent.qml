@@ -313,6 +313,8 @@ import QtMultimedia
                             Layout.fillWidth: true
                             model: [
                                 { id: "auto", display_name: window.translator.tr("main.aliasPolicy.auto") },
+                                { id: "legacy", display_name: window.translator.tr("main.aliasPolicy.legacy") },
+                                { id: "cvvc-enhanced", display_name: window.translator.tr("main.aliasPolicy.cvvcEnhanced") },
                                 { id: "vcv-prefer", display_name: window.translator.tr("main.aliasPolicy.vcvPrefer") },
                                 { id: "cvvc-prefer", display_name: window.translator.tr("main.aliasPolicy.cvvcPrefer") },
                                 { id: "cv-only", display_name: window.translator.tr("main.aliasPolicy.cvOnly") }

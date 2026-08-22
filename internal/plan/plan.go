@@ -11,7 +11,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 12
+const Version = 16
 
 type Config struct {
 	MoraDurationMS   float64
@@ -38,6 +38,7 @@ type Plan struct {
 	AcousticMode            string                   `json:"acoustic_mode,omitempty"`
 	SelectionMode           string                   `json:"selection_mode"`
 	AliasPolicy             string                   `json:"alias_policy"`
+	RequestedAliasPolicy    string                   `json:"requested_alias_policy,omitempty"`
 	JoinCostMode            string                   `json:"join_cost_mode"`
 	JoinModelVersion        int                      `json:"join_model_version,omitempty"`
 	JoinScoreScale          float64                  `json:"join_score_scale,omitempty"`
@@ -45,6 +46,9 @@ type Plan struct {
 	BoundaryBridgeThreshold float64                  `json:"boundary_bridge_threshold,omitempty"`
 	BoundaryBridges         []BoundaryBridge         `json:"boundary_bridges,omitempty"`
 	BoundaryRepairDecisions []BoundaryRepairDecision `json:"boundary_repair_decisions,omitempty"`
+	CVVCTiming              string                   `json:"cvvc_timing,omitempty"`
+	CVVCTransitionGain      float64                  `json:"cvvc_transition_gain,omitempty"`
+	CVVCPreBoundaryFade     bool                     `json:"cvvc_pre_boundary_fade,omitempty"`
 	DurationMS              float64                  `json:"duration_ms"`
 	Units                   []Unit                   `json:"units"`
 }

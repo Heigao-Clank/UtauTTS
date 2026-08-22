@@ -201,7 +201,7 @@ ID順にソートされた音源一覧です。
 | `tone` | string | `C4` | `prefix.map` 使用時の音階 |
 | `model_id` | string | なし | `GET /api/models` の `id` |
 | `renderer` | string | 既定Renderer | `GET /api/renderers` の `id` |
-| `alias_policy` | string | `auto` | `auto`（VCV優先、次にCVVC、CVへ局所fallback）、`vcv-prefer`（VCVをより強く優先）、`cvvc-prefer`（CVVCをより強く優先）、`cv-only`（単独音のみ） |
+| `alias_policy` | string | `auto` | `auto`（VC/VCV収録比から自動選択）、`legacy`（v0.0.9互換）、`cvvc-enhanced`（CVVC優先・sequential timing・VC音量35%）、`vcv-prefer`、`cvvc-prefer`、`cv-only` |
 | `mora_duration_ms` | number | `140` | 基本モーラ長（0〜1000） |
 | `pause_duration_ms` | number | `180` | 句読点の休止長（0〜3000） |
 | `mora_durations_ms` | number[] | | モーラごとの長さ。値は0〜1000 |

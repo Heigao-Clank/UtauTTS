@@ -49,6 +49,9 @@ type Config struct {
 	WorldlineBridgePath     string
 	BoundaryBridgeMS        float64
 	BoundaryBridgeThreshold float64
+	CVVCTiming              string
+	CVVCTransitionGain      float64
+	CVVCPreBoundaryFade     bool
 	PitchCurve              *render.PitchCurve
 	SelectionMode           voicebank.SelectionMode
 	AliasPolicy             voicebank.AliasPolicy
@@ -199,6 +202,11 @@ func Synthesize(cfg Config) (*Result, error) {
 			return nil, fmt.Errorf("load voicebank: %w", err)
 		}
 	}
+	requestedAliasPolicy := cfg.AliasPolicy
+	if requestedAliasPolicy == "" {
+		requestedAliasPolicy = voicebank.AliasPolicyAuto
+	}
+	applyAliasProfile(bank, &cfg)
 	loadedProsody, err := resolveProsodyModel(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("load prosody model: %w", err)
@@ -289,6 +297,10 @@ func Synthesize(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("build synthesis plan: %w", err)
 	}
 	synthesisPlan.Text = cfg.Text
+	synthesisPlan.RequestedAliasPolicy = string(requestedAliasPolicy)
+	synthesisPlan.CVVCTiming = cfg.CVVCTiming
+	synthesisPlan.CVVCTransitionGain = cfg.CVVCTransitionGain
+	synthesisPlan.CVVCPreBoundaryFade = cfg.CVVCPreBoundaryFade
 	pitchCurve := cfg.PitchCurve
 	applyPitch := applyPitchEnabled(cfg)
 	if pitchCurve == nil && shouldPredictFrameContour(cfg, loadedProsody) {
@@ -334,6 +346,9 @@ func Synthesize(cfg Config) (*Result, error) {
 		WorldlineBridgePath:     cfg.WorldlineBridgePath,
 		BoundaryBridgeMS:        cfg.BoundaryBridgeMS,
 		BoundaryBridgeThreshold: cfg.BoundaryBridgeThreshold,
+		CVVCTiming:              cfg.CVVCTiming,
+		CVVCTransitionGain:      cfg.CVVCTransitionGain,
+		CVVCPreBoundaryFade:     cfg.CVVCPreBoundaryFade,
 		PitchCurve:              pitchCurve,
 	})
 	if err != nil {
@@ -358,6 +373,39 @@ func Synthesize(cfg Config) (*Result, error) {
 		MoraPositionsMS: moraPositions,
 		PitchPoints:     pitchPoints,
 	}, nil
+}
+
+func applyAliasProfile(bank *voicebank.Bank, cfg *Config) {
+	policy := cfg.AliasPolicy
+	if policy == "" {
+		policy = voicebank.AliasPolicyAuto
+	}
+	switch policy {
+	case voicebank.AliasPolicyAuto:
+		if bank != nil && bank.RecommendCVVCEnhanced() {
+			applyCVVCEnhancedProfile(cfg)
+		} else {
+			applyLegacyAliasProfile(cfg)
+		}
+	case voicebank.AliasPolicyLegacy:
+		applyLegacyAliasProfile(cfg)
+	case voicebank.AliasPolicyEnhanced:
+		applyCVVCEnhancedProfile(cfg)
+	}
+}
+
+func applyLegacyAliasProfile(cfg *Config) {
+	cfg.AliasPolicy = voicebank.AliasPolicyAuto
+	cfg.CVVCTiming = render.CVVCTimingLegacy
+	cfg.CVVCTransitionGain = 1
+	cfg.CVVCPreBoundaryFade = false
+}
+
+func applyCVVCEnhancedProfile(cfg *Config) {
+	cfg.AliasPolicy = voicebank.AliasPolicyCVVCPrefer
+	cfg.CVVCTiming = render.CVVCTimingSequential
+	cfg.CVVCTransitionGain = 0.35
+	cfg.CVVCPreBoundaryFade = false
 }
 
 // PredictProsodyは音声合成せずに選択されたプロソディモデルを評価する。手動のモーラ長を尊重するため、プレビューはGUIで編集中の値に従う。

@@ -29,6 +29,26 @@ func TestSynthesizeHonorsCanceledContextBeforeLoadingInputs(t *testing.T) {
 	}
 }
 
+func TestAliasProfilesBundleSelectionAndRendererSettings(t *testing.T) {
+	legacy := Config{AliasPolicy: voicebank.AliasPolicyLegacy, CVVCTiming: render.CVVCTimingSequential, CVVCTransitionGain: 0.2, CVVCPreBoundaryFade: true}
+	applyAliasProfile(nil, &legacy)
+	if legacy.AliasPolicy != voicebank.AliasPolicyAuto || legacy.CVVCTiming != render.CVVCTimingLegacy || legacy.CVVCTransitionGain != 1 || legacy.CVVCPreBoundaryFade {
+		t.Fatalf("legacy profile = %+v", legacy)
+	}
+
+	enhanced := Config{AliasPolicy: voicebank.AliasPolicyEnhanced}
+	applyAliasProfile(nil, &enhanced)
+	if enhanced.AliasPolicy != voicebank.AliasPolicyCVVCPrefer || enhanced.CVVCTiming != render.CVVCTimingSequential || enhanced.CVVCTransitionGain != 0.35 || enhanced.CVVCPreBoundaryFade {
+		t.Fatalf("enhanced profile = %+v", enhanced)
+	}
+
+	expert := Config{AliasPolicy: voicebank.AliasPolicyVCVPrefer, CVVCTiming: render.CVVCTimingSequential, CVVCTransitionGain: 0.6}
+	applyAliasProfile(nil, &expert)
+	if expert.AliasPolicy != voicebank.AliasPolicyVCVPrefer || expert.CVVCTiming != render.CVVCTimingSequential || expert.CVVCTransitionGain != 0.6 {
+		t.Fatalf("expert settings were overwritten: %+v", expert)
+	}
+}
+
 func TestMoraTimingsIncludePausesMissingFromPlanUnits(t *testing.T) {
 	morae := []frontend.Mora{{Text: "a"}, {Pause: true}, {Text: "i"}}
 	p := &plan.Plan{DurationMS: 380, Units: []plan.Unit{

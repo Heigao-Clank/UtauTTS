@@ -94,6 +94,17 @@
         <label for="syn-renderer">renderer</label>
         <select id="syn-renderer"></select>
       </div>
+      <div>
+        <label for="syn-alias-policy">原音処理（alias_policy）</label>
+        <select id="syn-alias-policy">
+          <option value="auto" selected>自動（音源構成から判定）</option>
+          <option value="legacy">従来互換（v0.0.9）</option>
+          <option value="cvvc-enhanced">CVVC明瞭化</option>
+          <option value="vcv-prefer">VCV優先（詳細設定）</option>
+          <option value="cvvc-prefer">CVVC優先（詳細設定）</option>
+          <option value="cv-only">単独音のみ（詳細設定）</option>
+        </select>
+      </div>
     </div>
     <div class="row">
       <div><label for="syn-mora">mora_duration_ms（0〜1000）</label><input type="number" id="syn-mora" value="140" min="0" max="1000"></div>
@@ -130,6 +141,7 @@
   "voicebank_id": "足立レイver3.5.0",
   "model_id": "frame-intonation-v8",
   "renderer": "openutau-classic-worldline-faithful",
+  "alias_policy": "auto",
   "intonation_strength": 1,
   "apply_pitch": true
 }</pre>
@@ -338,10 +350,12 @@ function buildSynthesisPayload() {
   const color = document.getElementById("syn-color").value;
   const model = document.getElementById("syn-model").value;
   const renderer = document.getElementById("syn-renderer").value;
+  const aliasPolicy = document.getElementById("syn-alias-policy").value;
   if (voicebank) payload.voicebank_id = voicebank;
   if (color) payload.color = color;
   if (model) payload.model_id = model;
   if (renderer) payload.renderer = renderer;
+  if (aliasPolicy) payload.alias_policy = aliasPolicy;
   payload.mora_duration_ms = Number(document.getElementById("syn-mora").value);
   payload.pause_duration_ms = Number(document.getElementById("syn-pause").value);
   payload.intonation_strength = Number(document.getElementById("syn-strength").value);

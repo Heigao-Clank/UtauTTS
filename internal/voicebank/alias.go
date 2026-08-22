@@ -18,13 +18,15 @@ type AliasPolicy string
 
 const (
 	AliasPolicyAuto       AliasPolicy = "auto"
+	AliasPolicyLegacy     AliasPolicy = "legacy"
+	AliasPolicyEnhanced   AliasPolicy = "cvvc-enhanced"
 	AliasPolicyVCVPrefer  AliasPolicy = "vcv-prefer"
 	AliasPolicyCVVCPrefer AliasPolicy = "cvvc-prefer"
 	AliasPolicyCVOnly     AliasPolicy = "cv-only"
 )
 
 func (p AliasPolicy) valid() bool {
-	return p == "" || p == AliasPolicyAuto || p == AliasPolicyVCVPrefer || p == AliasPolicyCVVCPrefer || p == AliasPolicyCVOnly
+	return p == "" || p == AliasPolicyAuto || p == AliasPolicyLegacy || p == AliasPolicyEnhanced || p == AliasPolicyVCVPrefer || p == AliasPolicyCVVCPrefer || p == AliasPolicyCVOnly
 }
 
 type AliasCapabilities struct {
@@ -93,6 +95,13 @@ func isConsonantContext(value string) bool {
 
 func (b *Bank) AliasCounts() map[AliasKind]int {
 	return b.AliasCapabilities().Counts
+}
+
+// RecommendCVVCEnhancedは、少数の補助VCを持つVCV音源を除外してCVVC向け音源を判定する。
+func (b *Bank) RecommendCVVCEnhanced() bool {
+	counts := b.AliasCounts()
+	vc, vcv := counts[AliasVC], counts[AliasVCV]
+	return vc >= 24 && (vcv == 0 || vc*2 >= vcv)
 }
 
 func (b *Bank) AliasCapabilities() AliasCapabilities {

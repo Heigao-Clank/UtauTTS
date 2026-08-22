@@ -50,6 +50,8 @@
     "main.param.voicebank": "Voicebank",
     "main.param.aliasPolicy": "Voicebank Format",
     "main.aliasPolicy.auto": "Automatic",
+    "main.aliasPolicy.legacy": "Legacy Compatible",
+    "main.aliasPolicy.cvvcEnhanced": "CVVC Clarity",
     "main.aliasPolicy.vcvPrefer": "Prefer VCV",
     "main.aliasPolicy.cvvcPrefer": "Prefer CVVC",
     "main.aliasPolicy.cvOnly": "CV Only",

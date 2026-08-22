@@ -76,7 +76,7 @@ func TestConsoleUIDocsAreServedPublicly(t *testing.T) {
 	if contentType := response.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
 		t.Fatalf("content type = %q", contentType)
 	}
-	for _, want := range []string{"UtauTTS Server Console", "/api/synthesize/audio", "/api/analyze"} {
+	for _, want := range []string{"UtauTTS Server Console", "/api/synthesize/audio", "/api/analyze", "syn-alias-policy", "cvvc-enhanced", "payload.alias_policy"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Fatalf("console page is missing %q", want)
 		}

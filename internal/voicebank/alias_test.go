@@ -1,6 +1,7 @@
 package voicebank
 
 import (
+	"strings"
 	"testing"
 
 	"utautts/internal/oto"
@@ -58,5 +59,27 @@ func TestAliasCapabilitiesSummarizeVCVContexts(t *testing.T) {
 	}
 	if !capabilities.HasVC || capabilities.VCContexts["あ"] != 1 {
 		t.Fatalf("vc capabilities = %+v", capabilities)
+	}
+}
+
+func TestRecommendCVVCEnhancedUsesInventoryBalance(t *testing.T) {
+	makeBank := func(vc, vcv int) *Bank {
+		bank := &Bank{Entries: map[string][]oto.Entry{}}
+		for index := 0; index < vc; index++ {
+			bank.Entries[strings.Repeat("あ", index+1)+" k"] = nil
+		}
+		for index := 0; index < vcv; index++ {
+			bank.Entries["a "+strings.Repeat("あ", index+1)] = nil
+		}
+		return bank
+	}
+	if !makeBank(180, 190).RecommendCVVCEnhanced() {
+		t.Fatal("balanced CVVC inventory was not recognized")
+	}
+	if makeBank(126, 4736).RecommendCVVCEnhanced() {
+		t.Fatal("VCV-dominant inventory was incorrectly recognized as CVVC")
+	}
+	if makeBank(1, 0).RecommendCVVCEnhanced() {
+		t.Fatal("tiny incidental VC inventory was incorrectly recognized as CVVC")
 	}
 }
