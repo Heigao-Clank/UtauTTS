@@ -380,7 +380,7 @@ Item {
                             height: 24
                             anchors.horizontalCenter: parent.horizontalCenter
                             visible: root.pointIsEditable(pointColumn.index)
-                            text: pointColumn.index < root.points.length ? Math.round(root.points[pointColumn.index]).toString() : "0"
+                            text: pointColumn.index < root.points.length ? Math.round(root.pitchAt(pointColumn.index)).toString() : "0"
                             horizontalAlignment: TextInput.AlignHCenter
                             color: root.labelColor
                             selectByMouse: true
@@ -391,11 +391,15 @@ Item {
                             onEditingFinished: {
                                 const parsed = parseInt(text);
                                 if (isNaN(parsed)) {
-                                    text = Math.round(root.points[pointColumn.index]).toString();
+                                    text = Math.round(root.pitchAt(pointColumn.index)).toString();
                                     return;
                                 }
                                 const values = root.points.slice();
-                                values[pointColumn.index] = Math.max(-300, Math.min(300, parsed));
+                                const automatic = pointColumn.index < root.autoPoints.length
+                                        ? Number(root.autoPoints[pointColumn.index]) : 0;
+                                values[pointColumn.index] = Math.round(
+                                        Math.max(-300, Math.min(300, parsed))
+                                        - (Number.isFinite(automatic) ? automatic : 0));
                                 root.points = values;
                                 root.pointsEdited(values.slice());
                             }

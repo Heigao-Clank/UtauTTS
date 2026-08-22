@@ -142,7 +142,7 @@
     "usage.step.pitch.2": "Dragging a vertical line horizontally moves only that line, changing the duration of the adjacent moras.",
     "usage.step.pitch.3": "Hold Shift while dragging a vertical line horizontally to move everything after that word together.",
     "usage.step.pitch.4": "Drag the last empty vertical line to adjust the duration of the final mora.",
-    "usage.step.pitch.5": "Double-click a point to reset its pitch; double-click near the mora duration below a vertical line to reset the mora duration.",
+    "usage.step.pitch.5": "Double-click a point to restore the model-generated pitch; double-click near the mora duration below a vertical line to reset the mora duration.",
     "usage.step.playback.1": "Select the utterance you want to play.",
     "usage.step.playback.2": "Choose \"Play Selected Text\" from the \"Playback\" menu, or press Ctrl+Enter to synthesize and play.",
     "usage.step.playback.3": "Use \"Play All Text\" to play everything at once.",

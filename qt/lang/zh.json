@@ -142,7 +142,7 @@
     "usage.step.pitch.2": "横向拖动竖线只会移动该竖线本身，从而改变相邻音拍的时长。",
     "usage.step.pitch.3": "按住 Shift 横向拖动竖线时，该词之后的部分会一起移动。",
     "usage.step.pitch.4": "拖动最后一条空的竖线可以调整最后一个音拍的时长。",
-    "usage.step.pitch.5": "双击点可重置音高；双击竖线下方的音拍时长附近可重置音拍时长。",
+    "usage.step.pitch.5": "双击点可恢复模型生成的音高；双击竖线下方的音拍时长附近可重置音拍时长。",
     "usage.step.playback.1": "选择要播放的台词。",
     "usage.step.playback.2": "在“播放”菜单中选择“播放所选文本”，或按 Ctrl+Enter 进行合成并播放。",
     "usage.step.playback.3": "使用“播放全部文本”可一次性播放全部内容。",

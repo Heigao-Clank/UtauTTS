@@ -623,27 +623,6 @@ window.translator.load(window.appBackend.language);
             window.applyAutomaticProsody(index, automaticPoints, automaticDurations, automaticPositions);
         }
 
-        function onSynthesisChanged() {
-            const pendingId = window.pendingUtteranceId;
-            const pendingRevision = window.pendingRevision;
-            const index = window.utteranceIndex(pendingId);
-            if (index < 0)
-                return;
-            const item = utterances.get(index);
-            if (item.revision !== pendingRevision)
-                return;
-            let result;
-            try {
-                result = JSON.parse(window.appBackend.synthesisJson);
-            } catch (error) {
-                return;
-            }
-            const automaticPoints = window.copySequence(result.pitch_points);
-            const automaticDurations = window.copySequence(result.mora_durations_ms);
-            const automaticPositions = window.copySequence(result.mora_positions_ms);
-            window.applyAutomaticProsody(index, automaticPoints, automaticDurations, automaticPositions);
-        }
-
         function onPreviewReady() {
             const audio = window.appBackend.previewUrl;
             const pendingId = window.pendingUtteranceId;
