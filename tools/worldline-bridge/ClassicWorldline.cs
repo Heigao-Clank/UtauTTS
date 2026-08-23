@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace UtauTTS.WorldlineBridge;
 
@@ -42,6 +43,12 @@ internal static class ClassicWorldline {
             var local = global - Position - correction + Skip;
             if (local < 0 || local < Skip || local >= Samples.Length) return 0;
             return Samples[local] * Envelope(local - Skip, fs);
+        }
+
+        public (double Sample, double Gain) ComponentAt(int global, int fs) {
+            var local = global - Position - Correction + Skip;
+            if (local < Skip || local >= Samples.Length) return (0, 0);
+            return (Samples[local], Envelope(local - Skip, fs));
         }
 
         private double Envelope(int visible, int fs) {
@@ -98,6 +105,8 @@ internal static class ClassicWorldline {
             }
         }
 
+        WriteDiagnosticStems(segments, manifest);
+
         var length = segments.Max(segment => segment.End(manifest.SampleRate));
         if (gpu) {
             var gpuMixed = MixGPU(segments, manifest, Math.Max(1, length));
@@ -115,6 +124,97 @@ internal static class ClassicWorldline {
             }
         }
         Program.WritePCM16(manifest.OutputPath, manifest.SampleRate, mixed);
+    }
+
+    private static float[] MixOverlapNormalized(Segment[] segments, Manifest manifest, int length) {
+        var mixed = new float[length];
+        for (var output = 0; output < length; output++) {
+            double weighted = 0, gainTotal = 0;
+            foreach (var segment in segments) {
+                var (sample, gain) = segment.ComponentAt(output, manifest.SampleRate);
+                weighted += sample * gain;
+                gainTotal += gain;
+            }
+            mixed[output] = (float)(weighted / Math.Max(1, gainTotal));
+        }
+        return mixed;
+    }
+
+    private static void WriteDiagnosticStems(Segment[] segments, Manifest manifest) {
+        var configured = Environment.GetEnvironmentVariable("UTAUTTS_WORLDLINE_STEM_DIR");
+        if (string.IsNullOrWhiteSpace(configured)) return;
+        var directory = Path.GetFullPath(configured);
+        Directory.CreateDirectory(directory);
+        WriteDiagnosticMixes(segments, manifest, directory);
+        var records = new List<object>(segments.Length);
+        for (var index = 0; index < segments.Length; index++) {
+            var segment = segments[index];
+            var visibleLength = segment.VisibleLength(manifest.SampleRate);
+            var visible = new float[visibleLength];
+            var start = segment.Position + segment.Correction;
+            for (var sample = 0; sample < visible.Length; sample++) {
+                visible[sample] = (float)segment.SampleAt(start + sample, manifest.SampleRate);
+            }
+            var rawName = $"unit-{index:D3}-resampled.wav";
+            var visibleName = $"unit-{index:D3}-visible.wav";
+            var sourceName = $"unit-{index:D3}-source.wav";
+            var (sourceRate, sourceSamples) = Program.ReadPCM16(segment.Unit.Source);
+            var sourceStart = Math.Clamp(
+                (int)Math.Round(segment.Unit.OffsetMs * sourceRate / 1000.0), 0, sourceSamples.Length);
+            var sourceEndMs = segment.Unit.CutoffMs < 0
+                ? segment.Unit.OffsetMs - segment.Unit.CutoffMs
+                : sourceSamples.Length * 1000.0 / sourceRate - segment.Unit.CutoffMs;
+            var sourceEnd = Math.Clamp(
+                (int)Math.Round(sourceEndMs * sourceRate / 1000.0), sourceStart, sourceSamples.Length);
+            var sourceCut = sourceSamples[sourceStart..sourceEnd].Select(value => (float)value).ToArray();
+            if (sourceCut.Length == 0) sourceCut = [0];
+            Program.WritePCM16(Path.Combine(directory, sourceName), sourceRate, sourceCut);
+            Program.WritePCM16(Path.Combine(directory, rawName), manifest.SampleRate, segment.Samples);
+            Program.WritePCM16(Path.Combine(directory, visibleName), manifest.SampleRate, visible);
+            records.Add(new {
+                index,
+                source = segment.Unit.Source,
+                position_samples = segment.Position,
+                correction_samples = segment.Correction,
+                skip_samples = segment.Skip,
+                resampled_samples = segment.Samples.Length,
+                visible_samples = visibleLength,
+                source_wav = sourceName,
+                raw_wav = rawName,
+                visible_wav = visibleName,
+            });
+        }
+        var metadata = new {
+            version = 1,
+            sample_rate = manifest.SampleRate,
+            output_path = manifest.OutputPath,
+            units = records,
+        };
+        File.WriteAllText(
+            Path.Combine(directory, "stems.json"),
+            JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static void WriteDiagnosticMixes(Segment[] segments, Manifest manifest, string directory) {
+        var length = Math.Max(1, segments.Max(segment => segment.End(manifest.SampleRate)));
+        var normalized = MixOverlapNormalized(segments, manifest, length);
+        var sharpened = new float[length];
+        for (var output = 0; output < length; output++) {
+            double gainTotal = 0, sharpWeighted = 0, sharpTotal = 0;
+            foreach (var segment in segments) {
+                var (sample, gain) = segment.ComponentAt(output, manifest.SampleRate);
+                if (gain <= 0) continue;
+                gainTotal += gain;
+                var sharpGain = Math.Pow(gain, 4);
+                sharpWeighted += sample * sharpGain;
+                sharpTotal += sharpGain;
+            }
+            if (sharpTotal > 0) {
+                sharpened[output] = (float)(sharpWeighted / sharpTotal * Math.Min(1, gainTotal));
+            }
+        }
+        Program.WritePCM16(Path.Combine(directory, "mix-overlap-normalized.wav"), manifest.SampleRate, normalized);
+        Program.WritePCM16(Path.Combine(directory, "mix-overlap-sharp.wav"), manifest.SampleRate, sharpened);
     }
 
     private static Segment RenderSegment(Resample resample, Unit unit, Manifest manifest) => new() {

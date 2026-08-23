@@ -65,6 +65,7 @@ type unitChoice struct {
 type systemInfo struct {
 	Renderer                string  `json:"renderer"`
 	AliasPolicy             string  `json:"alias_policy,omitempty"`
+	AcousticSelection       string  `json:"acoustic_selection,omitempty"`
 	JoinModel               bool    `json:"join_model"`
 	JoinModelPath           string  `json:"join_model_path,omitempty"`
 	ProsodyModel            bool    `json:"prosody_model,omitempty"`
@@ -155,7 +156,7 @@ func main() {
 	var intonationStrengthA, intonationStrengthB float64
 	var boundaryBridgeMSA, boundaryBridgeMSB float64
 	var boundaryBridgeThresholdA, boundaryBridgeThresholdB float64
-	var cvvcTimingA, cvvcTimingB, aliasPolicyA, aliasPolicyB string
+	var cvvcTimingA, cvvcTimingB, aliasPolicyA, aliasPolicyB, acousticSelectionA, acousticSelectionB string
 	var cvvcTransitionGainA, cvvcTransitionGainB float64
 	var cvvcPreBoundaryFadeA, cvvcPreBoundaryFadeB bool
 	flag.StringVar(&cfg.VoicebankPath, "voicebank", "", "path to a UTAU voicebank directory")
@@ -192,6 +193,8 @@ func main() {
 	flag.StringVar(&cvvcTimingB, "system-b-cvvc-timing", render.CVVCTimingLegacy, "system B CVVC timing: legacy or sequential")
 	flag.StringVar(&aliasPolicyA, "system-a-alias-policy", "auto", "system A alias policy: auto, vcv-prefer, cvvc-prefer, or cv-only")
 	flag.StringVar(&aliasPolicyB, "system-b-alias-policy", "auto", "system B alias policy: auto, vcv-prefer, cvvc-prefer, or cv-only")
+	flag.StringVar(&acousticSelectionA, "system-a-acoustic-selection", "", "system A acoustic candidate selection: empty, dry-run, or apply")
+	flag.StringVar(&acousticSelectionB, "system-b-acoustic-selection", "", "system B acoustic candidate selection: empty, dry-run, or apply")
 	flag.Float64Var(&cvvcTransitionGainA, "system-a-cvvc-transition-gain", 1, "system A CVVC transition volume multiplier (0..1)")
 	flag.Float64Var(&cvvcTransitionGainB, "system-b-cvvc-transition-gain", 1, "system B CVVC transition volume multiplier (0..1)")
 	flag.BoolVar(&cvvcPreBoundaryFadeA, "system-a-cvvc-pre-boundary-fade", false, "fade system A CVVC transitions out before the following CV consonant")
@@ -363,6 +366,7 @@ func main() {
 		cfgA.CVVCTransitionGain = cvvcTransitionGainA
 		cfgA.CVVCPreBoundaryFade = cvvcPreBoundaryFadeA
 		cfgA.AliasPolicy = voicebank.AliasPolicy(aliasPolicyA)
+		cfgA.AcousticMode = acousticSelectionA
 		rendererplugin.Apply(rendererPluginA, &cfgA)
 		first, err := tts.Synthesize(cfgA)
 		if err != nil {
@@ -388,6 +392,7 @@ func main() {
 		cfgB.CVVCTransitionGain = cvvcTransitionGainB
 		cfgB.CVVCPreBoundaryFade = cvvcPreBoundaryFadeB
 		cfgB.AliasPolicy = voicebank.AliasPolicy(aliasPolicyB)
+		cfgB.AcousticMode = acousticSelectionB
 		rendererplugin.Apply(rendererPluginB, &cfgB)
 		second, err := tts.Synthesize(cfgB)
 		if err != nil {
@@ -400,8 +405,8 @@ func main() {
 		}
 		trialID := len(manifest.Trials) + 1
 		left, right := first, second
-		leftInfo := systemInfo{Renderer: rendererA, AliasPolicy: aliasPolicyA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, ProsodyFeaturesPath: featuresAPath, ProsodyPitchOnly: pitchOnlyA, ProsodyDurationOnly: durationOnlyA, MoraDurationsPath: durationsAPath, ApplyPitch: applyPitchA || pitchOnlyA || contourAPath != "" || frameContourAPath != "", PitchContourPath: contourAPath, FramePitchContourPath: frameContourAPath, IntonationStrength: intonationStrengthA, BoundaryBridgeMS: boundaryBridgeMSA, BoundaryBridgeThreshold: boundaryBridgeThresholdA, CVVCTiming: cvvcTimingA, CVVCTransitionGain: cvvcTransitionGainA, CVVCPreBoundaryFade: cvvcPreBoundaryFadeA, LongUnitGroups: longUnitGroups(first.Plan.Units)}
-		rightInfo := systemInfo{Renderer: rendererB, AliasPolicy: aliasPolicyB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, ProsodyFeaturesPath: featuresBPath, ProsodyPitchOnly: pitchOnlyB, ProsodyDurationOnly: durationOnlyB, MoraDurationsPath: durationsBPath, ApplyPitch: applyPitchB || pitchOnlyB || contourBPath != "" || frameContourBPath != "", PitchContourPath: contourBPath, FramePitchContourPath: frameContourBPath, IntonationStrength: intonationStrengthB, BoundaryBridgeMS: boundaryBridgeMSB, BoundaryBridgeThreshold: boundaryBridgeThresholdB, CVVCTiming: cvvcTimingB, CVVCTransitionGain: cvvcTransitionGainB, CVVCPreBoundaryFade: cvvcPreBoundaryFadeB, LongUnitGroups: longUnitGroups(second.Plan.Units)}
+		leftInfo := systemInfo{Renderer: rendererA, AliasPolicy: aliasPolicyA, AcousticSelection: acousticSelectionA, JoinModel: modelA != "", JoinModelPath: modelA, ProsodyModel: prosodyA != "", ProsodyPath: prosodyA, ProsodyFeaturesPath: featuresAPath, ProsodyPitchOnly: pitchOnlyA, ProsodyDurationOnly: durationOnlyA, MoraDurationsPath: durationsAPath, ApplyPitch: applyPitchA || pitchOnlyA || contourAPath != "" || frameContourAPath != "", PitchContourPath: contourAPath, FramePitchContourPath: frameContourAPath, IntonationStrength: intonationStrengthA, BoundaryBridgeMS: boundaryBridgeMSA, BoundaryBridgeThreshold: boundaryBridgeThresholdA, CVVCTiming: cvvcTimingA, CVVCTransitionGain: cvvcTransitionGainA, CVVCPreBoundaryFade: cvvcPreBoundaryFadeA, LongUnitGroups: longUnitGroups(first.Plan.Units)}
+		rightInfo := systemInfo{Renderer: rendererB, AliasPolicy: aliasPolicyB, AcousticSelection: acousticSelectionB, JoinModel: modelB != "", JoinModelPath: modelB, ProsodyModel: prosodyB != "", ProsodyPath: prosodyB, ProsodyFeaturesPath: featuresBPath, ProsodyPitchOnly: pitchOnlyB, ProsodyDurationOnly: durationOnlyB, MoraDurationsPath: durationsBPath, ApplyPitch: applyPitchB || pitchOnlyB || contourBPath != "" || frameContourBPath != "", PitchContourPath: contourBPath, FramePitchContourPath: frameContourBPath, IntonationStrength: intonationStrengthB, BoundaryBridgeMS: boundaryBridgeMSB, BoundaryBridgeThreshold: boundaryBridgeThresholdB, CVVCTiming: cvvcTimingB, CVVCTransitionGain: cvvcTransitionGainB, CVVCPreBoundaryFade: cvvcPreBoundaryFadeB, LongUnitGroups: longUnitGroups(second.Plan.Units)}
 		if random.Intn(2) == 1 {
 			left, right, leftInfo, rightInfo = right, left, rightInfo, leftInfo
 		}
