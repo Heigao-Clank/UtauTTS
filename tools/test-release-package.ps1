@@ -43,6 +43,12 @@ try {
         Assert-Path (Join-Path $packageRoot 'licenses/Go/GO-LICENSE.txt') 'Go runtime license'
         Assert-Path (Join-Path $packageRoot 'licenses/Go/github_com_ikawaha_kagome-dict-v1.1.7-LICENSE.txt') 'kagome-dict license'
         Assert-Path (Join-Path $packageRoot 'licenses/OpenJTalk/HTS_ENGINE_API_COPYING.txt') 'hts_engine_API license'
+        Assert-Path (Join-Path $packageRoot 'licenses/DotNet/DOTNET-RUNTIME-LICENSE.txt') '.NET runtime license'
+        Assert-Path (Join-Path $packageRoot 'licenses/DotNet/DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt') '.NET runtime third-party notices'
+        Assert-Path (Join-Path $packageRoot 'licenses/PROSODY-MODELS.txt') 'prosody model license'
+        Assert-Path (Join-Path $packageRoot 'models/README.md') 'model license readme'
+        Assert-Path (Join-Path $packageRoot 'runtime/licenses/PYTHON_LICENSE.txt') 'Python runtime license'
+        Assert-Path (Join-Path $packageRoot 'runtime/licenses/PYINSTALLER_COPYING.txt') 'PyInstaller license'
     }
 
     foreach ($asset in @(
@@ -69,6 +75,8 @@ try {
     }
 
     $serverRuntime = Join-Path $serverRoot 'runtime'
+    Assert-Path (Join-Path $serverRuntime 'hostpolicy.dll') 'self-contained .NET host policy in server package'
+    Assert-Path (Join-Path $serverRuntime 'coreclr.dll') 'self-contained .NET runtime in server package'
     $gpuManifest = Test-Path -LiteralPath (Join-Path $serverRoot 'plugins/renderers/openutau-classic-faithful-gpu/plugin.json')
     $gpuBinary = Test-Path -LiteralPath (Join-Path $serverRuntime 'utautts-waveform-gpu.dll')
     if ($gpuManifest -ne $gpuBinary) {
@@ -85,6 +93,11 @@ try {
         Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') })
     if ($unexpectedDebugFiles.Count -ne 0) {
         throw "Release package contains debug/development files: $($unexpectedDebugFiles.FullName -join ', ')"
+    }
+    foreach ($unusedQtRuntime in @('opengl32sw.dll', 'dxcompiler.dll', 'dxil.dll', 'D3Dcompiler_47.dll')) {
+        if (Test-Path -LiteralPath (Join-Path $guiRoot "app/$unusedQtRuntime")) {
+            throw "Release package contains an unused Qt auxiliary runtime: $unusedQtRuntime"
+        }
     }
 
     $voicebank = Get-ChildItem -LiteralPath (Join-Path $guiRoot 'voice') -Directory | Select-Object -First 1
@@ -226,6 +239,22 @@ try {
         Assert-Path $serverWav 'packaged server synthesis output'
         if ((Get-Item -LiteralPath $serverWav).Length -le 44) {
             throw 'Packaged server synthesis output is empty'
+        }
+        $faithfulBody = @{
+            text = $smokeText
+            voicebank_id = $voicebankId
+            model_id = 'frame-intonation-v8'
+            renderer = 'openutau-classic-worldline-faithful'
+            intonation_strength = 1
+            apply_pitch = $true
+        } | ConvertTo-Json -Compress
+        $faithfulServerWav = Join-Path $workingDirectory 'server-faithful-smoke.wav'
+        Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/api/synthesize/audio" `
+            -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($faithfulBody)) `
+            -OutFile $faithfulServerWav -TimeoutSec 120 | Out-Null
+        Assert-Path $faithfulServerWav 'packaged server faithful synthesis output'
+        if ((Get-Item -LiteralPath $faithfulServerWav).Length -le 44) {
+            throw 'Packaged server faithful synthesis output is empty'
         }
         $batchItems = @()
         $batchItems += @{ name = 'first.wav'; request = @{ text = $smokeText; voicebank_id = $voicebankId; renderer = 'waveform' } }

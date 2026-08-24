@@ -111,13 +111,11 @@ try {
         Write-Host '=== Build optional CUDA renderer support ==='
         & (Join-Path $PSScriptRoot 'build-waveform-gpu.ps1') -OutputDirectory $guiRuntimePath
         if ($LASTEXITCODE -ne 0) { throw "CUDA renderer support build failed with exit code $LASTEXITCODE" }
-        Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'utautts-waveform-gpu.dll') -Destination $serverRuntimePath -Force
     } else {
         Write-Warning 'CUDA Toolkit was not found; faithful GPU renderer will not be included'
     }
 
-    Get-ChildItem -LiteralPath $guiRuntimePath -Filter 'utautts-worldline-bridge*' | Copy-Item -Destination $serverRuntimePath
-    Copy-Item -LiteralPath (Join-Path $guiRuntimePath 'worldline.dll') -Destination $serverRuntimePath
+    Copy-Item -Path (Join-Path $guiRuntimePath '*') -Destination $serverRuntimePath -Recurse -Force
 
     $openJTalkHelper = Join-Path $root 'tools/openjtalk-feature-bridge/bin/utautts-openjtalk-features.exe'
     $openJTalkDictionary = Join-Path $root '.tmp-openjtalk/pyopenjtalk/open_jtalk_dic_utf_8-1.11'
@@ -145,6 +143,8 @@ try {
     }
     $bundledModels | Copy-Item -Destination $guiModelsPath
     $bundledModels | Copy-Item -Destination $serverModelsPath
+    Copy-Item -LiteralPath (Join-Path $sourceModels 'README.md') -Destination $guiModelsPath
+    Copy-Item -LiteralPath (Join-Path $sourceModels 'README.md') -Destination $serverModelsPath
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $guiPluginsPath -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'plugins/renderers') -Destination $serverPluginsPath -Recurse
     if (-not $cudaAvailable) {

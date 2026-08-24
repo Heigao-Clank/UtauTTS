@@ -76,7 +76,8 @@ $executable = Get-ChildItem -LiteralPath $qtBuildDir -Recurse -Filter 'utautts.e
 if ($null -eq $executable) { throw 'Qt executable was not produced' }
 Copy-Item -LiteralPath $executable.FullName -Destination (Join-Path $appDirectory 'utautts-gui.exe') -Force
 Copy-Item -LiteralPath (Join-Path $nativeDir 'utautts_native.dll') -Destination $appDirectory -Force
-& $deployTool --release --qmldir (Join-Path $root 'qt/qml') (Join-Path $appDirectory 'utautts-gui.exe')
+& $deployTool --release --qmldir (Join-Path $root 'qt/qml') --no-system-d3d-compiler `
+    --no-system-dxc-compiler --no-opengl-sw (Join-Path $appDirectory 'utautts-gui.exe')
 if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
 $previousLauncherGoCache = $env:GOCACHE
 $env:GOCACHE = Join-Path $root 'build\go-cache'

@@ -130,16 +130,33 @@ done
 
 echo '=== Python and PyInstaller licenses ==='
 python_license="$(find /usr/lib -maxdepth 3 -name 'LICENSE.txt' -path '*python3*' 2>/dev/null | head -1 || true)"
-pyinstaller_license="$(find "${root_dir}/.tmp-pyinstaller-linux" -maxdepth 2 -name 'COPYING.txt' | head -1 || true)"
+pyinstaller_license="$(find "${root_dir}/.tmp-pyinstaller-linux" -path '*/pyinstaller-*.dist-info/licenses/COPYING.txt' -print -quit)"
+if [ -z "${python_license}" ] || [ -z "${pyinstaller_license}" ]; then
+  echo 'Python or PyInstaller license was not found' >&2
+  exit 1
+fi
 for runtime_dir in "${gui_dir}/runtime" "${server_dir}/runtime"; do
   license_dir="${runtime_dir}/licenses"
   mkdir -p "${license_dir}"
-  if [ -n "${python_license}" ]; then
-    cp "${python_license}" "${license_dir}/PYTHON_LICENSE.txt"
+  cp "${python_license}" "${license_dir}/PYTHON_LICENSE.txt"
+  cp "${pyinstaller_license}" "${license_dir}/PYINSTALLER_COPYING.txt"
+done
+
+echo '=== .NET runtime licenses ==='
+runtime_version="$(python3 -c 'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); print(data["runtimeOptions"]["includedFrameworks"][0]["version"])' "${staging_dir}/utautts-worldline-bridge.runtimeconfig.json")"
+nuget_root="${NUGET_PACKAGES:-${HOME}/.nuget/packages}"
+dotnet_runtime_package="${nuget_root}/microsoft.netcore.app.runtime.linux-x64/${runtime_version}"
+for required in LICENSE.TXT THIRD-PARTY-NOTICES.TXT; do
+  if [ ! -f "${dotnet_runtime_package}/${required}" ]; then
+    echo "required .NET runtime notice was not found: ${dotnet_runtime_package}/${required}" >&2
+    exit 1
   fi
-  if [ -n "${pyinstaller_license}" ]; then
-    cp "${pyinstaller_license}" "${license_dir}/PYINSTALLER_COPYING.txt"
-  fi
+done
+for package_dir in "${gui_dir}" "${server_dir}"; do
+  dotnet_license_dir="${package_dir}/licenses/DotNet"
+  mkdir -p "${dotnet_license_dir}"
+  cp "${dotnet_runtime_package}/LICENSE.TXT" "${dotnet_license_dir}/DOTNET-RUNTIME-LICENSE.txt"
+  cp "${dotnet_runtime_package}/THIRD-PARTY-NOTICES.TXT" "${dotnet_license_dir}/DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt"
 done
 
 echo '=== Go licenses ==='
@@ -166,6 +183,7 @@ for package_dir in "${gui_dir}" "${server_dir}"; do
   mkdir -p "${license_root}/OpenJTalk"
   cp "${root_dir}/licenses/openjtalk/"*.txt "${license_root}/OpenJTalk/"
   cp "${root_dir}/licenses/JSUT-DATA-AND-LABELS.txt" "${license_root}/"
+  cp "${root_dir}/licenses/PROSODY-MODELS.txt" "${license_root}/"
   dict_copying="${package_dir}/runtime/open_jtalk_dic_utf_8-1.11/COPYING"
   if [[ -f "${dict_copying}" ]]; then
     cp "${dict_copying}" "${license_root}/OpenJTalk/DICTIONARY_COPYING.txt"

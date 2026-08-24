@@ -93,6 +93,27 @@ function Copy-OpenJTalkLicenses {
 
 function Copy-ProsodyDataProvenance {
     Copy-Required (Join-Path $root 'licenses/JSUT-DATA-AND-LABELS.txt') (Join-Path $licenseRoot 'JSUT-DATA-AND-LABELS.txt')
+    Copy-Required (Join-Path $root 'licenses/PROSODY-MODELS.txt') (Join-Path $licenseRoot 'PROSODY-MODELS.txt')
+}
+
+function Copy-DotNetRuntimeLicenses {
+    $runtimeConfigPath = Join-Path $PackageRoot 'runtime/utautts-worldline-bridge.runtimeconfig.json'
+    if (-not (Test-Path -LiteralPath $runtimeConfigPath -PathType Leaf)) {
+        throw "Worldline bridge runtime configuration is missing: $runtimeConfigPath"
+    }
+    $runtimeConfig = Get-Content -LiteralPath $runtimeConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $runtimeVersion = [string]$runtimeConfig.runtimeOptions.includedFrameworks[0].version
+    if ([string]::IsNullOrWhiteSpace($runtimeVersion)) {
+        throw "Could not determine the bundled .NET runtime version from $runtimeConfigPath"
+    }
+    $nugetRoot = if (-not [string]::IsNullOrWhiteSpace($env:NUGET_PACKAGES)) {
+        $env:NUGET_PACKAGES
+    } else {
+        Join-Path $env:USERPROFILE '.nuget/packages'
+    }
+    $runtimePackage = Join-Path $nugetRoot "microsoft.netcore.app.runtime.win-x64/$runtimeVersion"
+    Copy-Required (Join-Path $runtimePackage 'LICENSE.TXT') (Join-Path $licenseRoot 'DotNet/DOTNET-RUNTIME-LICENSE.txt')
+    Copy-Required (Join-Path $runtimePackage 'THIRD-PARTY-NOTICES.TXT') (Join-Path $licenseRoot 'DotNet/DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt')
 }
 
 function Copy-QtLicenses {
@@ -256,6 +277,7 @@ New-Item -ItemType Directory -Force -Path $licenseRoot | Out-Null
 Copy-GoLicenses
 Copy-OpenJTalkLicenses
 Copy-ProsodyDataProvenance
+Copy-DotNetRuntimeLicenses
 
 if ($Variant -eq 'windows-gui') {
     Copy-QtLicenses

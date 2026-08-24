@@ -49,7 +49,15 @@ for required in \
   "${server_root}/utautts-server" \
   "${gui_root}/LICENSE" \
   "${gui_root}/THIRD_PARTY_NOTICES.txt" \
-  "${server_root}/licenses/README.txt"; do
+  "${server_root}/licenses/README.txt" \
+  "${gui_root}/licenses/DotNet/DOTNET-RUNTIME-LICENSE.txt" \
+  "${server_root}/licenses/DotNet/DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt" \
+  "${gui_root}/licenses/PROSODY-MODELS.txt" \
+  "${server_root}/models/README.md" \
+  "${gui_root}/runtime/licenses/PYTHON_LICENSE.txt" \
+  "${server_root}/runtime/licenses/PYINSTALLER_COPYING.txt" \
+  "${server_root}/runtime/libcoreclr.so" \
+  "${server_root}/runtime/libhostpolicy.so"; do
   [ -f "${required}" ] || fail "required package file is missing: ${required}"
 done
 for executable in \
@@ -140,6 +148,12 @@ voice = voices[0]["id"]
 (root / "synthesize.json").write_text(json.dumps({
     "text": "こんにちは", "voicebank_id": voice, "renderer": "waveform", "mora_duration_ms": 120
 }, ensure_ascii=False), encoding="utf-8")
+(root / "faithful.json").write_text(json.dumps({
+    "text": "こんにちは", "voicebank_id": voice,
+    "model_id": "frame-intonation-v8",
+    "renderer": "openutau-classic-worldline-faithful",
+    "intonation_strength": 1, "apply_pitch": True,
+}, ensure_ascii=False), encoding="utf-8")
 (root / "batch.json").write_text(json.dumps({"items": [
     {"name": "first.wav", "request": {"text": "こんにちは", "voicebank_id": voice, "renderer": "waveform"}},
     {"name": "second.wav", "request": {"kana": "あ", "voicebank_id": voice, "renderer": "waveform"}}
@@ -168,6 +182,9 @@ PY
 curl -fsS -H 'Content-Type: application/json; charset=utf-8' --data-binary @"${work_dir}/synthesize.json" \
   "${base_url}/api/synthesize/audio" >"${work_dir}/server.wav"
 [ "$(stat -c %s "${work_dir}/server.wav")" -gt 44 ] || fail 'server synthesis output is empty'
+curl -fsS -H 'Content-Type: application/json; charset=utf-8' --data-binary @"${work_dir}/faithful.json" \
+  "${base_url}/api/synthesize/audio" >"${work_dir}/server-faithful.wav"
+[ "$(stat -c %s "${work_dir}/server-faithful.wav")" -gt 44 ] || fail 'server faithful synthesis output is empty'
 curl -fsS -H 'Content-Type: application/json; charset=utf-8' --data-binary @"${work_dir}/batch.json" \
   "${base_url}/api/synthesize/batch" >"${work_dir}/batch.zip"
 unzip -tq "${work_dir}/batch.zip" >/dev/null

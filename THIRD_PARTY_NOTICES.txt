@@ -266,6 +266,18 @@ upstream text is available at:
 https://go.dev/LICENSE
 
 
+.NET runtime
+============
+
+The OpenUtau worldline bridge is distributed as a self-contained .NET
+application. The release therefore includes the .NET runtime and framework
+libraries. The exact runtime package's license and third-party notices are
+included under licenses/DotNet in every release package.
+
+Upstream license information:
+https://github.com/dotnet/core/blob/main/license-information.md
+
+
 golang.org/x/text
 =================
 
@@ -303,6 +315,11 @@ and label files are not bundled in this release. Component text sources carry th
 CC BY-SA 4.0). Contributors and complete source
 attribution are recorded in licenses/JSUT-DATA-AND-LABELS.txt, which is included
 in the release license bundle.
+
+The bundled JSON model files are licensed under CC BY-SA 4.0. The model-specific
+notice is included as licenses/PROSODY-MODELS.txt and models/README.md. UtauTTS's
+repository-level MIT License applies to the source code and does not override
+the terms for models, prompts, voicebanks, or other third-party assets.
 
 
 MinGW runtime libraries
