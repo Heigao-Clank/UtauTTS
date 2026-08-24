@@ -43,6 +43,6 @@ Linux検査ではZIPを一時ディレクトリへ展開し、日本語フォン
 | GUI音声処理 | 文章解析、抑揚予測、実運用Rendererでの合成、WAV保存 |
 | GUI出力 | exo出力、抑揚教師データの途中保存・読込・書出し |
 | CLI | `waveform`による最小合成、v8モデルとClassic faithfulによる実運用合成、不正数値の拒否 |
-| HTTP server | コンソール、health、音源・モデル・Renderer一覧、解析、単体合成、batch ZIP、音源再読込 |
+| HTTP server | コンソール、health、音源・モデル・Renderer一覧、解析、`waveform`／Classic faithful合成、batch ZIP、音源再読込 |
 
 GUIの検査には、Windowsでは配布された `app/utautts-gui.exe --self-test`、Linuxでは `QT_QPA_PLATFORM=offscreen ./utautts --self-test` を使用します。画面や更新確認は開かず、テスト専用の一時設定と一時ファイルだけを使います。
