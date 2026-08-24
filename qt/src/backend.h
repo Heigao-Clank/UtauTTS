@@ -37,6 +37,7 @@ class Backend final : public QObject {
     Q_PROPERTY(QString language READ language NOTIFY languageChanged)
     Q_PROPERTY(bool closeLogOnSuccess READ closeLogOnSuccess NOTIFY logSettingsChanged)
     Q_PROPERTY(bool updateCheckEnabled READ updateCheckEnabled NOTIFY updateSettingsChanged)
+    Q_PROPERTY(bool developerMode READ developerMode NOTIFY developerModeChanged)
     Q_PROPERTY(int defaultMoraDuration READ defaultMoraDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(int defaultPauseDuration READ defaultPauseDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(bool defaultApplyPitch READ defaultApplyPitch NOTIFY synthesisDefaultsChanged)
@@ -70,6 +71,7 @@ public:
     QString language() const { return m_language; }
     bool closeLogOnSuccess() const { return m_closeLogOnSuccess; }
     bool updateCheckEnabled() const { return m_updateCheckEnabled; }
+    bool developerMode() const { return m_developerMode; }
     int defaultMoraDuration() const { return m_defaultMoraDuration; }
     int defaultPauseDuration() const { return m_defaultPauseDuration; }
     bool defaultApplyPitch() const { return m_defaultApplyPitch; }
@@ -93,6 +95,12 @@ public:
     Q_INVOKABLE QUrl fileInDirectory(const QUrl &directory, const QString &fileName) const;
     Q_INVOKABLE bool saveProject(const QUrl &destination, const QVariantMap &project);
     Q_INVOKABLE QVariantMap loadProject(const QUrl &source);
+    Q_INVOKABLE QVariantMap loadProsodyPromptSet() const;
+    Q_INVOKABLE QVariantMap loadProsodyTrainingSession();
+    Q_INVOKABLE bool saveProsodyTrainingSession(const QVariantMap &session);
+    Q_INVOKABLE bool clearProsodyTrainingSession();
+    Q_INVOKABLE bool exportProsodyTrainingDataset(const QUrl &destination, const QVariantMap &session);
+    Q_INVOKABLE QString dictionaryFingerprint() const;
     Q_INVOKABLE void setDarkMode(bool value);
     Q_INVOKABLE void setLanguage(const QString &value);
     Q_INVOKABLE QString loadLanguageFile(const QString &code) const;
@@ -108,6 +116,7 @@ public:
     Q_INVOKABLE void clearLogs();
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
     Q_INVOKABLE void setUpdateCheckEnabled(bool value);
+    Q_INVOKABLE void setDeveloperMode(bool value);
     Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);
     Q_INVOKABLE void setDefaultVoicebank(const QString &value);
     Q_INVOKABLE void setShortcutSequences(const QString &synthesize,
@@ -130,6 +139,7 @@ signals:
     void languageChanged();
     void logSettingsChanged();
     void updateSettingsChanged();
+    void developerModeChanged();
     void synthesisDefaultsChanged();
     void voicebankSettingsChanged();
     void shortcutSettingsChanged();
@@ -164,6 +174,7 @@ private:
     mutable bool m_languageNamesLoaded = false;
     bool m_closeLogOnSuccess = true;
     bool m_updateCheckEnabled = true;
+    bool m_developerMode = false;
     int m_defaultMoraDuration = 120;
     int m_defaultPauseDuration = 180;
     bool m_defaultApplyPitch = true;

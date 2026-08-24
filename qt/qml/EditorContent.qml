@@ -642,119 +642,44 @@ import QtMultimedia
                     onMoraDurationsEdited: durations => window.updateMoraDurations(durations)
                     onMoraPositionsEdited: positions => window.updateMoraPositions(positions)
                 }
-                Item {
-                    id: pitchHorizontalScrollBar
+                PitchHorizontalScrollBar {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 14
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
-                    visible: pitchEditor.horizontalMaximum > 0
-
-                    Rectangle {
-                        id: pitchScrollTrack
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width
-                        height: 4
-                        radius: height / 2
-                        color: window.palette.mid
-                    }
-                    Rectangle {
-                        id: pitchScrollThumb
-                        readonly property real minimumWidth: 28
-                        width: Math.max(minimumWidth, pitchScrollTrack.width * pitchEditor.horizontalVisibleRatio)
-                        height: 10
-                        radius: height / 2
-                        y: (parent.height - height) / 2
-                        x: (pitchScrollTrack.width - width) * pitchEditor.horizontalPosition
-                        color: window.accent
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.SizeHorCursor
-                        onPressed: mouse => setOffset(mouse.x)
-                        onPositionChanged: mouse => {
-                            if (pressed)
-                                setOffset(mouse.x);
-                        }
-                        function setOffset(x) {
-                            const travel = pitchScrollTrack.width - pitchScrollThumb.width;
-                            if (travel <= 0)
-                                return;
-                            const position = Math.max(0, Math.min(1, (x - pitchScrollThumb.width / 2) / travel));
-                            pitchEditor.horizontalOffset = position * pitchEditor.horizontalMaximum;
-                        }
-                    }
+                    editor: pitchEditor
+                    trackColor: window.palette.mid
+                    thumbColor: window.accent
                 }
-                RowLayout {
+                PlaybackControls {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 52
                     Layout.leftMargin: 10
                     Layout.rightMargin: 10
-                    spacing: 10
-
-                    RoundButton {
-                        id: playbackButton
-                        Layout.preferredWidth: 42
-                        Layout.preferredHeight: 42
-                        highlighted: true
-                        contentItem: Canvas {
-                            id: playbackIcon
-                            anchors.fill: parent
-                            property int iconState: window.appBackend.busy ? 0 : window.playerMedia.playbackState === MediaPlayer.PlayingState ? 1 : 2
-                            property color iconColor: playbackButton.palette.buttonText
-                            onIconStateChanged: requestPaint()
-                            onIconColorChanged: requestPaint()
-                            onPaint: {
-                                const context = getContext("2d");
-                                context.clearRect(0, 0, width, height);
-                                context.fillStyle = iconColor;
-                                if (iconState === 0) {
-                                    const radius = Math.max(1.5, width * 0.055);
-                                    context.beginPath();
-                                    context.arc(width * 0.35, height * 0.5, radius, 0, Math.PI * 2);
-                                    context.arc(width * 0.5, height * 0.5, radius, 0, Math.PI * 2);
-                                    context.arc(width * 0.65, height * 0.5, radius, 0, Math.PI * 2);
-                                    context.fill();
-                                } else if (iconState === 1) {
-                                    context.fillRect(width * 0.34, height * 0.3, width * 0.11, height * 0.4);
-                                    context.fillRect(width * 0.55, height * 0.3, width * 0.11, height * 0.4);
-                                } else {
-                                    context.beginPath();
-                                    context.moveTo(width * 0.39, height * 0.28);
-                                    context.lineTo(width * 0.39, height * 0.72);
-                                    context.lineTo(width * 0.7, height * 0.5);
-                                    context.closePath();
-                                    context.fill();
-                                }
-                            }
+                    translator: window.translator
+                    mutedText: window.mutedText
+                    busy: window.appBackend.busy
+                    playing: !window.batchExportActive
+                             && window.playerMedia.playbackState === MediaPlayer.PlayingState
+                    hasAudio: !window.batchExportActive && window.hasCurrentAudio()
+                    canGenerate: !window.batchExportActive && window.utterancesModel.count
+                                 && window.current().content.trim().length > 0
+                    position: window.playerMedia.position
+                    duration: window.playerMedia.duration
+                    errorText: window.appBackend.error.length ? window.appBackend.error : window.playbackError
+                    onPrimaryClicked: {
+                        if (window.playerMedia.playbackState === MediaPlayer.PlayingState)
+                            window.playerMedia.pause();
+                        else if (window.hasCurrentAudio()) {
+                            if (window.playerMedia.duration > 0
+                                    && window.playerMedia.position >= window.playerMedia.duration - 1)
+                                window.playerMedia.position = 0;
+                            window.playerMedia.play();
+                        } else {
+                            window.synthesizeCurrent();
                         }
-                        enabled: !window.batchExportActive && (window.playerMedia.playbackState === MediaPlayer.PlayingState || window.hasCurrentAudio() || (!window.appBackend.busy && window.utterancesModel.count && window.current().content.trim().length > 0))
-                        onClicked: {
-                            if (window.playerMedia.playbackState === MediaPlayer.PlayingState)
-                                window.playerMedia.pause();
-                            else if (window.hasCurrentAudio()) {
-                                if (window.playerMedia.duration > 0 && window.playerMedia.position >= window.playerMedia.duration - 1)
-                                    window.playerMedia.position = 0;
-                                window.playerMedia.play();
-                            } else
-                                window.synthesizeCurrent();
-                        }
-                        ToolTip.visible: hovered
-                        ToolTip.text: window.appBackend.error.length ? window.appBackend.error : window.playbackError.length ? window.playbackError : window.playerMedia.playbackState === MediaPlayer.PlayingState ? window.translator.tr("main.playback.paused") : window.translator.tr("main.playback.generateAndPlay")
                     }
-                    Slider {
-                        Layout.fillWidth: true
-                        from: 0
-                        to: Math.max(1, window.playerMedia.duration)
-                        value: window.playerMedia.position
-                        enabled: window.hasCurrentAudio()
-                        onMoved: window.playerMedia.position = value
-                    }
-                    Label {
-                        text: window.formatTime(window.playerMedia.position) + " / " + window.formatTime(window.playerMedia.duration)
-                        color: window.mutedText
-                        font.pixelSize: 11
-                    }
+                    onSeekRequested: position => window.playerMedia.position = position
                 }
             }
         }

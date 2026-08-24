@@ -21,6 +21,7 @@ Item {
     property real moraWidth: 64
     property real sidePadding: 12
     signal pointsEdited(var points)
+    signal pitchPointTouched(int index)
     signal moraDurationsEdited(var durations)
     signal moraPositionsEdited(var positions)
     property alias horizontalOffset: viewport.contentX
@@ -231,6 +232,7 @@ Item {
         const desired = Math.max(-300, Math.min(300, (center - y) / scale));
         const automatic = index < root.autoPoints.length ? Number(root.autoPoints[index]) : 0;
         values[index] = Math.round(desired - (Number.isFinite(automatic) ? automatic : 0));
+        root.pitchPointTouched(index);
         root.points = values;
         canvas.requestPaint();
     }
@@ -239,6 +241,7 @@ Item {
         if (index < 0 || index >= root.points.length || !root.pointIsEditable(index))
             return;
         const values = root.points.slice();
+        root.pitchPointTouched(index);
         values[index] = 0;
         root.points = values;
         root.pointsEdited(values.slice());
@@ -401,6 +404,7 @@ Item {
                                         Math.max(-300, Math.min(300, parsed))
                                         - (Number.isFinite(automatic) ? automatic : 0));
                                 root.points = values;
+                                root.pitchPointTouched(pointColumn.index);
                                 root.pointsEdited(values.slice());
                             }
                         }
@@ -540,6 +544,7 @@ Item {
                         return;
                     const values = root.points.slice();
                     values[index] = 0;
+                    root.pitchPointTouched(index);
                     root.points = values;
                     root.pointsEdited(values.slice());
                     dragging = -1;

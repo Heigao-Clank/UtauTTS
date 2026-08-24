@@ -295,11 +295,12 @@ JSUT and jsut-label prosody data
 ================================
 
 The bundled learned prosody models were trained from the JSUT Japanese speech
-corpus. The optional BASIC5000 HTS-style labels come from
-https://github.com/sarulab-speech/jsut-label. The original corpus and label files
-are not bundled in this release. JSUT and the label data are identified under
-CC BY-SA 4.0, with component text sources carrying their own terms (Wikipedia
-CC BY-SA 3.0 and TANAKA corpus CC BY 2.0). Contributors and complete source
+corpus. The GUI also includes 300 unchanged BASIC5000 sentences, arranged into
+six prompt packs for manual prosody adjustment. The optional BASIC5000 HTS-style
+labels come from https://github.com/sarulab-speech/jsut-label. The original corpus
+and label files are not bundled in this release. Component text sources carry their own terms
+(Wikipedia CC BY-SA 3.0, TANAKA corpus CC BY 2.0, and JSUT original sentences
+CC BY-SA 4.0). Contributors and complete source
 attribution are recorded in licenses/JSUT-DATA-AND-LABELS.txt, which is included
 in the release license bundle.
 

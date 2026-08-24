@@ -2,6 +2,7 @@
 #include "utautts_abi.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
@@ -38,6 +39,32 @@ QString sanitizeLanguageCode(const QString &code) {
 
 bool hasResourceLayout(const QDir &root) {
     return root.exists("plugins/renderers") || root.exists("models") || root.exists("voice");
+}
+
+QString prosodyTrainingSessionPath() {
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (directory.isEmpty())
+        directory = QDir::homePath();
+    return QDir(directory).filePath(QStringLiteral("prosody-training-session.json"));
+}
+
+bool writeJSONFile(const QString &path, const QVariantMap &value, QString *error) {
+    const QJsonDocument document = QJsonDocument::fromVariant(value);
+    if (!document.isObject()) {
+        if (error)
+            *error = QStringLiteral("invalid JSON object");
+        return false;
+    }
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    const QByteArray data = document.toJson(QJsonDocument::Indented);
+    QSaveFile target(path);
+    if (!target.open(QIODevice::WriteOnly) || target.write(data) != data.size() || !target.commit()) {
+        if (error)
+            *error = target.errorString();
+        target.cancelWriting();
+        return false;
+    }
+    return true;
 }
 
 QString updateLockPath(const QDir &root) {
@@ -94,6 +121,7 @@ Backend::Backend(QObject *parent)
       m_language(QSettings().value("appearance/language", QStringLiteral("ja")).toString()),
       m_closeLogOnSuccess(QSettings().value("logging/closeOnSuccess", true).toBool()),
       m_updateCheckEnabled(QSettings().value("appearance/updateCheckEnabled", true).toBool()),
+      m_developerMode(QSettings().value("developer/enabled", false).toBool()),
       m_defaultVoicebankId(QSettings().value("voicebank/defaultId", QString()).toString().trimmed()),
       m_defaultMoraDuration(QSettings().value("synthesis/defaultMoraDuration", 120).toInt()),
       m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
@@ -232,6 +260,16 @@ void Backend::setUpdateCheckEnabled(bool value) {
     settings.setValue("appearance/updateCheckEnabled", value);
     settings.sync();
     emit updateSettingsChanged();
+}
+
+void Backend::setDeveloperMode(bool value) {
+    if (m_developerMode == value)
+        return;
+    m_developerMode = value;
+    QSettings settings;
+    settings.setValue(QStringLiteral("developer/enabled"), value);
+    settings.sync();
+    emit developerModeChanged();
 }
 
 void Backend::setDefaultVoicebank(const QString &value) {
@@ -906,6 +944,139 @@ QVariantMap Backend::loadProject(const QUrl &source) {
     Q_UNUSED(utterances)
     setError({});
     return project;
+}
+
+QVariantMap Backend::loadProsodyPromptSet() const {
+    QFile file(QStringLiteral(":/data/prosody-prompts-ja-v1.json"));
+    if (!file.open(QIODevice::ReadOnly))
+        return {{"_error", tr("教師データ用の文章セットを開けませんでした")}};
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject())
+        return {{"_error", tr("教師データ用の文章セットが壊れています")}};
+    return document.toVariant().toMap();
+}
+
+QVariantMap Backend::loadProsodyTrainingSession() {
+    QFile file(prosodyTrainingSessionPath());
+    if (!file.exists())
+        return {};
+    if (!file.open(QIODevice::ReadOnly)) {
+        setError(tr("教師データ収集の途中保存を開けませんでした"));
+        return {{"_error", error()}};
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        setError(tr("教師データ収集の途中保存が壊れています"));
+        return {{"_error", error()}};
+    }
+    setError({});
+    return document.toVariant().toMap();
+}
+
+bool Backend::saveProsodyTrainingSession(const QVariantMap &session) {
+    if (session.value("format").toString() != QLatin1String("utautts-prosody-training-session")
+            || session.value("format_version").toInt() != 1) {
+        setError(tr("教師データ収集の保存内容が無効です"));
+        return false;
+    }
+    QString writeError;
+    if (!writeJSONFile(prosodyTrainingSessionPath(), session, &writeError)) {
+        setError(tr("教師データ収集を途中保存できませんでした: %1").arg(writeError));
+        return false;
+    }
+    setError({});
+    return true;
+}
+
+bool Backend::clearProsodyTrainingSession() {
+    const QString path = prosodyTrainingSessionPath();
+    if (QFileInfo::exists(path) && !QFile::remove(path)) {
+        setError(tr("教師データ収集の途中保存を削除できませんでした"));
+        return false;
+    }
+    setError({});
+    return true;
+}
+
+bool Backend::exportProsodyTrainingDataset(const QUrl &destination, const QVariantMap &session) {
+    if (!destination.isLocalFile()) {
+        setError(tr("教師データの保存先が無効です"));
+        return false;
+    }
+    const QVariantList records = session.value("records").toList();
+    QByteArray jsonl;
+    int accepted = 0, skipped = 0, drafts = 0;
+    for (const QVariant &value : records) {
+        const QVariantMap record = value.toMap();
+        if (!record.value("accepted").toBool()) {
+            if (record.value("status").toString() == QLatin1String("skipped"))
+                ++skipped;
+            else if (record.value("status").toString() == QLatin1String("draft"))
+                ++drafts;
+            continue;
+        }
+        const int moraCount = record.value("morae").toList().size();
+        if (record.value("text").toString().isEmpty()
+                || record.value("reading").toString().isEmpty()
+                || moraCount == 0
+                || record.value("features").toList().size() != moraCount
+                || record.value("base_points_cents").toList().size() != moraCount
+                || record.value("manual_offsets_cents").toList().size() != moraCount
+                || record.value("edit_mask").toList().size() != moraCount) {
+            setError(tr("教師データに不完全な発話が含まれています"));
+            return false;
+        }
+        const QJsonDocument document = QJsonDocument::fromVariant(record);
+        if (!document.isObject()) {
+            setError(tr("教師データに無効な発話が含まれています"));
+            return false;
+        }
+        jsonl += document.toJson(QJsonDocument::Compact);
+        jsonl += '\n';
+        ++accepted;
+    }
+    if (accepted == 0) {
+        setError(tr("書き出せる確認済み発話がありません"));
+        return false;
+    }
+
+    QSaveFile dataset(destination.toLocalFile());
+    if (!dataset.open(QIODevice::WriteOnly) || dataset.write(jsonl) != jsonl.size() || !dataset.commit()) {
+        dataset.cancelWriting();
+        setError(tr("教師データを書き出せませんでした"));
+        return false;
+    }
+
+    QFileInfo destinationInfo(destination.toLocalFile());
+    const QString baseName = destinationInfo.completeBaseName();
+    const QString reportPath = destinationInfo.dir().filePath(baseName + QStringLiteral("-report.json"));
+    QVariantMap report{
+        {"format", QStringLiteral("utautts-prosody-training-report")},
+        {"format_version", 1},
+        {"session_id", session.value("session_id")},
+        {"shuffle_seed", session.value("shuffle_seed")},
+        {"prompt_set", session.value("prompt_set")},
+        {"synthesis_context", session.value("synthesis_context")},
+        {"accepted_count", accepted},
+        {"record_count", records.size()},
+        {"skipped_count", skipped},
+        {"draft_count", drafts},
+        {"exported_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+    };
+    QString writeError;
+    if (!writeJSONFile(reportPath, report, &writeError)) {
+        setError(tr("教師データのレポートを書き出せませんでした: %1").arg(writeError));
+        return false;
+    }
+    setError({});
+    return true;
+}
+
+QString Backend::dictionaryFingerprint() const {
+    const QByteArray data = QJsonDocument::fromVariant(m_dictionaryEntries).toJson(QJsonDocument::Compact);
+    return QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
 }
 
 void Backend::setBusy(bool value) {

@@ -34,6 +34,7 @@ ApplicationWindow {
     property var languageCodes: root.backend.languageCodes()
     property bool pendingCloseLogOnSuccess: true
     property bool pendingUpdateCheckEnabled: true
+    property bool pendingDeveloperMode: false
     property string pendingSynthesizeShortcut: "Ctrl+Enter"
     property string pendingSaveProjectShortcut: "Ctrl+S"
     property string pendingReloadVoicebanksShortcut: "Ctrl+O"
@@ -56,6 +57,7 @@ ApplicationWindow {
         pendingLanguage = root.backend.language;
         pendingCloseLogOnSuccess = root.backend.closeLogOnSuccess;
         pendingUpdateCheckEnabled = root.backend.updateCheckEnabled;
+        pendingDeveloperMode = root.backend.developerMode;
         pendingSynthesizeShortcut = root.backend.synthesizeShortcut;
         pendingSaveProjectShortcut = root.backend.saveProjectShortcut;
         pendingReloadVoicebanksShortcut = root.backend.reloadVoicebanksShortcut;
@@ -313,6 +315,19 @@ ApplicationWindow {
                                 Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
                                 checked: root.pendingUpdateCheckEnabled
                                 onToggled: root.pendingUpdateCheckEnabled = checked
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.developerMode")
+                            }
+                            Switch {
+                                Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                checked: root.pendingDeveloperMode
+                                onToggled: root.pendingDeveloperMode = checked
                             }
                         }
                     }

@@ -6,12 +6,14 @@ import QtQuick.Layouts
 
 Window {
     id: root
+    required property var hostWindow
     required property var hostPalette
     required property var backend
     required property var translator
 
     title: root.translator.tr("log.title")
     visible: false
+    transientParent: hostWindow
     width: 720
     height: 420
     minimumWidth: 520

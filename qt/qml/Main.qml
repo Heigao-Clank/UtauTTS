@@ -251,6 +251,7 @@ ApplicationWindow {
 
     SynthesisLogWindow {
         id: synthesisLogWindow
+        hostWindow: prosodyTrainingWindow.visible ? prosodyTrainingWindow : window
         hostPalette: window.palette
         backend: window.appBackend
         translator: window.translator
@@ -294,6 +295,15 @@ ApplicationWindow {
         hostPalette: window.palette
         backend: window.appBackend
         translator: window.translator
+    }
+
+    ProsodyTrainingWindow {
+        id: prosodyTrainingWindow
+        hostWindow: window
+        hostPalette: window.palette
+        backend: window.appBackend
+        translator: window.translator
+        synthesisLogWindow: synthesisLogWindow
     }
 
     FileDialog {
@@ -828,6 +838,13 @@ window.translator.load(window.appBackend.language);
                 text: window.translator.tr("menu.settings.dictionary")
                 onTriggered: window.openDictionarySettings()
             }
+            MenuItem {
+                visible: window.appBackend.developerMode
+                height: visible ? implicitHeight : 0
+                text: window.translator.tr("menu.settings.trainingData")
+                enabled: !window.appBackend.busy
+                onTriggered: prosodyTrainingWindow.openWindow()
+            }
         }
         Menu {
             title: window.translator.tr("menu.help")
@@ -911,6 +928,7 @@ window.translator.load(window.appBackend.language);
         window.appBackend.setLanguage(settingsWindow.pendingLanguage);
         window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
         window.appBackend.setUpdateCheckEnabled(settingsWindow.pendingUpdateCheckEnabled);
+        window.appBackend.setDeveloperMode(settingsWindow.pendingDeveloperMode);
         window.appBackend.setDefaultVoicebank(settingsWindow.pendingDefaultVoicebankId);
         window.appBackend.setShortcutSequences(settingsWindow.pendingSynthesizeShortcut,
                                                settingsWindow.pendingSaveProjectShortcut,
@@ -1414,11 +1432,6 @@ window.translator.load(window.appBackend.language);
 
     function localImageUrl(path) {
         return path ? encodeURI("file:///" + path.replace(/\\/g, "/")) : "";
-    }
-
-    function formatTime(milliseconds) {
-        const seconds = Math.max(0, Math.floor(milliseconds / 1000));
-        return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
     }
 
     function updateSetting(name, value) {
