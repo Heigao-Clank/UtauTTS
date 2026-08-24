@@ -232,6 +232,7 @@ func (e *Engine) predictProsody(data []byte) (any, error) {
 		"request_id":            request.RequestID,
 		"reading":               preview.Reading,
 		"morae":                 morae,
+		"features":              preview.Features,
 		"mora_durations_ms":     preview.MoraDurationsMS,
 		"mora_positions_ms":     preview.MoraPositionsMS,
 		"pitch_points":          preview.PitchPoints,

@@ -21,6 +21,7 @@ const (
 	FramePitchModelVersion       = 8
 	StandardAccentModelVersion   = 9
 	ProsodyMultitaskModelVersion = 10
+	ManualResidualModelVersion   = 11
 )
 
 type Model struct {
@@ -38,19 +39,33 @@ type Model struct {
 	PitchWeights         map[string]float64 `json:"pitch_weights,omitempty"`
 	EnergyWeights        map[string]float64 `json:"energy_weights,omitempty"`
 	// MoraDurationはモーラ長の倍率を出すマルチタスクモデルの継続時間ヘッド。
-	MoraDuration   *SequencePitchModel  `json:"mora_duration,omitempty"`
-	SequencePitch  *SequencePitchModel  `json:"sequence_pitch,omitempty"`
-	FramePitch     *FramePitchModel     `json:"frame_pitch,omitempty"`
-	PhrasePitch    *PhrasePitchModel    `json:"phrase_pitch,omitempty"`
-	StandardAccent *StandardAccentModel `json:"standard_accent,omitempty"`
-	Metrics        Metrics              `json:"metrics"`
-	Training       TrainingInfo         `json:"training"`
+	MoraDuration      *SequencePitchModel     `json:"mora_duration,omitempty"`
+	SequencePitch     *SequencePitchModel     `json:"sequence_pitch,omitempty"`
+	FramePitch        *FramePitchModel        `json:"frame_pitch,omitempty"`
+	MoraPitchResidual *MoraPitchResidualModel `json:"mora_pitch_residual,omitempty"`
+	PhrasePitch       *PhrasePitchModel       `json:"phrase_pitch,omitempty"`
+	StandardAccent    *StandardAccentModel    `json:"standard_accent,omitempty"`
+	BaseModel         *BaseModelReference     `json:"base_model,omitempty"`
+	ResidualLimits    *ResidualLimits         `json:"residual_limits,omitempty"`
+	Metrics           Metrics                 `json:"metrics"`
+	Training          TrainingInfo            `json:"training"`
 }
 
 type ModelProvenance struct {
 	TrainingCorpus        string `json:"training_corpus,omitempty"`
 	TrainingCorpusLicense string `json:"training_corpus_license,omitempty"`
 	SourceNotice          string `json:"source_notice,omitempty"`
+}
+
+type BaseModelReference struct {
+	ID     string `json:"id"`
+	SHA256 string `json:"sha256"`
+}
+
+type ResidualLimits struct {
+	LowCents    float64 `json:"low_cents"`
+	HighCents   float64 `json:"high_cents"`
+	SmoothingMS float64 `json:"smoothing_ms,omitempty"`
 }
 
 type FeatureFrame map[string]float64
@@ -70,6 +85,16 @@ type SequencePitchLayer struct {
 	Dilation int           `json:"dilation"`
 	Weights  [][][]float64 `json:"weights"`
 	Bias     []float64     `json:"bias"`
+}
+
+// MoraPitchResidualModelはモーラごとの補正centを出力する。
+type MoraPitchResidualModel struct {
+	FeatureNames []string             `json:"feature_names"`
+	InputWeights [][]float64          `json:"input_weights"`
+	InputBias    []float64            `json:"input_bias"`
+	Layers       []SequencePitchLayer `json:"layers"`
+	OutputWeight []float64            `json:"output_weight"`
+	OutputBias   float64              `json:"output_bias"`
 }
 type FramePitchModel struct {
 	FeatureNames      []string             `json:"feature_names"`
@@ -158,7 +183,8 @@ func LoadModel(path string) (*Model, error) {
 		(model.Mode == "intonation_phrase_anchor_v9" || model.Mode == "intonation_phrase_anchor_v9_1")
 	standardAccent := model.FeatureVersion == 1 && model.Version == StandardAccentModelVersion && model.Mode == "standard_japanese_accent"
 	multitask := model.FeatureVersion == 2 && model.Version == ProsodyMultitaskModelVersion && model.Mode == "prosody_multitask_tcn"
-	if !current && !sequence && !frame && !phrase && !standardAccent && !multitask {
+	manualResidual := model.FeatureVersion == 2 && model.Version == ManualResidualModelVersion && model.Mode == "intonation_frame_v8_manual_residual"
+	if !current && !sequence && !frame && !phrase && !standardAccent && !multitask && !manualResidual {
 		return nil, fmt.Errorf("unsupported prosody model version %d/feature %d mode %q", model.Version, model.FeatureVersion, model.Mode)
 	}
 	var allowedHeads []string
@@ -184,6 +210,8 @@ func LoadModel(path string) (*Model, error) {
 		allowedHeads = []string{"standard_accent"}
 	case multitask:
 		allowedHeads = []string{"mora_duration", "frame_pitch"}
+	case manualResidual:
+		allowedHeads = []string{"frame_pitch", "mora_pitch_residual"}
 	}
 	for _, head := range model.heads() {
 		if head.present && !containsString(allowedHeads, head.name) {
@@ -218,6 +246,17 @@ func LoadModel(path string) (*Model, error) {
 			return nil, fmt.Errorf("invalid multitask frame pitch model: %w", err)
 		}
 	}
+	if manualResidual {
+		if err := validateFramePitch(model.FramePitch); err != nil {
+			return nil, fmt.Errorf("invalid manual residual frame pitch model: %w", err)
+		}
+		if err := validateMoraPitchResidual(model.MoraPitchResidual, model.ResidualLimits); err != nil {
+			return nil, fmt.Errorf("invalid mora pitch residual model: %w", err)
+		}
+		if model.BaseModel == nil || model.BaseModel.ID == "" || len(model.BaseModel.SHA256) != 64 {
+			return nil, fmt.Errorf("invalid manual residual base model metadata")
+		}
+	}
 	return &model, nil
 }
 
@@ -245,6 +284,7 @@ func (m *Model) heads() []modelHead {
 		{"mora_duration", m.MoraDuration != nil},
 		{"sequence_pitch", m.SequencePitch != nil},
 		{"frame_pitch", m.FramePitch != nil},
+		{"mora_pitch_residual", m.MoraPitchResidual != nil},
 		{"phrase_pitch", m.PhrasePitch != nil},
 		{"standard_accent", m.StandardAccent != nil},
 	}
@@ -310,6 +350,9 @@ func (m *Model) RequiresExternalFeatures() bool {
 	}
 	if m.FramePitch != nil {
 		featureSets = append(featureSets, m.FramePitch.FeatureNames)
+	}
+	if m.MoraPitchResidual != nil {
+		featureSets = append(featureSets, m.MoraPitchResidual.FeatureNames)
 	}
 	for _, names := range featureSets {
 		for _, name := range names {
@@ -486,7 +529,11 @@ func (m *Model) PredictFrameContour(morae []frontend.Mora, frames []FeatureFrame
 	for position := range values {
 		values[position] = clamp(values[position], model.LowCents, model.HighCents)
 	}
-	return &PitchContour{FrameMS: model.FrameMS, Cents: values}
+	contour := &PitchContour{FrameMS: model.FrameMS, Cents: values}
+	if m.MoraPitchResidual != nil {
+		return m.applyMoraPitchResidual(contour, morae, frames, timings)
+	}
+	return contour
 }
 
 func (model *PhrasePitchModel) predict(morae []frontend.Mora, frames []FeatureFrame, timings []MoraTiming, durationMS float64, question bool) *PitchContour {

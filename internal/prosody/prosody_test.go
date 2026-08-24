@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"utautts/internal/audio"
@@ -94,6 +95,44 @@ func TestFramePitchModelSafetyLimitsEffectiveContour(t *testing.T) {
 	}
 	if got := absolutePercentile(curve.Cents, mask, 0.99); got > 75.000001 {
 		t.Fatalf("p99=%f, want <=75", got)
+	}
+}
+
+func TestManualResidualModelAddsMoraCorrectionsWithoutCrossingPause(t *testing.T) {
+	model := &Model{
+		Version: ManualResidualModelVersion, FeatureVersion: 2, Mode: "intonation_frame_v8_manual_residual",
+		BaseModel: &BaseModelReference{ID: "frame-intonation-v8", SHA256: strings.Repeat("a", 64)},
+		FramePitch: &FramePitchModel{
+			FeatureNames: []string{"bias"}, InputWeights: [][]float64{{0}}, InputBias: []float64{0},
+			OutputWeight: []float64{0}, FrameMS: 10, LowCents: -250, HighCents: 250,
+		},
+		MoraPitchResidual: &MoraPitchResidualModel{
+			FeatureNames: []string{"bias"}, InputWeights: [][]float64{{0}}, InputBias: []float64{0},
+			OutputWeight: []float64{0}, OutputBias: 30,
+		},
+		ResidualLimits: &ResidualLimits{LowCents: -120, HighCents: 120, SmoothingMS: 20},
+	}
+	morae := []frontend.Mora{{Text: "あ", Vowel: "a"}, {Pause: true}, {Text: "い", Vowel: "i"}}
+	timings := []MoraTiming{{StartMS: 0, DurationMS: 100}, {StartMS: 100, DurationMS: 50}, {StartMS: 150, DurationMS: 100}}
+	curve := model.PredictFrameContour(morae, nil, timings, 250, false)
+	if curve == nil {
+		t.Fatal("manual residual model returned no contour")
+	}
+	if curve.Cents[5] < 29.9 || curve.Cents[20] < 29.9 {
+		t.Fatalf("residual was not added at mora centers: %.2f %.2f", curve.Cents[5], curve.Cents[20])
+	}
+	for index := 10; index < 15; index++ {
+		if curve.Cents[index] != 0 {
+			t.Fatalf("residual crossed pause at frame %d: %.2f", index, curve.Cents[index])
+		}
+	}
+	path := filepath.Join(t.TempDir(), "manual-residual.json")
+	if err := model.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadModel(path)
+	if err != nil || loaded.MoraPitchResidual == nil {
+		t.Fatalf("manual residual model did not round-trip: model=%#v err=%v", loaded, err)
 	}
 }
 

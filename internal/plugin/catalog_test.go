@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,6 +47,10 @@ func TestModelUsesIdentityStoredInsideModel(t *testing.T) {
 	if len(models) != 1 || models[0].ID != "intonation.example" || models[0].DisplayName != "Example model" {
 		t.Fatalf("models = %#v", models)
 	}
+	wantHash := fmt.Sprintf("%x", sha256.Sum256(data))
+	if models[0].SHA256 != wantHash || models[0].FeatureVersion != 1 {
+		t.Fatalf("model provenance = sha256 %q feature %d", models[0].SHA256, models[0].FeatureVersion)
+	}
 }
 
 func TestModelWithoutIdentityIsNotCatalogued(t *testing.T) {
@@ -65,6 +71,21 @@ func TestModelWithoutIdentityIsNotCatalogued(t *testing.T) {
 	}
 	if len(models) != 0 {
 		t.Fatalf("identity-free model was catalogued from its filename: %#v", models)
+	}
+}
+
+func TestTrainingReportBesideModelIsIgnored(t *testing.T) {
+	directory := t.TempDir()
+	data := []byte(`{"version":1,"model_id":"example","metrics":{"validation":{}}}`)
+	if err := os.WriteFile(filepath.Join(directory, "example-training-report.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	models, err := DiscoverModels([]string{directory})
+	if err != nil {
+		t.Fatalf("training report produced a catalog warning: %v", err)
+	}
+	if len(models) != 0 {
+		t.Fatalf("training report was catalogued as a model: %#v", models)
 	}
 }
 

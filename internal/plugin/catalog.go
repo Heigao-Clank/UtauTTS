@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,7 +42,9 @@ type Model struct {
 	Description          string          `json:"description,omitempty"`
 	Path                 string          `json:"path"`
 	Version              int             `json:"version"`
+	FeatureVersion       int             `json:"feature_version"`
 	Mode                 string          `json:"mode"`
+	SHA256               string          `json:"sha256"`
 	Outputs              map[string]bool `json:"outputs,omitempty"`
 	RecommendedRenderers []string        `json:"recommended_renderers,omitempty"`
 	DefaultPriority      int             `json:"default_priority,omitempty"`
@@ -137,6 +140,22 @@ func DiscoverModels(directories []string) ([]Model, error) {
 			if err != nil || seenPaths[strings.ToLower(path)] {
 				continue
 			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				problems = append(problems, fmt.Errorf("read model %q: %w", path, err))
+				continue
+			}
+			var identity struct {
+				ID          string `json:"id"`
+				DisplayName string `json:"display_name"`
+			}
+			if err := json.Unmarshal(data, &identity); err != nil {
+				problems = append(problems, fmt.Errorf("decode model %q: %w", path, err))
+				continue
+			}
+			if strings.TrimSpace(identity.ID) == "" || strings.TrimSpace(identity.DisplayName) == "" {
+				continue
+			}
 			loaded, err := prosody.LoadModel(path)
 			if err != nil {
 				problems = append(problems, fmt.Errorf("load model %q: %w", path, err))
@@ -155,7 +174,8 @@ func DiscoverModels(directories []string) ([]Model, error) {
 			seenIDs[key], seenPaths[strings.ToLower(path)] = path, true
 			result = append(result, Model{
 				ID: id, DisplayName: name, Description: loaded.Description, Path: path,
-				Version: loaded.Version, Mode: loaded.Mode,
+				Version: loaded.Version, FeatureVersion: loaded.FeatureVersion, Mode: loaded.Mode,
+				SHA256:               fmt.Sprintf("%x", sha256.Sum256(data)),
 				Outputs:              cloneBoolMap(loaded.Outputs),
 				RecommendedRenderers: append([]string(nil), loaded.RecommendedRenderers...),
 				DefaultPriority:      loaded.DefaultPriority,

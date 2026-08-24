@@ -72,6 +72,7 @@ type Result struct {
 type ProsodyPreview struct {
 	Reading         string
 	Morae           []frontend.Mora
+	Features        []prosody.FeatureFrame
 	MoraDurationsMS []float64
 	MoraPositionsMS []float64
 	PitchPoints     []float64
@@ -450,6 +451,7 @@ func PredictProsody(cfg Config) (*ProsodyPreview, error) {
 	timings := make([]prosody.MoraTiming, len(morae))
 	result := &ProsodyPreview{
 		Reading: reading, Morae: append([]frontend.Mora(nil), morae...),
+		Features:        append([]prosody.FeatureFrame(nil), prosodyFeatures...),
 		MoraDurationsMS: make([]float64, len(morae)),
 		MoraPositionsMS: make([]float64, len(morae)),
 		PitchPoints:     make([]float64, len(morae)),

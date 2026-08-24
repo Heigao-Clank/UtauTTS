@@ -109,8 +109,10 @@ func TestIntonationStrengthAcceptsAmplificationRange(t *testing.T) {
 }
 
 func TestPredictProsodyDoesNotRenderAudio(t *testing.T) {
+	features := []prosody.FeatureFrame{{"marker": 1}, {"marker": 2}, {"marker": 3}}
 	preview, err := PredictProsody(Config{
 		Reading:         "あいう",
+		ProsodyFeatures: features,
 		MoraDurationMS:  100,
 		PauseDurationMS: 180,
 		ApplyPitch:      false,
@@ -129,6 +131,9 @@ func TestPredictProsodyDoesNotRenderAudio(t *testing.T) {
 	}
 	if !reflect.DeepEqual(preview.PitchPoints, []float64{0, 0, 0}) {
 		t.Fatalf("pitch points = %#v", preview.PitchPoints)
+	}
+	if !reflect.DeepEqual(preview.Features, features) {
+		t.Fatalf("features = %#v", preview.Features)
 	}
 }
 
