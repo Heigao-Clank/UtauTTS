@@ -976,6 +976,13 @@ def export_model(
         "id": str(args.model_id or Path(args.out).stem),
         "display_name": str(args.display_name or Path(args.out).stem),
         "description": str(args.description or "Frame-level learned intonation model"),
+        "license": "CC-BY-SA-4.0",
+        "license_notice": "licenses/PROSODY-MODELS.txt",
+        "provenance": {
+            "training_corpus": "JSUT Japanese speech corpus",
+            "training_corpus_license": "CC BY-SA 4.0",
+            "source_notice": "licenses/JSUT-DATA-AND-LABELS.txt",
+        },
         "recommended_renderers": list(args.recommended_renderer or ["openutau-classic-worldline-faithful"]),
         "version": 8,
         "feature_version": 1,

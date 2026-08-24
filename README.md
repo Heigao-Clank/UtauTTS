@@ -120,4 +120,4 @@ go test ./...
 
 ## ライセンス
 
-UtauTTS本体は [MIT License](./LICENSE) です。同梱ボイスバンク、OpenUtau由来ファイル等には個別の利用条件があるため、配布物の [THIRD_PARTY_NOTICES.txt](./THIRD_PARTY_NOTICES.txt) と各同梱文書を必ず確認してください。
+UtauTTSのソースコードは [MIT License](./LICENSE) です。`models/`の学習済みモデルはCC BY-SA 4.0です。同梱ボイスバンク、学習済みモデル、OpenUtau由来ファイル等には個別の利用条件があるため、配布物の [THIRD_PARTY_NOTICES.txt](./THIRD_PARTY_NOTICES.txt)、`licenses/`、各同梱文書を必ず確認してください。

@@ -1,0 +1,17 @@
+UtauTTS bundled prosody models
+==============================
+
+The JSON files distributed under models/ are licensed under the Creative
+Commons Attribution-ShareAlike 4.0 International license (CC-BY-SA-4.0).
+
+Copyright (c) 2026 yh
+
+License text:
+https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+The models were trained from the JSUT Japanese speech corpus and
+jsut-label-derived annotations. Preserve this notice together with
+JSUT-DATA-AND-LABELS.txt when redistributing the models or adaptations of them.
+
+The repository-level MIT License applies to UtauTTS source code, not to these
+model files, bundled voicebanks, or other third-party assets.
