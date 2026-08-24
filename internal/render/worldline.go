@@ -38,6 +38,10 @@ func renderOpenUtauClassicWorldlineFaithfulGPU(synthesisPlan *plan.Plan, cfg Con
 	return renderWorldlineEngine(synthesisPlan, cfg, "classic-worldline-faithful-gpu", true)
 }
 
+func renderOpenUtauWorldlineRFaithful(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
+	return renderWorldlineEngine(synthesisPlan, cfg, "worldline-r-faithful", false)
+}
+
 type worldlineManifestUnit struct {
 	Source            string                   `json:"source"`
 	FRQPath           string                   `json:"frq_path,omitempty"`
@@ -108,7 +112,9 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	var classicTimings []openUtauClassicTiming
 	phraseStartMS := 0.0
 	faithfulClassic := strings.HasPrefix(engine, "classic-worldline-faithful")
-	if faithfulClassic {
+	faithfulWorldlineR := engine == "worldline-r-faithful"
+	openUtauTiming := faithfulClassic || faithfulWorldlineR
+	if openUtauTiming {
 		classicTimings, phraseStartMS = openUtauClassicTimings(synthesisPlan.Units, cfg.CVVCTiming)
 	}
 	leadingMS := math.Max(0, -phraseStartMS)
@@ -146,7 +152,14 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		pitchFactors[i] *= effectiveUnitPitchFactor(unit, cfg.ApplyPitch)
 	}
 	frameMS := worldlineFrameMS
-	f0Curve := worldlineF0CurveAt(synthesisPlan, pitches, pitchFactors, reference, max(2, int(math.Ceil((synthesisPlan.DurationMS+cfg.ReleaseMS)/frameMS))+2), frameMS)
+	curveStartMS := 0.0
+	curveDurationMS := synthesisPlan.DurationMS + cfg.ReleaseMS
+	if faithfulWorldlineR {
+		curveStartMS = -leadingMS
+		curveDurationMS += leadingMS
+	}
+	f0Curve := worldlineF0CurveAtOffset(synthesisPlan, pitches, pitchFactors, reference,
+		max(2, int(math.Ceil(curveDurationMS/frameMS))+2), frameMS, curveStartMS)
 	if localSourcePitch {
 		f0Curve = worldlineLocalF0Curve(synthesisPlan, pitches, pitchFactors, reference, len(f0Curve))
 	}
@@ -158,7 +171,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		F0Curve:       f0Curve,
 	}
 	for frame := range manifest.F0Curve {
-		manifest.F0Curve[frame] *= pitchCurveFactorAt(cfg.PitchCurve, float64(frame)*frameMS)
+		manifest.F0Curve[frame] *= pitchCurveFactorAt(cfg.PitchCurve, curveStartMS+float64(frame)*frameMS)
 	}
 	tempDir, err := os.MkdirTemp("", "utautts-worldline-")
 	if err != nil {
@@ -219,13 +232,13 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		}
 		var envelopePoints []worldlineEnvelopePoint
 		pitchLengthMS := 0.0
-		if strings.HasPrefix(engine, "classic-worldline-") {
+		if strings.HasPrefix(engine, "classic-worldline-") || faithfulWorldlineR {
 			// OpenUtau互換でbendを元のpreutteranceから始め、余分な先頭を後で飛ばす。
 			pitchLeadingMS := unit.PreutteranceMS
 			skipMS = math.Max(0, pitchLeadingMS-timing.preutteranceMS)
 			pitchStartMS = unit.NoteStartMS - pitchLeadingMS
 			durCorrection := 0.0
-			if faithfulClassic {
+			if openUtauTiming {
 				phoneTiming := classicTimings[i]
 				// 呼び出し側に依存せず、クラシック方式のskipMSを非負に保つ。
 				skipMS = math.Max(0, pitchLeadingMS-phoneTiming.preutter)
@@ -256,10 +269,17 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 			source = normalized
 			frqPath = ""
 		}
+		fadeInMS := math.Max(2, timing.preutteranceMS-timing.overlapMS)
+		fadeOutMS := cfg.ReleaseMS
+		if faithfulWorldlineR && len(envelopePoints) == 5 {
+			lengthMS = envelopePoints[4].XMS - envelopePoints[0].XMS
+			fadeInMS = envelopePoints[1].XMS - envelopePoints[0].XMS
+			fadeOutMS = envelopePoints[4].XMS - envelopePoints[3].XMS
+		}
 		manifest.Units = append(manifest.Units, worldlineManifestUnit{
 			Source: source, FRQPath: frqPath, PositionMS: positionMS, SkipMS: skipMS,
-			LengthMS: lengthMS, FadeInMS: math.Max(2, timing.preutteranceMS-timing.overlapMS),
-			FadeOutMS: cfg.ReleaseMS, OffsetMS: unit.OffsetMS, RequiredLengthMS: requiredLength,
+			LengthMS: lengthMS, FadeInMS: fadeInMS,
+			FadeOutMS: fadeOutMS, OffsetMS: unit.OffsetMS, RequiredLengthMS: requiredLength,
 			ConsonantMS: unit.ConsonantMS, CutoffMS: unit.CutoffMS,
 			Tone: int(math.Round(69 + 12*math.Log2(unitPitch/440))), ConsonantVelocity: consonantVelocity,
 			PitchStartMS: pitchStartMS, Volume: volume, Modulation: modulation, Tempo: tempo,
@@ -515,6 +535,10 @@ func worldlineF0Curve(synthesisPlan *plan.Plan, pitches, factors []float64, refe
 }
 
 func worldlineF0CurveAt(synthesisPlan *plan.Plan, pitches, factors []float64, reference float64, length int, frameMS float64) []float64 {
+	return worldlineF0CurveAtOffset(synthesisPlan, pitches, factors, reference, length, frameMS, 0)
+}
+
+func worldlineF0CurveAtOffset(synthesisPlan *plan.Plan, pitches, factors []float64, reference float64, length int, frameMS, startMS float64) []float64 {
 	targets := make([]float64, len(pitches))
 	for i, value := range pitches {
 		if value <= 0 {
@@ -525,7 +549,7 @@ func worldlineF0CurveAt(synthesisPlan *plan.Plan, pitches, factors []float64, re
 	curve := make([]float64, length)
 	unitIndex := 0
 	for frame := range curve {
-		timeMS := float64(frame) * frameMS
+		timeMS := startMS + float64(frame)*frameMS
 		for unitIndex+1 < len(synthesisPlan.Units) && synthesisPlan.Units[unitIndex+1].NoteStartMS <= timeMS {
 			unitIndex++
 		}

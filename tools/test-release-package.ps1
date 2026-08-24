@@ -168,6 +168,19 @@ try {
     }
     Assert-Path $productionWav 'packaged production renderer output'
 
+    $worldlineRWav = Join-Path $workingDirectory 'package-worldline-r-smoke.wav'
+    Push-Location $workingDirectory
+    try {
+        & $cli --voicebank $voicebank.FullName --text $smokeText --prosody frame-intonation-v8 `
+            --renderer openutau-worldline-r-faithful --apply-pitch --intonation-strength 1 --out $worldlineRWav
+        if ($LASTEXITCODE -ne 0) {
+            throw "Packaged WORLDLINE-R synthesis failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+    Assert-Path $worldlineRWav 'packaged WORLDLINE-R renderer output'
+
     $savedErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {

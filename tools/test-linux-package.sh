@@ -101,7 +101,10 @@ smoke_text='こんにちは'
 "${gui_root}/tools/utautts-cli" --voicebank "${voicebank}" --text "${smoke_text}" \
   --prosody frame-intonation-v8 --renderer openutau-classic-worldline-faithful \
   --apply-pitch --intonation-strength 1 --out "${work_dir}/production.wav"
-for wav in "${work_dir}/waveform.wav" "${work_dir}/production.wav"; do
+"${gui_root}/tools/utautts-cli" --voicebank "${voicebank}" --text "${smoke_text}" \
+  --prosody frame-intonation-v8 --renderer openutau-worldline-r-faithful \
+  --apply-pitch --intonation-strength 1 --out "${work_dir}/worldline-r.wav"
+for wav in "${work_dir}/waveform.wav" "${work_dir}/production.wav" "${work_dir}/worldline-r.wav"; do
   [ "$(stat -c %s "${wav}")" -gt 44 ] || fail "synthesis output is empty: ${wav}"
 done
 if "${gui_root}/tools/utautts-cli" --renderer waveform --voicebank "${voicebank}" \

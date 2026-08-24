@@ -118,7 +118,7 @@ func TestRepositoryBundlesSelfDescribingModels(t *testing.T) {
 	}
 }
 
-func TestClassicRenderersDeclareAcceleration(t *testing.T) {
+func TestWorldlineRenderersDeclareAcceleration(t *testing.T) {
 	rendererDirectories, _ := DefaultDirectories()
 	items, err := DiscoverRenderers(rendererDirectories, func(string) bool { return true })
 	if err != nil {
@@ -127,6 +127,7 @@ func TestClassicRenderersDeclareAcceleration(t *testing.T) {
 	want := map[string]string{
 		"openutau-classic-worldline-faithful":     "cpu",
 		"openutau-classic-worldline-faithful-gpu": "cuda",
+		"openutau-worldline-r-faithful":           "cpu",
 	}
 	for _, item := range items {
 		if acceleration, ok := want[item.ID]; ok {

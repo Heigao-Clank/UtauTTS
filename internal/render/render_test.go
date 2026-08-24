@@ -29,6 +29,13 @@ func TestFaithfulGPURendererIsRegistered(t *testing.T) {
 	}
 }
 
+func TestWorldlineRFaithfulRendererIsRegistered(t *testing.T) {
+	const backend = "openutau-worldline-r-faithful"
+	if !IsKnownRenderer(backend) {
+		t.Fatalf("WORLDLINE-R faithful renderer %q is not registered", backend)
+	}
+}
+
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
@@ -452,6 +459,17 @@ func TestWorldlineF0CurveInterpolatesInLogFrequency(t *testing.T) {
 	}
 	if math.Abs(curve[5]-math.Sqrt(200*400)) > 0.1 {
 		t.Fatalf("log midpoint = %.2f", curve[5])
+	}
+}
+
+func TestWorldlineF0CurveOffsetIncludesPhraseLeading(t *testing.T) {
+	p := &plan.Plan{Units: []plan.Unit{{NoteStartMS: 0}, {NoteStartMS: 100}}}
+	curve := worldlineF0CurveAtOffset(p, []float64{200, 400}, []float64{1, 1}, 220, 13, 10, -20)
+	if math.Abs(curve[0]-200) > 0.01 || math.Abs(curve[2]-200) > 0.01 {
+		t.Fatalf("leading frames = %.2f, %.2f; want 200Hz", curve[0], curve[2])
+	}
+	if math.Abs(curve[12]-400) > 0.01 {
+		t.Fatalf("second unit at shifted frame = %.2f, want 400Hz", curve[12])
 	}
 }
 

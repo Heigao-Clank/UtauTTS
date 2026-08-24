@@ -49,6 +49,7 @@ var rendererImplementations = map[string]func(*plan.Plan, Config) (*audio.PCM, e
 	"waveform":                                renderWaveform,
 	"openutau-classic-worldline-faithful":     renderOpenUtauClassicWorldlineFaithful,
 	"openutau-classic-worldline-faithful-gpu": renderOpenUtauClassicWorldlineFaithfulGPU,
+	"openutau-worldline-r-faithful":           renderOpenUtauWorldlineRFaithful,
 }
 
 func IsKnownRenderer(id string) bool {

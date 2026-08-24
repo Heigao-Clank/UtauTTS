@@ -87,6 +87,10 @@ internal static class Program {
         }
 		var library = NativeLibrary.Load(Path.GetFullPath(manifest.WorldlinePath));
 		try {
+			if (string.Equals(manifest.Engine, "worldline-r-faithful", StringComparison.OrdinalIgnoreCase)) {
+				WorldlineR.Render(library, manifest);
+				return;
+			}
 			if (string.Equals(manifest.Engine, "classic-worldline-faithful", StringComparison.OrdinalIgnoreCase) ||
 				string.Equals(manifest.Engine, "classic-worldline-faithful-gpu", StringComparison.OrdinalIgnoreCase)) {
 				ClassicWorldline.Render(library, manifest);
