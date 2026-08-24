@@ -168,6 +168,7 @@ try {
     Set-Content -LiteralPath (Join-Path $serverVoiceDirectory 'PUT_VOICEBANKS_HERE.txt') -Encoding UTF8 -Value 'Place each UTAU voicebank in its own folder here.'
 
     Copy-Item -LiteralPath 'docs/server.md' -Destination (Join-Path $serverPath 'README.md')
+    Copy-Item -LiteralPath 'docs/manual-pitch.md' -Destination $serverPath
     Copy-Item -LiteralPath 'LICENSE', 'THIRD_PARTY_NOTICES.txt' -Destination $serverPath
 
     Write-Host '=== Collect exact third-party licenses ==='

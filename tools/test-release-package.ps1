@@ -50,6 +50,10 @@ try {
         Assert-Path (Join-Path $packageRoot 'runtime/licenses/PYTHON_LICENSE.txt') 'Python runtime license'
         Assert-Path (Join-Path $packageRoot 'runtime/licenses/PYINSTALLER_COPYING.txt') 'PyInstaller license'
     }
+    Assert-Path (Join-Path $serverRoot 'manual-pitch.md') 'server manual pitch documentation'
+    Assert-Path (Join-Path $guiRoot 'docs/README.md') 'documentation index'
+    Assert-Path (Join-Path $guiRoot 'docs/installation.md') 'installation documentation'
+    Assert-Path (Join-Path $guiRoot 'docs/building.md') 'build documentation'
 
     foreach ($asset in @(
         'licenses/Qt/LGPL-3.0.txt',

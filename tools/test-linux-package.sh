@@ -47,8 +47,12 @@ for required in \
   "${gui_root}/runtime/utautts-worldline-bridge" \
   "${gui_root}/runtime/libworldline.so" \
   "${server_root}/utautts-server" \
+  "${server_root}/manual-pitch.md" \
   "${gui_root}/LICENSE" \
   "${gui_root}/THIRD_PARTY_NOTICES.txt" \
+  "${gui_root}/docs/README.md" \
+  "${gui_root}/docs/installation.md" \
+  "${gui_root}/docs/building.md" \
   "${server_root}/licenses/README.txt" \
   "${gui_root}/licenses/DotNet/DOTNET-RUNTIME-LICENSE.txt" \
   "${server_root}/licenses/DotNet/DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt" \
