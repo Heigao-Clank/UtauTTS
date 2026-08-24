@@ -12,11 +12,12 @@ ApplicationWindow {
     required property var injectedLegalDocuments
     required property string injectedAppName
     required property url injectedRepositoryUrl
+    required property bool injectedSelfTest
     width: 1240
     height: 800
     minimumWidth: 880
     minimumHeight: 600
-    visible: true
+    visible: !injectedSelfTest
     title: injectedAppName
     color: palette.window
     palette: Palette {
@@ -763,7 +764,7 @@ window.translator.load(window.appBackend.language);
         window.translator.load(window.appBackend.language);
         addUtterance(false);
         window.resetHistory(false);
-        if (window.appBackend.updateCheckEnabled)
+        if (!window.injectedSelfTest && window.appBackend.updateCheckEnabled)
             window.checkForUpdates();
     }
 
@@ -1049,8 +1050,10 @@ window.translator.load(window.appBackend.language);
                 window.updateReleaseUrl = data.html_url ? String(data.html_url) : "";
                 let downloadUrl = "";
                 const assets = Array.isArray(data.assets) ? data.assets : [];
+                const packageName = Qt.platform.os === "linux"
+                    ? "UtauTTS-linux-x64.zip" : "UtauTTS-win-x64.zip";
                 for (const asset of assets) {
-                    if (asset && asset.name === "UtauTTS-win-x64.zip" && asset.browser_download_url) {
+                    if (asset && asset.name === packageName && asset.browser_download_url) {
                         downloadUrl = String(asset.browser_download_url);
                         break;
                     }
@@ -1469,6 +1472,72 @@ window.translator.load(window.appBackend.language);
             return;
         window.redoStack = remaining;
         window.undoStack = window.limitedHistory(window.undoStack, currentSnapshot);
+    }
+
+    function runInterfaceSelfTest() {
+        if (!window.injectedSelfTest)
+            return "self-test mode is disabled";
+        function check(condition, message) {
+            return condition ? "" : message;
+        }
+
+        let error = check(utterances.count === 1, "initial utterance is missing");
+        if (error.length)
+            return error;
+        window.updateUtteranceText(0, "こんにちは");
+        analyzeTimer.stop();
+        window.updatePitchPoints([20, -10]);
+        error = check(window.canUndo && window.current().manualPitchEdited,
+                      "pitch edit was not recorded");
+        if (error.length)
+            return error;
+        window.undo();
+        error = check(window.current().content === "こんにちは" && !window.current().manualPitchEdited,
+                      "pitch undo changed text or kept the edit");
+        if (error.length)
+            return error;
+        window.redo();
+        error = check(window.current().content === "こんにちは" && window.current().manualPitchEdited,
+                      "pitch redo failed");
+        if (error.length)
+            return error;
+
+        window.updateMoraDurations([110, 130]);
+        window.updateMoraPositions([0, 110]);
+        error = check(window.current().manualMoraDurationEdited, "mora timing edit was not recorded");
+        if (error.length)
+            return error;
+        window.undo();
+        error = check(!window.current().manualMoraDurationEdited, "mora timing undo failed");
+        if (error.length)
+            return error;
+        window.redo();
+        error = check(window.current().manualMoraDurationEdited, "mora timing redo failed");
+        if (error.length)
+            return error;
+
+        window.addUtterance();
+        error = check(utterances.count === 2, "utterance add failed");
+        if (error.length)
+            return error;
+        window.moveUtterance(-1);
+        error = check(window.selectedIndex === 0, "utterance move failed");
+        if (error.length)
+            return error;
+        window.removeUtterance();
+        error = check(utterances.count === 1, "utterance remove failed");
+        if (error.length)
+            return error;
+        const project = window.projectData();
+        error = check(project.format === "utautts-project" && project.format_version === 5
+                      && project.utterances.length === 1, "project data generation failed");
+
+        analyzeTimer.stop();
+        utterances.clear();
+        window.nextUtteranceId = 1;
+        window.addUtterance(false);
+        window.resetHistory(false);
+        return error;
     }
 
     function projectData() {

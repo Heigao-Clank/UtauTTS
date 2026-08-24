@@ -42,7 +42,9 @@ bool hasResourceLayout(const QDir &root) {
 }
 
 QString prosodyTrainingSessionPath() {
-    QString directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString directory = qEnvironmentVariable("UTAUTTS_SELF_TEST_DIRECTORY");
+    if (directory.isEmpty())
+        directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (directory.isEmpty())
         directory = QDir::homePath();
     return QDir(directory).filePath(QStringLiteral("prosody-training-session.json"));
@@ -489,7 +491,12 @@ bool Backend::startUpdateDownload(const QString &downloadUrl, const QString &ver
 
 bool Backend::installUpdate(const QString &localZip, const QString &version) {
     const QDir root = resourceRoot();
-    const QString updaterPath = root.filePath(QStringLiteral("tools/utautts-updater.exe"));
+#ifdef Q_OS_WIN
+    const QString updaterName = QStringLiteral("utautts-updater.exe");
+#else
+    const QString updaterName = QStringLiteral("utautts-updater");
+#endif
+    const QString updaterPath = root.filePath(QStringLiteral("tools/") + updaterName);
     if (!QFileInfo::exists(updaterPath)) {
         const QString message = tr("アップデータが同梱されていません。リリースページから手動で更新してください。");
         setError(message);
@@ -503,7 +510,12 @@ bool Backend::installUpdate(const QString &localZip, const QString &version) {
         return false;
     }
     const QString tempUpdater = QDir(QDir::tempPath()).filePath(
-        QStringLiteral("utautts-updater-%1.exe").arg(QCoreApplication::applicationPid()));
+        QStringLiteral("utautts-updater-%1%2").arg(QCoreApplication::applicationPid())
+#ifdef Q_OS_WIN
+        .arg(QStringLiteral(".exe")));
+#else
+        .arg(QString()));
+#endif
     QFile::remove(tempUpdater);
     if (!QFile::copy(updaterPath, tempUpdater)) {
         const QString message = tr("アップデータを一時ディレクトリに配置できませんでした。");
@@ -511,6 +523,17 @@ bool Backend::installUpdate(const QString &localZip, const QString &version) {
         showUpdateError(tr("更新に失敗しました"), message);
         return false;
     }
+#ifndef Q_OS_WIN
+    if (!QFile::setPermissions(tempUpdater, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                              | QFileDevice::ExeOwner | QFileDevice::ReadGroup | QFileDevice::ExeGroup
+                              | QFileDevice::ReadOther | QFileDevice::ExeOther)) {
+        QFile::remove(tempUpdater);
+        const QString message = tr("アップデーターへ実行権限を設定できませんでした。");
+        setError(message);
+        showUpdateError(tr("更新に失敗しました"), message);
+        return false;
+    }
+#endif
     const QStringList arguments{
         QStringLiteral("-target"), QDir::toNativeSeparators(root.absolutePath()),
         QStringLiteral("-zip"), QDir::toNativeSeparators(localZip),
@@ -559,7 +582,12 @@ void Backend::initialize() {
     config.insert("renderer_directories", QJsonArray{root.filePath("plugins/renderers")});
     config.insert("model_directories", QJsonArray{root.filePath("models")});
     const QString runtime = root.filePath("runtime");
-    const QString openJTalkPath = QDir(runtime).filePath("utautts-openjtalk-features.exe");
+#ifdef Q_OS_WIN
+    const QString openJTalkName = QStringLiteral("utautts-openjtalk-features.exe");
+#else
+    const QString openJTalkName = QStringLiteral("utautts-openjtalk-features");
+#endif
+    const QString openJTalkPath = QDir(runtime).filePath(openJTalkName);
     const QString openJTalkDictionary = QDir(runtime).filePath("open_jtalk_dic_utf_8-1.11");
     if (QFileInfo(openJTalkPath).isFile()) {
         config.insert("openjtalk_path", openJTalkPath);

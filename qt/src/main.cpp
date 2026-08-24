@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "selftest.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -8,6 +9,10 @@
 #include <QQuickStyle>
 #include <QUrl>
 #include <QVariantList>
+#include <QStandardPaths>
+#include <QSettings>
+#include <QTemporaryDir>
+#include <memory>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -87,6 +92,18 @@ int main(int argc, char *argv[]) {
     app.setApplicationVersion(UTAUTTS_VERSION);
     app.setOrganizationName(UTAUTTS_APP_ORGANIZATION);
 
+    const bool selfTest = app.arguments().contains(QStringLiteral("--self-test"));
+    std::unique_ptr<QTemporaryDir> selfTestSettings;
+    if (selfTest) {
+        QStandardPaths::setTestModeEnabled(true);
+        selfTestSettings = std::make_unique<QTemporaryDir>();
+        if (!selfTestSettings->isValid())
+            return 2;
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, selfTestSettings->path());
+        qputenv("UTAUTTS_SELF_TEST_DIRECTORY", selfTestSettings->path().toUtf8());
+    }
+
     if (updateInProgress())
         return 0;
 
@@ -105,6 +122,7 @@ int main(int argc, char *argv[]) {
         {"injectedLegalDocuments", legalDocuments()},
         {"injectedAppName", QStringLiteral(UTAUTTS_APP_NAME)},
         {"injectedRepositoryUrl", QUrl(QStringLiteral(UTAUTTS_APP_REPOSITORY))},
+        {"injectedSelfTest", selfTest},
     });
     engine.loadFromModule("UtauTTS", "Main");
     if (engine.rootObjects().isEmpty()) {
@@ -112,5 +130,7 @@ int main(int argc, char *argv[]) {
     }
 
     backend.initialize();
+    if (selfTest)
+        return runSelfTest(backend, engine.rootObjects().constFirst());
     return app.exec();
 }

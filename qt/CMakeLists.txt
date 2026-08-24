@@ -35,6 +35,8 @@ qt_add_executable(utautts
     src/main.cpp
     src/backend.cpp
     src/backend.h
+    src/selftest.cpp
+    src/selftest.h
     src/utautts_abi.h
 )
 

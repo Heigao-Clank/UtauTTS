@@ -91,6 +91,36 @@ try {
     if ($null -eq $voicebank) {
         throw 'GUI release package contains no bundled voicebank'
     }
+    $gui = Join-Path $guiRoot 'app/utautts-gui.exe'
+    Assert-Path $gui 'packaged GUI'
+    $savedQtLogging = $env:QT_FORCE_STDERR_LOGGING
+    $env:QT_FORCE_STDERR_LOGGING = '1'
+    try {
+        $guiStartInfo = [Diagnostics.ProcessStartInfo]::new()
+        $guiStartInfo.FileName = $gui
+        $guiStartInfo.Arguments = '--self-test'
+        $guiStartInfo.WorkingDirectory = $guiRoot
+        $guiStartInfo.UseShellExecute = $false
+        $guiStartInfo.CreateNoWindow = $true
+        $guiStartInfo.RedirectStandardError = $true
+        $guiProcess = [Diagnostics.Process]::new()
+        $guiProcess.StartInfo = $guiStartInfo
+        if (-not $guiProcess.Start()) {
+            throw 'Packaged GUI self-test could not be started'
+        }
+        $guiErrorTask = $guiProcess.StandardError.ReadToEndAsync()
+    } finally {
+        $env:QT_FORCE_STDERR_LOGGING = $savedQtLogging
+    }
+    if (-not $guiProcess.WaitForExit(120000)) {
+        $guiProcess.Kill()
+        throw 'Packaged GUI self-test timed out'
+    }
+    $guiError = $guiErrorTask.Result
+    if ($guiProcess.ExitCode -ne 0) {
+        throw "Packaged GUI self-test failed with exit code $($guiProcess.ExitCode): $guiError"
+    }
+
     $cli = Join-Path $guiRoot 'tools/utautts-cli.exe'
     Assert-Path $cli 'packaged CLI'
     $workingDirectory = Join-Path $temporaryRoot 'working-directory'
@@ -107,6 +137,19 @@ try {
         Pop-Location
     }
     Assert-Path $outputWav 'packaged CLI output'
+
+    $productionWav = Join-Path $workingDirectory 'package-production-smoke.wav'
+    Push-Location $workingDirectory
+    try {
+        & $cli --voicebank $voicebank.FullName --text $smokeText --prosody frame-intonation-v8 `
+            --renderer openutau-classic-worldline-faithful --apply-pitch --intonation-strength 1 --out $productionWav
+        if ($LASTEXITCODE -ne 0) {
+            throw "Packaged production synthesis failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+    Assert-Path $productionWav 'packaged production renderer output'
 
     $savedErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -150,6 +193,54 @@ try {
         }
         if ($null -eq $health -or $health.StatusCode -ne 200) {
             throw 'Packaged server health check timed out'
+        }
+
+        $baseUrl = "http://127.0.0.1:$port"
+        $console = Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/" -TimeoutSec 5
+        if ($console.StatusCode -ne 200 -or $console.Content -notmatch 'UtauTTS Server Console') {
+            throw 'Packaged server console is unavailable'
+        }
+        $voices = Invoke-RestMethod -Uri "$baseUrl/api/voicebanks" -TimeoutSec 5
+        $models = Invoke-RestMethod -Uri "$baseUrl/api/models" -TimeoutSec 5
+        $renderers = Invoke-RestMethod -Uri "$baseUrl/api/renderers" -TimeoutSec 5
+        if (@($voices.voicebanks).Count -lt 1 -or @($models.models).Count -lt 1 -or @($renderers.renderers).Count -lt 1) {
+            throw 'Packaged server metadata is incomplete'
+        }
+        $voicebankId = $voices.voicebanks[0].id
+        $analysisBody = @{ text = $smokeText } | ConvertTo-Json -Compress
+        $analysis = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/analyze" `
+            -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($analysisBody)) -TimeoutSec 15
+        if ([string]::IsNullOrWhiteSpace($analysis.reading) -or @($analysis.morae).Count -lt 1) {
+            throw 'Packaged server analysis returned no reading'
+        }
+        $synthesisBody = @{
+            text = $smokeText
+            voicebank_id = $voicebankId
+            renderer = 'waveform'
+            mora_duration_ms = 120
+        } | ConvertTo-Json -Compress
+        $serverWav = Join-Path $workingDirectory 'server-smoke.wav'
+        Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/api/synthesize/audio" `
+            -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($synthesisBody)) `
+            -OutFile $serverWav -TimeoutSec 60 | Out-Null
+        Assert-Path $serverWav 'packaged server synthesis output'
+        if ((Get-Item -LiteralPath $serverWav).Length -le 44) {
+            throw 'Packaged server synthesis output is empty'
+        }
+        $batchItems = @()
+        $batchItems += @{ name = 'first.wav'; request = @{ text = $smokeText; voicebank_id = $voicebankId; renderer = 'waveform' } }
+        $singleMora = [string][char]0x3042
+        $batchItems += @{ name = 'second.wav'; request = @{ kana = $singleMora; voicebank_id = $voicebankId; renderer = 'waveform' } }
+        $batchBody = @{ items = $batchItems } | ConvertTo-Json -Depth 6 -Compress
+        $batchZip = Join-Path $workingDirectory 'server-batch.zip'
+        Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$baseUrl/api/synthesize/batch" `
+            -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($batchBody)) `
+            -OutFile $batchZip -TimeoutSec 120 | Out-Null
+        Assert-Zip $batchZip
+        $reloaded = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/voicebanks/reload" `
+            -ContentType 'application/json' -Body '{}' -TimeoutSec 15
+        if (@($reloaded.voicebanks).Count -lt 1) {
+            throw 'Packaged server voicebank reload returned no voicebank'
         }
     } finally {
         if (-not $process.HasExited) {
