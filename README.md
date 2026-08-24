@@ -59,7 +59,7 @@ v8モデルを明示する場合は、次のようにモデルIDと互換Rendere
   --text "あらゆる現実をすべて自分のほうへねじ曲げたのだ。"
 ```
 
-全オプションと詳細は [コマンドライン（CLI）](docs/cli.md) を参照してください。モデルやRendererの追加・互換性は [docs/plugins.md](docs/plugins.md)、イントネーションとモーラ長の編集は [docs/manual-pitch.md](docs/manual-pitch.md)、辞書設定は [docs/dictionary.md](docs/dictionary.md) を参照してください。
+全オプションと詳細は [コマンドライン（CLI）](docs/cli.md) を参照してください。モデルやRendererの追加・互換性は [docs/plugins.md](docs/plugins.md)、イントネーションとモーラ長の編集は [docs/manual-pitch.md](docs/manual-pitch.md)、手動調整から個人モデルを作る方法は [docs/prosody-model-training.md](docs/prosody-model-training.md)、辞書設定は [docs/dictionary.md](docs/dictionary.md) を参照してください。
 
 ### HTTP Server
 

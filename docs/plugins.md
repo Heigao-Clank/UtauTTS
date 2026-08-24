@@ -74,6 +74,8 @@ Qt GUI、native backend、HTTP API、CLIは同じcatalogを使用します。追
 
 GUIとserverは`models/`を走査します。追加directoryはnative JSONの`model_directories`、CLI/serverの`--model-dir`で指定します。CLIの`--prosody`にはmodel IDを指定します。
 
+GUIで調整した抑揚からversion 11の個人補正モデルを作る手順は、[手動調整から抑揚モデルを作る](prosody-model-training.md)を参照してください。
+
 配布モデルは次の2種類です。
 
 - `frame-intonation-v8`: Open JTalkのアクセント特徴を使ったフレーム単位のイントネーション
