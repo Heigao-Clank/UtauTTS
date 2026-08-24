@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -110,6 +111,105 @@ func TestExtractZipWindowsBackslashSeparators(t *testing.T) {
 	}
 	if info, err := os.Stat(filepath.Join(dest, "app/qml")); err != nil || !info.IsDir() {
 		t.Errorf("app/qml should be a directory, err=%v", err)
+	}
+}
+
+func TestExtractZipPreservesExecutableMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose POSIX executable mode bits")
+	}
+	zipPath := filepath.Join(t.TempDir(), "linux.zip")
+	archive, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(archive)
+	header := &zip.FileHeader{Name: "utautts", Method: zip.Deflate}
+	header.SetMode(0o755)
+	entry, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("binary")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	destination := t.TempDir()
+	if err := extractZip(zipPath, destination); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(destination, "utautts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("executable mode was lost: %v", info.Mode().Perm())
+	}
+}
+
+func TestRunUpdatesLinuxPackageAndKeepsExecutableMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux package mode test")
+	}
+	root := t.TempDir()
+	target := filepath.Join(root, "UtauTTS")
+	writeTestFile(t, filepath.Join(target, "utautts"), "old")
+	writeTestFile(t, filepath.Join(target, "voice", "bank", "oto.ini"), "voice-data")
+
+	zipPath := filepath.Join(root, "linux-update.zip")
+	archive, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(archive)
+	for _, item := range []struct {
+		name    string
+		content string
+		mode    os.FileMode
+	}{
+		{name: "utautts", content: "new", mode: 0o755},
+		{name: "README.md", content: "readme", mode: 0o644},
+	} {
+		header := &zip.FileHeader{Name: item.name, Method: zip.Deflate}
+		header.SetMode(item.mode)
+		entry, err := writer.CreateHeader(header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte(item.content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := run(target, "", zipPath, 0, "test", []string{"voice"}, false); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(target, "utautts"))
+	if err != nil || string(content) != "new" {
+		t.Fatalf("updated GUI = %q, %v", content, err)
+	}
+	info, err := os.Stat(filepath.Join(target, "utautts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("updated GUI is not executable: %v", info.Mode().Perm())
+	}
+	voice, err := os.ReadFile(filepath.Join(target, "voice", "bank", "oto.ini"))
+	if err != nil || string(voice) != "voice-data" {
+		t.Fatalf("voice data was not preserved: %q, %v", voice, err)
 	}
 }
 

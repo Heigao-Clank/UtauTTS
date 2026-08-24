@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -252,7 +253,11 @@ func extractZip(zipPath, dest string) error {
 		if err != nil {
 			return err
 		}
-		out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		mode := file.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 		if err != nil {
 			_ = in.Close()
 			return err
@@ -265,6 +270,9 @@ func extractZip(zipPath, dest string) error {
 		}
 		if closeErr != nil {
 			return closeErr
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -310,11 +318,14 @@ func normalizeStage(stage string) error {
 }
 
 func packageLooksValid(dir string) bool {
-	if _, err := os.Stat(filepath.Join(dir, "app", "utautts-gui.exe")); err == nil {
-		return true
-	}
-	if _, err := os.Stat(filepath.Join(dir, "utautts.exe")); err == nil {
-		return true
+	for _, executable := range []string{
+		filepath.Join("app", "utautts-gui.exe"),
+		"utautts.exe",
+		"utautts",
+	} {
+		if info, err := os.Stat(filepath.Join(dir, executable)); err == nil && !info.IsDir() {
+			return true
+		}
 	}
 	return false
 }
@@ -340,14 +351,19 @@ func preservePath(target, stage, rel string) error {
 }
 
 func safePreservePath(value string) (string, error) {
-	if value == "" || filepath.IsAbs(value) || filepath.VolumeName(value) != "" {
+	normalized := strings.ReplaceAll(value, `\`, "/")
+	hasWindowsVolume := len(normalized) >= 2 &&
+		((normalized[0] >= 'a' && normalized[0] <= 'z') || (normalized[0] >= 'A' && normalized[0] <= 'Z')) &&
+		normalized[1] == ':'
+	if value == "" || strings.ContainsRune(value, 0) || path.IsAbs(normalized) ||
+		filepath.IsAbs(value) || filepath.VolumeName(value) != "" || hasWindowsVolume {
 		return "", fmt.Errorf("preserve path must be a relative path: %q", value)
 	}
-	clean := filepath.Clean(filepath.FromSlash(value))
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+	clean := path.Clean(normalized)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", fmt.Errorf("preserve path escapes the package root: %q", value)
 	}
-	return clean, nil
+	return filepath.FromSlash(clean), nil
 }
 
 func copyTree(source, destination string) error {
@@ -400,12 +416,16 @@ func sanitizeToken(value string) string {
 }
 
 func launchApp(target string) {
-	launcher := filepath.Join(target, "utautts.exe")
-	if _, err := os.Stat(launcher); err != nil {
-		launcher = filepath.Join(target, "app", "utautts-gui.exe")
+	var launcher string
+	for _, relative := range []string{"utautts.exe", filepath.Join("app", "utautts-gui.exe"), "utautts"} {
+		candidate := filepath.Join(target, relative)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			launcher = candidate
+			break
+		}
 	}
-	if _, err := os.Stat(launcher); err != nil {
-		logf("cannot relaunch: %s not found", launcher)
+	if launcher == "" {
+		logf("cannot relaunch: no GUI executable found under %s", target)
 		return
 	}
 	command := exec.Command(launcher)

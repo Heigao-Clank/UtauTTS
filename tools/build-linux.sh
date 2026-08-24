@@ -63,6 +63,7 @@ cd "${root_dir}"
 
 echo '=== Test ==='
 go test ./...
+go vet ./...
 
 echo '=== Build server ==='
 go build -trimpath -o "${server_dir}/utautts-server" ./cmd/utautts-server
@@ -86,6 +87,7 @@ declare -A tools=(
 for name in "${!tools[@]}"; do
   go build -trimpath -o "${gui_dir}/tools/${name}" "${tools[$name]}"
 done
+go build -trimpath -o "${gui_dir}/tools/utautts-updater" ./cmd/utautts-updater
 
 echo '=== Build native library and Qt GUI ==='
 go build -trimpath -buildmode=c-shared -o "${root_dir}/build/native/libutautts_native.so" ./cmd/utautts-native
@@ -117,7 +119,7 @@ if ! command -v sha256sum >/dev/null 2>&1; then
   exit 1
 fi
 actual_worldline_hash="$(sha256sum "${worldline_tmp}" | awk '{print $1}')"
-if [ "${actual_worldline_hash}" != "${worldline_sha256}" ]; then
+if [ "${actual_worldline_hash^^}" != "${worldline_sha256}" ]; then
   echo "libworldline.so SHA-256 mismatch: ${actual_worldline_hash}" >&2
   exit 1
 fi
@@ -230,10 +232,19 @@ cp "${root_dir}/docs/server.md" "${server_dir}/README.md"
 cp "${root_dir}/LICENSE" "${server_dir}/LICENSE"
 cp "${root_dir}/THIRD_PARTY_NOTICES.txt" "${server_dir}/THIRD_PARTY_NOTICES.txt"
 
+chmod +x "${gui_dir}/utautts" "${gui_dir}/libutautts_native.so" \
+  "${gui_dir}/tools/"* "${gui_dir}/runtime/utautts-openjtalk-features" \
+  "${gui_dir}/runtime/utautts-worldline-bridge" \
+  "${server_dir}/utautts-server" "${server_dir}/runtime/utautts-openjtalk-features" \
+  "${server_dir}/runtime/utautts-worldline-bridge"
+
 echo '=== Package ==='
 rm -f "${gui_zip}" "${server_zip}"
 (cd "${gui_dir}" && zip -qr "${gui_zip}" .)
 (cd "${server_dir}" && zip -qr "${server_zip}" .)
+
+echo '=== Release smoke test ==='
+bash "${root_dir}/tools/test-linux-package.sh" "${release_root}"
 
 echo "Built Linux packages:"
 echo "  ${gui_zip}"
