@@ -81,7 +81,7 @@ GUIで調整した抑揚からversion 11の個人補正モデルを作る手順�
 - `frame-intonation-v8`: Open JTalkのアクセント特徴を使ったフレーム単位のイントネーション
 - `prosody-multitask-v1`: v8系のイントネーションに加えたモーラ長予測
 
-どちらもfaithful系Rendererを推奨します。`waveform`を選んだ場合は、原音の明瞭度を優先する波形接続として動作し、モデルのピッチ処理は適用されません。
+どちらもfaithful系Rendererを推奨します。`waveform`もframe pitchに対応しますが、可変レートresamplingとWSOLAで適用するため、原音確認ではpitchを無効にした出力も比較基準にしてください。
 
 ## 配布物
 

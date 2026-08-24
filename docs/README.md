@@ -24,6 +24,7 @@
 ## 開発者向け
 
 - [開発環境とビルド](building.md): Windows／Linux版のビルド要件と実行方法
+- [技術設計ガイド](technical-design.md): 合成パイプライン、原音選択、韻律モデル、Renderer、研究上の判断
 - [構成](architecture.md): 合成パイプラインと標準構成
 - [リリーステスト](release-testing.md): 配布物の自動スモークテストと手動確認項目
 

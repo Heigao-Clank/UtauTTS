@@ -54,6 +54,7 @@ try {
     Assert-Path (Join-Path $guiRoot 'docs/README.md') 'documentation index'
     Assert-Path (Join-Path $guiRoot 'docs/installation.md') 'installation documentation'
     Assert-Path (Join-Path $guiRoot 'docs/building.md') 'build documentation'
+    Assert-Path (Join-Path $guiRoot 'docs/technical-design.md') 'technical design documentation'
 
     foreach ($asset in @(
         'licenses/Qt/LGPL-3.0.txt',

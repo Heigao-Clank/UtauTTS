@@ -147,9 +147,9 @@ ID順にソートされた音源一覧です。
 
 ```json
 {
-  "default_renderer": "openutau-classic-worldline-faithful",
+  "default_renderer": "waveform",
   "renderers": [
-    {"id": "waveform", "display_name": "Waveform", "description": "...", "backend": "waveform", "capabilities": {"frame_pitch": false}, "default_priority": 0}
+    {"id": "waveform", "display_name": "Waveform", "description": "...", "backend": "waveform", "capabilities": {"frame_pitch": true, "boundary_bridge": true}, "default_priority": 100}
   ]
 }
 ```

@@ -53,6 +53,7 @@ for required in \
   "${gui_root}/docs/README.md" \
   "${gui_root}/docs/installation.md" \
   "${gui_root}/docs/building.md" \
+  "${gui_root}/docs/technical-design.md" \
   "${server_root}/licenses/README.txt" \
   "${gui_root}/licenses/DotNet/DOTNET-RUNTIME-LICENSE.txt" \
   "${server_root}/licenses/DotNet/DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt" \

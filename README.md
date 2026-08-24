@@ -67,6 +67,7 @@ CV・VCV・CVVC、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応
 - [ドキュメント一覧](docs/README.md)
 
 ソースからのビルドは[開発環境とビルド](docs/building.md)を参照してください。
+内部実装や研究上の設計判断は[技術設計ガイド](docs/technical-design.md)にまとめています。
 
 ## 謝辞
 
