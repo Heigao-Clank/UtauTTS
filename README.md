@@ -20,16 +20,24 @@ UTAUボイスバンクに収録された原音を選択・配置・接続し、�
 
 [リリース](https://github.com/yh2237/UtauTTS/releases) から最新版をダウンロードしてください。
 
-Linux版は面倒くさいので正式リリースになったらリリースに追加します。
-
 - `UtauTTS-win-x64.zip`: GUI、CLI、診断・学習ツール、runtime、モデル、Renderer、同梱音源
 - `UtauTTS-Server-win-x64.zip`: GUIを含まないHTTPサーバー
-- ~~`UtauTTS-linux-x64.zip`: Linux GUI版~~
-- ~~`UtauTTS-Server-linux-x64.zip`: Linux HTTPサーバー版~~
+- `UtauTTS-linux-x64.zip`: Linux x64 GUI版。CLI、診断・学習ツール、runtime、モデル、Renderer、同梱音源を含む
+- `UtauTTS-Server-linux-x64.zip`: Linux x64 HTTPサーバー版
 
 ### GUI
 
-`UtauTTS-win-x64.zip` を展開し、`utautts.exe` を実行してください。
+Windowsでは `UtauTTS-win-x64.zip` を展開し、`utautts.exe` を実行してください。
+
+LinuxではQt 6.5以降の実行環境をインストールして `UtauTTS-linux-x64.zip` を展開し、次のように起動します。
+
+```bash
+sudo apt-get install -y fontconfig fonts-noto-cjk qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qml6-module-qtquick-controls qml6-module-qtmultimedia
+chmod +x utautts tools/* runtime/utautts-openjtalk-features runtime/utautts-worldline-bridge
+./utautts
+```
+
+Linux版はDebian 13でビルド・起動テストしています。Qtとデスクトップの構成が異なるディストリビューションでは、同等のQt Quick・Qt Multimediaパッケージ名へ読み替えてください。
 
 追加のUTAU音源は、実行ファイルと同じ階層の `voice` ディレクトリへ、音源ごとにフォルダを分けて配置してください。「再読込」で一覧へ反映できます。GUI版には足立レイ UTAU音源 ver3.5.0 を初期音源として同梱しています。利用条件は [docs/voicebank.md](docs/voicebank.md) と音源内の文書を確認してください。
 
@@ -71,6 +79,8 @@ v8モデルを明示する場合は、次のようにモデルIDと互換Rendere
   --renderer waveform
 ```
 
+Linuxでは `./utautts-server --voice-dir voice --renderer waveform` です。Linux版のWorldline bridgeは自己完結形式のため、実行時に.NETを別途インストールする必要はありません。
+
 ブラウザで `http://127.0.0.1:8080/` を開くと、`/api/*` を試せるコンソールUIとドキュメントが表示されます。APIの詳細、認証、入力制限は [docs/server.md](docs/server.md) を参照してください。サーバーは初期状態で `127.0.0.1:8080` のみを待ち受けます。外部から接続できるアドレスを指定する場合は認証トークンを設定してください。
 
 ## ビルド
@@ -89,13 +99,14 @@ Linux版（`.\build.bat linux`）はWSL2上のDebian/Ubuntuでビルドします
 sudo apt-get update
 sudo apt-get install -y build-essential cmake ninja-build pkg-config unzip zip curl wget ca-certificates \
   qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-tools-dev qt6-l10n-tools \
+  qml6-module-qtquick-controls qml6-module-qtmultimedia fontconfig fonts-noto-cjk \
   python3 python3-pip python3-venv
 # Go（公式バイナリを /usr/local/go へ展開）
 # .NET 8 SDK（公式パッケージを /opt/dotnet へ展開）
 # python3 -m venv /opt/utautts-py && /opt/utautts-py/bin/pip install pyopenjtalk
 ```
 
-`/usr/local/go/bin` と `/opt/dotnet` がPATHに含まれている必要があります。ビルドはWSLのデフォルトユーザー（root以外）で実行してください。
+ビルドスクリプトは `/usr/local/go/bin` と `/opt/dotnet` を自動的にPATHへ追加します。ビルドはWSLのデフォルトユーザー（root以外）で実行してください。Goの全テストと静的検査、Linux GUI・CLI・serverのビルド、ZIP展開後のGUI自己診断と合成・APIスモークテストまで自動実行されます。
 
 開発時のテストは次のとおりです。
 

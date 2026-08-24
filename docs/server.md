@@ -1,6 +1,6 @@
 # UtauTTS Server
 
-GUIを含まないWindows x64向けHTTPサーバーです。.NET 8ランタイムが必要です。
+GUIを含まないWindows／Linux x64向けHTTPサーバーです。Worldline bridgeは自己完結形式で同梱されるため、配布物の実行時に.NET 8ランタイムを別途インストールする必要はありません。
 
 サーバーは初期状態で `127.0.0.1:8080` のみを待ち受けます。LANや外部から接続できるアドレスで起動する場合は、必ず `--auth-token` を設定してください。
 
@@ -8,6 +8,12 @@ GUIを含まないWindows x64向けHTTPサーバーです。.NET 8ランタイ�
 .\utautts-server.exe `
   --voice-dir "voice" `
   --renderer waveform
+```
+
+Linuxでは次のように起動します。
+
+```bash
+./utautts-server --voice-dir voice --renderer waveform
 ```
 
 標準では実行ファイルと同じ場所の `voice` ディレクトリを読み込みます。音源はフォルダごとに配置し、`voicebank_id` には `/api/voicebanks` で取得したIDを指定します。省略した場合はID順で最初の音源が使われます。

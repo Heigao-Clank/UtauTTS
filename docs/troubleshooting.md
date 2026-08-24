@@ -8,7 +8,7 @@
 - 配置後に「ファイル」→「音源を再読込」を実行します。
 - 音源に付属する利用条件と、対応している音源形式（CV・VCV・CVVCなど）を確認します。CVVCは現在試験対応です。
 
-## `utautts-openjtalk-features.exe not found` と表示される
+## `utautts-openjtalk-features not found` と表示される
 
 Open JTalkの解析helperが見つかっていません。配布版では、実行ファイルの隣にある `runtime` ディレクトリへ次のファイルが含まれます。
 
@@ -16,6 +16,8 @@ Open JTalkの解析helperが見つかっていません。配布版では、実�
 runtime/utautts-openjtalk-features.exe
 runtime/open_jtalk_dic_utf_8-1.11/
 ```
+
+Linux版のファイル名には `.exe` が付きません。`runtime/utautts-openjtalk-features` に実行権限があることも確認してください。
 
 ファイルが存在しない場合は、配布ZIPを再展開して確認してください。別のマシンでだけ消える場合は、Windows Defenderなどのセキュリティソフトを確認してください。
 
@@ -36,7 +38,15 @@ UtauTTS側の読みとOpen JTalk側の解析結果が一致していない可能
 
 ## Rendererやruntime assetが見つからない
 
-まず `waveform` Rendererで合成できるか確認してください。OpenUTAU Classic faithful系を使う場合は、`runtime/worldline.dll` とWorldline bridgeが必要です。CUDA版はCUDA対応の配布物にだけ含まれます。
+まず `waveform` Rendererで合成できるか確認してください。OpenUTAU Classic faithful系を使う場合は、Windowsでは `runtime/worldline.dll`、Linuxでは `runtime/libworldline.so` と、それぞれのWorldline bridgeが必要です。CUDA版はCUDA対応のWindows配布物にだけ含まれます。
+
+## LinuxでGUIが起動しない
+
+端末から `./utautts` を実行して不足しているライブラリ名を確認します。`ldd ./utautts | grep 'not found'` でも共有ライブラリを確認できます。Qt Quick、Qt Quick Controls、Qt Multimediaの実行パッケージが必要です。ZIP展開後に実行権限が失われた場合は、READMEに記載した `chmod +x` を実行してください。
+
+## Linuxで日本語が四角い記号（豆腐）になる
+
+日本語グリフを含むフォントがインストールされていません。Debian／Ubuntuでは `sudo apt-get install fontconfig fonts-noto-cjk` を実行してからGUIを起動し直してください。`fc-list :lang=ja` で利用可能な日本語フォントを確認できます。
 
 RendererのIDや必要なassetは [モデル／Rendererプラグイン](plugins.md) と、配布物の `../plugins/renderers/*/plugin.json` で確認できます。
 

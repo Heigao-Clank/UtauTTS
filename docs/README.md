@@ -13,6 +13,7 @@
 
 ## 開発者向け
 
+- [リリーステスト](release-testing.md): 配布物の自動スモークテストと手動確認項目
 - [構成](architecture.md): 合成パイプラインと標準構成
 - [モデル／Rendererプラグイン](plugins.md): 検出、互換性、追加方法
 

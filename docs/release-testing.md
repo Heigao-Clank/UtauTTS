@@ -1,0 +1,48 @@
+# リリーステスト
+
+正式リリースでは、ソース上の単体テストだけでなく、配布ZIPを展開した状態で機能を確認します。
+
+## 一括実行
+
+Windows版をビルドして全テストを実行する場合は、リポジトリ直下で次を実行します。
+
+```powershell
+./tools/build-release.ps1
+```
+
+この処理はGoの全テスト、GUI・CLI・serverのビルド、ライセンス収集、ZIP作成、配布物スモークテストを順番に実行します。途中で一つでも失敗するとリリースビルド全体が失敗します。
+
+作成済みのZIPだけを再検査する場合は次を実行します。
+
+```powershell
+./tools/test-release-package.ps1
+```
+
+Linux版はWSL2のDebian／Ubuntu環境から一括実行できます。
+
+```powershell
+.\build.bat linux
+```
+
+作成済みのLinux ZIPだけを再検査する場合は、Linux環境で次を実行します。
+
+```bash
+./tools/test-linux-package.sh
+```
+
+Linux検査ではZIPを一時ディレクトリへ展開し、日本語フォント、共有ライブラリ解決、実行権限、QtオフスクリーンGUI自己診断、CLI合成、serverの解析・合成・batch APIを確認します。
+
+## 自動確認する機能
+
+| 対象 | 確認内容 |
+| --- | --- |
+| Go内部処理 | frontend、音源読込、原音選択、各Renderer、抑揚、WAV、exo、API、更新処理 |
+| 配布内容 | 必須ファイル、モデル、Renderer、runtime、ライセンス、不要な開発用ファイルの不在 |
+| GUI | QMLロード、Goネイティブ接続、音源・モデル・Renderer列挙 |
+| GUI編集基盤 | プロジェクト保存・読込、辞書と設定の保存 |
+| GUI音声処理 | 文章解析、抑揚予測、実運用Rendererでの合成、WAV保存 |
+| GUI出力 | exo出力、抑揚教師データの途中保存・読込・書出し |
+| CLI | `waveform`による最小合成、v8モデルとClassic faithfulによる実運用合成、不正数値の拒否 |
+| HTTP server | コンソール、health、音源・モデル・Renderer一覧、解析、単体合成、batch ZIP、音源再読込 |
+
+GUIの検査には、Windowsでは配布された `app/utautts-gui.exe --self-test`、Linuxでは `QT_QPA_PLATFORM=offscreen ./utautts --self-test` を使用します。画面や更新確認は開かず、テスト専用の一時設定と一時ファイルだけを使います。

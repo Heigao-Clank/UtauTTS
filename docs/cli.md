@@ -1,8 +1,8 @@
 # コマンドライン（CLI）
 
-`utautts-cli.exe` は、ボイスバンク・モデル・Rendererを指定して単一のWAVを生成するコマンドライン合成ツールです。GUIやHTTPサーバーと同じ合成パイプラインを使用します。
+`utautts-cli` は、ボイスバンク・モデル・Rendererを指定して単一のWAVを生成するコマンドライン合成ツールです。GUIやHTTPサーバーと同じ合成パイプラインを使用します。
 
-配布物では `tools/utautts-cli.exe` にあります。開発時は `go run ./cmd/utautts-cli` でも実行できます。
+配布物ではWindowsの `tools/utautts-cli.exe`、Linuxの `tools/utautts-cli` にあります。開発時は `go run ./cmd/utautts-cli` でも実行できます。
 
 ## 必須の引数
 
