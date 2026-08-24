@@ -40,6 +40,8 @@ ApplicationWindow {
     property string pendingReloadVoicebanksShortcut: "Ctrl+O"
     property string pendingAddUtteranceShortcut: "Ctrl+D"
     property string pendingRemoveUtteranceShortcut: "Delete"
+    property string pendingUndoShortcut: "Ctrl+Z"
+    property string pendingRedoShortcut: "Ctrl+Y"
 
     function languageLabels() {
         const labels = [];
@@ -63,6 +65,8 @@ ApplicationWindow {
         pendingReloadVoicebanksShortcut = root.backend.reloadVoicebanksShortcut;
         pendingAddUtteranceShortcut = root.backend.addUtteranceShortcut;
         pendingRemoveUtteranceShortcut = root.backend.removeUtteranceShortcut;
+        pendingUndoShortcut = root.backend.undoShortcut;
+        pendingRedoShortcut = root.backend.redoShortcut;
         themeCombo.currentIndex = pendingDarkMode ? 1 : 0;
         languageCombo.currentIndex = root.languageCodes.indexOf(pendingLanguage);
         defaultVoicebankCombo.currentIndex = root.defaultVoicebankIndex();
@@ -368,6 +372,60 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             text: root.translator.tr("settings.shortcutHint")
                             wrapMode: Text.WordWrap
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.shortcut.undo")
+                            }
+                            TextField {
+                                Layout.preferredWidth: 180
+                                text: root.pendingUndoShortcut
+                                readOnly: true
+                                selectByMouse: false
+                                onActiveFocusChanged: if (activeFocus) selectAll()
+                                Keys.onPressed: event => {
+                                    if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+                                        root.pendingUndoShortcut = "";
+                                        event.accepted = true;
+                                        return;
+                                    }
+                                    const sequence = root.shortcutFromEvent(event);
+                                    if (sequence.length) {
+                                        root.pendingUndoShortcut = sequence;
+                                        event.accepted = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.shortcut.redo")
+                            }
+                            TextField {
+                                Layout.preferredWidth: 180
+                                text: root.pendingRedoShortcut
+                                readOnly: true
+                                selectByMouse: false
+                                onActiveFocusChanged: if (activeFocus) selectAll()
+                                Keys.onPressed: event => {
+                                    if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+                                        root.pendingRedoShortcut = "";
+                                        event.accepted = true;
+                                        return;
+                                    }
+                                    const sequence = root.shortcutFromEvent(event);
+                                    if (sequence.length) {
+                                        root.pendingRedoShortcut = sequence;
+                                        event.accepted = true;
+                                    }
+                                }
+                            }
                         }
 
                         RowLayout {

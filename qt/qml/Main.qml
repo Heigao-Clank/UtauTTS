@@ -88,6 +88,13 @@ ApplicationWindow {
     property var playbackQueue: []
     property int playbackQueueIndex: -1
     property bool projectDirty: false
+    property var undoStack: []
+    property var redoStack: []
+    property string historyMergeKey: ""
+    property bool historyRestoring: false
+    property string savedProjectFingerprint: ""
+    readonly property bool canUndo: undoStack.length > 0
+    readonly property bool canRedo: redoStack.length > 0
     property bool metadataInitialized: false
     property bool closeAfterProjectSave: false
     property bool closeBypass: false
@@ -124,6 +131,24 @@ ApplicationWindow {
                  && !window.playbackQueueActive
                  && utterances.count > 0
         onActivated: window.removeUtterance()
+    }
+
+    Shortcut {
+        sequence: window.qtShortcutSequence(window.appBackend.undoShortcut)
+        context: Qt.ApplicationShortcut
+        enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
+                 && !window.playbackQueueActive
+        onActivated: window.undo()
+        onActivatedAmbiguously: window.undo()
+    }
+
+    Shortcut {
+        sequence: window.qtShortcutSequence(window.appBackend.redoShortcut)
+        context: Qt.ApplicationShortcut
+        enabled: !settingsWindow.visible && !window.appBackend.busy && !window.batchExportActive
+                 && !window.playbackQueueActive
+        onActivated: window.redo()
+        onActivatedAmbiguously: window.redo()
     }
 
     ListModel {
@@ -295,6 +320,12 @@ ApplicationWindow {
         hostPalette: window.palette
         backend: window.appBackend
         translator: window.translator
+    }
+
+    Timer {
+        id: historyMergeTimer
+        interval: 700
+        onTriggered: window.historyMergeKey = ""
     }
 
     ProsodyTrainingWindow {
@@ -576,7 +607,7 @@ window.translator.load(window.appBackend.language);
             window.assignDefaultSynthesisSettings(suppressDirty);
             window.metadataInitialized = true;
             if (suppressDirty)
-                window.projectDirty = false;
+                window.resetHistory(false);
         }
 
         function onAnalysisChanged() {
@@ -731,6 +762,7 @@ window.translator.load(window.appBackend.language);
     Component.onCompleted: {
         window.translator.load(window.appBackend.language);
         addUtterance(false);
+        window.resetHistory(false);
         if (window.appBackend.updateCheckEnabled)
             window.checkForUpdates();
     }
@@ -795,6 +827,21 @@ window.translator.load(window.appBackend.language);
             MenuItem {
                 text: window.translator.tr("menu.file.quit")
                 onTriggered: Qt.quit()
+            }
+        }
+        Menu {
+            title: window.translator.tr("menu.edit")
+            MenuItem {
+                text: window.translator.tr("menu.edit.undo")
+                enabled: window.canUndo && !window.appBackend.busy && !window.batchExportActive
+                         && !window.playbackQueueActive
+                onTriggered: window.undo()
+            }
+            MenuItem {
+                text: window.translator.tr("menu.edit.redo")
+                enabled: window.canRedo && !window.appBackend.busy && !window.batchExportActive
+                         && !window.playbackQueueActive
+                onTriggered: window.redo()
             }
         }
         Menu {
@@ -904,7 +951,9 @@ window.translator.load(window.appBackend.language);
                            settingsWindow.pendingSaveProjectShortcut,
                            settingsWindow.pendingReloadVoicebanksShortcut,
                            settingsWindow.pendingAddUtteranceShortcut,
-                           settingsWindow.pendingRemoveUtteranceShortcut];
+                           settingsWindow.pendingRemoveUtteranceShortcut,
+                           settingsWindow.pendingUndoShortcut,
+                           settingsWindow.pendingRedoShortcut];
         const usedShortcuts = [];
         for (let index = 0; index < shortcuts.length; ++index) {
             const shortcut = String(shortcuts[index] || "").trim();
@@ -934,7 +983,9 @@ window.translator.load(window.appBackend.language);
                                                settingsWindow.pendingSaveProjectShortcut,
                                                settingsWindow.pendingReloadVoicebanksShortcut,
                                                settingsWindow.pendingAddUtteranceShortcut,
-                                               settingsWindow.pendingRemoveUtteranceShortcut);
+                                               settingsWindow.pendingRemoveUtteranceShortcut,
+                                               settingsWindow.pendingUndoShortcut,
+                                               settingsWindow.pendingRedoShortcut);
         settingsWindow.close();
         settingsWindow.visible = false;
     }
@@ -1265,6 +1316,161 @@ window.translator.load(window.appBackend.language);
         return Math.max(minimum, Math.min(maximum, normalized));
     }
 
+    function historyUtterance(item) {
+        return {
+            utteranceId: item.utteranceId,
+            pointsJson: item.pointsJson,
+            moraDurationsJson: item.moraDurationsJson,
+            moraPositionsJson: item.moraPositionsJson,
+            manualPitchEdited: item.manualPitchEdited,
+            manualMoraDurationEdited: item.manualMoraDurationEdited
+        };
+    }
+
+    function historySnapshot() {
+        const items = [];
+        for (let index = 0; index < utterances.count; ++index)
+            items.push(window.historyUtterance(utterances.get(index)));
+        return JSON.stringify(items);
+    }
+
+    function editableFingerprint() {
+        const items = [];
+        for (let index = 0; index < utterances.count; ++index) {
+            const item = utterances.get(index);
+            items.push({
+                content: item.content,
+                voicebankId: item.voicebankId,
+                modelId: item.modelId,
+                renderer: item.renderer,
+                aliasPolicy: item.aliasPolicy,
+                tone: item.tone,
+                color: item.color,
+                moraDuration: item.moraDuration,
+                pauseDuration: item.pauseDuration,
+                intonation: item.intonation,
+                applyPitch: item.applyPitch,
+                pointsJson: item.manualPitchEdited ? item.pointsJson : "[]",
+                moraDurationsJson: item.manualMoraDurationEdited ? item.moraDurationsJson : "[]",
+                moraPositionsJson: item.manualMoraDurationEdited ? item.moraPositionsJson : "[]",
+                manualPitchEdited: item.manualPitchEdited,
+                manualMoraDurationEdited: item.manualMoraDurationEdited
+            });
+        }
+        return JSON.stringify(items);
+    }
+
+    function limitedHistory(stack, snapshot) {
+        const result = stack.slice();
+        result.push(snapshot);
+        if (result.length > 100)
+            result.shift();
+        return result;
+    }
+
+    function beginHistoryChange(key, merge) {
+        if (window.historyRestoring)
+            return;
+        const normalizedKey = String(key || "");
+        if (merge && normalizedKey.length && window.historyMergeKey === normalizedKey) {
+            historyMergeTimer.restart();
+            return;
+        }
+        window.undoStack = window.limitedHistory(window.undoStack, window.historySnapshot());
+        window.redoStack = [];
+        window.historyMergeKey = merge ? normalizedKey : "";
+        if (merge)
+            historyMergeTimer.restart();
+        else
+            historyMergeTimer.stop();
+    }
+
+    function endHistoryGesture() {
+        window.historyMergeKey = "";
+        historyMergeTimer.stop();
+    }
+
+    function resetHistory(markDirty) {
+        window.undoStack = [];
+        window.redoStack = [];
+        window.endHistoryGesture();
+        window.savedProjectFingerprint = markDirty ? "__unsaved_project__" : window.editableFingerprint();
+        window.projectDirty = !!markDirty;
+    }
+
+    function clearEditHistory() {
+        window.undoStack = [];
+        window.redoStack = [];
+        window.endHistoryGesture();
+    }
+
+    function restoreHistorySnapshot(snapshot) {
+        let savedItems;
+        try {
+            savedItems = JSON.parse(snapshot);
+        } catch (error) {
+            return false;
+        }
+        if (!Array.isArray(savedItems))
+            return false;
+
+        window.historyRestoring = true;
+        window.clearPlayback();
+        window.pendingProsodyRequestId = "";
+        window.pendingProsodyUtteranceId = "";
+        window.pendingProsodyRevision = -1;
+        for (let savedIndex = 0; savedIndex < savedItems.length; ++savedIndex) {
+            const saved = savedItems[savedIndex];
+            const index = window.utteranceIndex(String(saved.utteranceId || ""));
+            if (index < 0)
+                continue;
+            const item = utterances.get(index);
+            if (item.pointsJson === saved.pointsJson
+                    && item.moraDurationsJson === saved.moraDurationsJson
+                    && item.moraPositionsJson === saved.moraPositionsJson
+                    && item.manualPitchEdited === !!saved.manualPitchEdited
+                    && item.manualMoraDurationEdited === !!saved.manualMoraDurationEdited)
+                continue;
+            utterances.setProperty(index, "pointsJson", String(saved.pointsJson || "[]"));
+            utterances.setProperty(index, "moraDurationsJson", String(saved.moraDurationsJson || "[]"));
+            utterances.setProperty(index, "moraPositionsJson", String(saved.moraPositionsJson || "[]"));
+            utterances.setProperty(index, "manualPitchEdited", !!saved.manualPitchEdited);
+            utterances.setProperty(index, "manualMoraDurationEdited", !!saved.manualMoraDurationEdited);
+            window.markUtteranceDirty(index, false);
+        }
+        if (utterances.count)
+            window.selectUtterance(window.selectedIndex);
+        window.historyRestoring = false;
+        window.projectDirty = window.editableFingerprint() !== window.savedProjectFingerprint;
+        return true;
+    }
+
+    function undo() {
+        if (!window.canUndo)
+            return;
+        window.endHistoryGesture();
+        const previous = window.undoStack[window.undoStack.length - 1];
+        const remaining = window.undoStack.slice(0, window.undoStack.length - 1);
+        const currentSnapshot = window.historySnapshot();
+        if (!window.restoreHistorySnapshot(previous))
+            return;
+        window.undoStack = remaining;
+        window.redoStack = window.limitedHistory(window.redoStack, currentSnapshot);
+    }
+
+    function redo() {
+        if (!window.canRedo)
+            return;
+        window.endHistoryGesture();
+        const next = window.redoStack[window.redoStack.length - 1];
+        const remaining = window.redoStack.slice(0, window.redoStack.length - 1);
+        const currentSnapshot = window.historySnapshot();
+        if (!window.restoreHistorySnapshot(next))
+            return;
+        window.redoStack = remaining;
+        window.undoStack = window.limitedHistory(window.undoStack, currentSnapshot);
+    }
+
     function projectData() {
         const savedUtterances = [];
         for (let index = 0; index < utterances.count; ++index) {
@@ -1332,6 +1538,8 @@ window.translator.load(window.appBackend.language);
             window.closeAfterProjectSave = false;
             return;
         }
+        window.endHistoryGesture();
+        window.savedProjectFingerprint = window.editableFingerprint();
         window.projectDirty = false;
         if (window.closeAfterProjectSave) {
             window.closeAfterProjectSave = false;
@@ -1418,6 +1626,7 @@ window.translator.load(window.appBackend.language);
             editorContent.pitchEditor.morae = [];
             editorContent.pitchEditor.moraDurations = [];
             editorContent.pitchEditor.moraPositions = [];
+            window.resetHistory(migratedRenderer);
             return;
         }
         selectedIndex = Math.max(0, Math.min(Number(project.selected_index) || 0, utterances.count - 1));
@@ -1428,6 +1637,7 @@ window.translator.load(window.appBackend.language);
                 window.appBackend.analyze(item.content, item.utteranceId);
         }
         editorContent.utteranceList.positionViewAtIndex(selectedIndex, ListView.Contain);
+        window.resetHistory(migratedRenderer);
     }
 
     function localImageUrl(path) {
@@ -1460,6 +1670,10 @@ window.translator.load(window.appBackend.language);
     function updateUtteranceText(index, text) {
         if (index < 0 || index >= utterances.count)
             return;
+        const item = utterances.get(index);
+        if (item.content === text)
+            return;
+        window.clearEditHistory();
         utterances.setProperty(index, "content", text);
         utterances.setProperty(index, "reading", "");
         utterances.setProperty(index, "moraeJson", "[]");
@@ -1479,7 +1693,11 @@ window.translator.load(window.appBackend.language);
     function updatePitchPoints(points) {
         if (!utterances.count)
             return;
-        utterances.setProperty(selectedIndex, "pointsJson", JSON.stringify(points));
+        const pointsJson = JSON.stringify(points);
+        if (current().pointsJson === pointsJson && current().manualPitchEdited)
+            return;
+        window.beginHistoryChange("pitch:" + current().utteranceId, false);
+        utterances.setProperty(selectedIndex, "pointsJson", pointsJson);
         utterances.setProperty(selectedIndex, "manualPitchEdited", true);
         if (!current().applyPitch) {
             utterances.setProperty(selectedIndex, "applyPitch", true);
@@ -1491,7 +1709,11 @@ window.translator.load(window.appBackend.language);
     function updateMoraDurations(durations) {
         if (!utterances.count)
             return;
-        utterances.setProperty(selectedIndex, "moraDurationsJson", JSON.stringify(durations));
+        const durationsJson = JSON.stringify(durations);
+        if (current().moraDurationsJson === durationsJson && current().manualMoraDurationEdited)
+            return;
+        window.beginHistoryChange("timing:" + current().utteranceId, true);
+        utterances.setProperty(selectedIndex, "moraDurationsJson", durationsJson);
         utterances.setProperty(selectedIndex, "manualMoraDurationEdited", true);
         markUtteranceDirty(selectedIndex);
     }
@@ -1499,7 +1721,11 @@ window.translator.load(window.appBackend.language);
     function updateMoraPositions(positions) {
         if (!utterances.count)
             return;
-        utterances.setProperty(selectedIndex, "moraPositionsJson", JSON.stringify(positions));
+        const positionsJson = JSON.stringify(positions);
+        if (current().moraPositionsJson === positionsJson && current().manualMoraDurationEdited)
+            return;
+        window.beginHistoryChange("timing:" + current().utteranceId, true);
+        utterances.setProperty(selectedIndex, "moraPositionsJson", positionsJson);
         utterances.setProperty(selectedIndex, "manualMoraDurationEdited", true);
         markUtteranceDirty(selectedIndex);
     }
@@ -1809,6 +2035,9 @@ window.translator.load(window.appBackend.language);
     }
 
     function removeUtterance() {
+        if (!utterances.count)
+            return;
+        window.clearEditHistory();
         clearPlayback();
         utterances.remove(selectedIndex);
         window.projectDirty = true;
