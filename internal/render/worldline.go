@@ -111,6 +111,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	if faithfulClassic {
 		classicTimings, phraseStartMS = openUtauClassicTimings(synthesisPlan.Units, cfg.CVVCTiming)
 	}
+	leadingMS := math.Max(0, -phraseStartMS)
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
 		timings[i] = normalizeTiming(*unit, cfg.ReleaseMS)
@@ -234,7 +235,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 					envelopePoints = cvvcPreBoundaryEnvelope(envelopePoints, phoneTiming)
 				}
 				pitchLengthMS = envelopePoints[4].XMS + pitchLeadingMS
-				positionMS = unit.NoteStartMS - phoneTiming.preutter - phraseStartMS
+				positionMS = unit.NoteStartMS - phoneTiming.preutter + leadingMS
 			}
 			requiredLength = math.Max(unit.DurationMS+durCorrection+skipMS, unit.ConsonantMS)
 			requiredLength = math.Ceil(requiredLength/50+0.5) * 50
@@ -294,11 +295,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	if err != nil {
 		return nil, fmt.Errorf("read worldline output: %w", err)
 	}
-	if faithfulClassic && phraseStartMS < 0 {
-		trim := min(len(pcm.Data), msToFrames(-phraseStartMS, pcm.SampleRate))
-		pcm.Data = pcm.Data[trim:]
-	}
-	minimumFrames := msToFrames(synthesisPlan.DurationMS+cfg.ReleaseMS, pcm.SampleRate)
+	minimumFrames := msToFrames(synthesisPlan.DurationMS+cfg.ReleaseMS+leadingMS, pcm.SampleRate)
 	if len(pcm.Data) < minimumFrames {
 		pcm.Data = append(pcm.Data, make([]int16, minimumFrames-len(pcm.Data))...)
 	}

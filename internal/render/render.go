@@ -298,6 +298,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		unit.EffectiveOverlapMS = timings[i].preutteranceMS - fadeInDurationMS(timings[i])
 		unit.IntonationFactor = 1
 	}
+	leadingMS := leadingPreutteranceMS(synthesisPlan.Units, timings)
 	intonation := identityFactors(len(synthesisPlan.Units))
 	if cfg.ApplyPitch {
 		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
@@ -405,6 +406,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		}
 	}
 
+	leadingFrames := msToFrames(leadingMS, sampleRate)
 	for _, item := range prepared {
 		if err := contextError(cfg.Context); err != nil {
 			return nil, err
@@ -414,7 +416,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		timing := item.timing
 		wave := item.wave
 
-		startFrame := msToFramesSigned(unit.NoteStartMS-timing.preutteranceMS, sampleRate)
+		startFrame := msToFramesSigned(unit.NoteStartMS-timing.preutteranceMS, sampleRate) + leadingFrames
 		sourceStart := 0
 		if startFrame < 0 {
 			sourceStart = -startFrame
@@ -445,7 +447,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 			}
 			gain := envelope(sourceFrame, len(wave), fadeInFrames, fadeOutFrames)
 			position := startFrame + sourceFrame - sourceStart
-			gain *= handoffGain(position, unitIndex, synthesisPlan, timings, sampleRate)
+			gain *= handoffGain(position-leadingFrames, unitIndex, synthesisPlan, timings, sampleRate)
 			mix[position] += wave[sourceFrame] * gain
 			mixWeights[position] += gain
 		}
@@ -455,7 +457,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		return nil, errors.New("render produced no samples")
 	}
 
-	minimumFrames := msToFrames(synthesisPlan.DurationMS+cfg.ReleaseMS, sampleRate)
+	minimumFrames := msToFrames(synthesisPlan.DurationMS+cfg.ReleaseMS, sampleRate) + leadingFrames
 	if len(mix) < minimumFrames {
 		padding := minimumFrames - len(mix)
 		mix = append(mix, make([]float64, padding)...)
@@ -468,6 +470,20 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 	}
 	preventClipping(mix, 0.98)
 	return &audio.PCM{SampleRate: sampleRate, Channels: 1, Data: floatPCM(mix)}, nil
+}
+
+func leadingPreutteranceMS(units []plan.Unit, timings []effectiveTiming) float64 {
+	leading := 0.0
+	for index, unit := range units {
+		if unit.Silent || index >= len(timings) {
+			continue
+		}
+		start := unit.NoteStartMS - timings[index].preutteranceMS
+		if start < 0 {
+			leading = max(leading, -start)
+		}
+	}
+	return leading
 }
 
 func contextError(ctx context.Context) error {

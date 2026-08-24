@@ -369,6 +369,38 @@ func TestRenderReleaseZeroIsHonoredWhenExplicit(t *testing.T) {
 	}
 }
 
+func TestWaveformRendererPreservesFirstUnitPreutterance(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/unit.wav"
+	data := make([]int16, 180)
+	for index := 0; index < 40; index++ {
+		data[index] = 10000
+	}
+	if err := audio.WriteWav(path, &audio.PCM{SampleRate: 1000, Channels: 1, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	p := &plan.Plan{DurationMS: 100, Units: []plan.Unit{{
+		Alias: "に", Source: path, NoteStartMS: 0, DurationMS: 100,
+		PreutteranceMS: 40, OverlapMS: 0, ConsonantMS: 40,
+	}}}
+	pcm, err := Render(p, Config{Backend: "waveform", ReleaseMS: 0, ReleaseSet: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pcm.Data) != 140 {
+		t.Fatalf("output frames = %d, want 140 including preutterance", len(pcm.Data))
+	}
+	peak := int16(0)
+	for _, sample := range pcm.Data[:40] {
+		if sample > peak {
+			peak = sample
+		}
+	}
+	if peak < 1000 {
+		t.Fatalf("first-unit preutterance was lost: peak=%d", peak)
+	}
+}
+
 func TestRenderRejectsUnsafePitchCurveRangeAndFrame(t *testing.T) {
 	for _, curve := range []*PitchCurve{
 		{FrameMS: 0.01, Cents: []float64{0}},

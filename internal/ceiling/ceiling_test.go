@@ -49,7 +49,7 @@ func TestGeneratePreservesTransitionsAndSeparatesConditions(t *testing.T) {
 	if len(result.Original.Data) != 600 || len(result.ReconstructedOriginal.Data) != 600 {
 		t.Fatalf("original lengths = %d, %d", len(result.Original.Data), len(result.ReconstructedOriginal.Data))
 	}
-	if len(result.Current.Data) != 300 || len(result.Anchored.Data) != 300 || len(result.ContinuousAnchored.Data) != 300 {
+	if len(result.Current.Data) != 340 || len(result.Anchored.Data) != 300 || len(result.ContinuousAnchored.Data) != 300 {
 		t.Fatalf("short lengths = %d, %d, %d", len(result.Current.Data), len(result.Anchored.Data), len(result.ContinuousAnchored.Data))
 	}
 	if len(result.Intervals) != 3 || result.Intervals[0].SourcePrefixMS != 40 || result.Intervals[0].SourceSuffixMS != 20 {
