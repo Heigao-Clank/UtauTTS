@@ -74,6 +74,13 @@ for executable in \
   "${server_root}/utautts-server"; do
   [ -x "${executable}" ] || fail "executable permission is missing: ${executable}"
 done
+for development_tool in \
+  connection-benchmark connection-compare connection-dataset connection-eval \
+  connection-lattice connection-train listening-score listening-test oto-inspect \
+  prosody-dataset prosody-train utautts-server; do
+  [ ! -e "${gui_root}/tools/${development_tool}" ] \
+    || fail "GUI release package contains a development-only tool: ${development_tool}"
+done
 
 if ldd "${gui_root}/utautts" | grep -q 'not found'; then
   ldd "${gui_root}/utautts" >&2

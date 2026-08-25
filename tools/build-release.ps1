@@ -64,27 +64,10 @@ try {
     Write-Host '=== Build GUI package ==='
     & (Join-Path $PSScriptRoot 'build-qt.ps1') -OutputDirectory $guiPath
     if ($LASTEXITCODE -ne 0) { throw "Qt GUI build failed with exit code $LASTEXITCODE" }
-    $guiCommands = @(
-        @('utautts-cli.exe', './cmd/utautts-cli'),
-        @('oto-inspect.exe', './cmd/tools/oto-inspect'),
-        @('connection-eval.exe', './cmd/tools/connection-eval'),
-        @('connection-compare.exe', './cmd/tools/connection-compare'),
-        @('connection-dataset.exe', './cmd/tools/connection-dataset'),
-        @('connection-train.exe', './cmd/tools/connection-train'),
-        @('connection-lattice.exe', './cmd/tools/connection-lattice'),
-        @('connection-benchmark.exe', './cmd/tools/connection-benchmark'),
-        @('listening-test.exe', './cmd/tools/listening-test'),
-        @('listening-score.exe', './cmd/tools/listening-score'),
-        @('prosody-dataset.exe', './cmd/tools/prosody-dataset'),
-        @('prosody-train.exe', './cmd/tools/prosody-train')
-    )
-    foreach ($item in $guiCommands) {
-        Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $guiToolsPath $item[0]), $item[1])
-    }
+    Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $guiToolsPath 'utautts-cli.exe'), './cmd/utautts-cli')
 
     Write-Host '=== Build server package ==='
     Invoke-Checked 'go' @('build', '-trimpath', '-o', (Join-Path $serverPath 'utautts-server.exe'), './cmd/utautts-server')
-    Copy-Item -LiteralPath (Join-Path $serverPath 'utautts-server.exe') -Destination (Join-Path $guiToolsPath 'utautts-server.exe')
 
     Write-Host '=== Build Open JTalk frontend helper ==='
     & (Join-Path $PSScriptRoot 'build-openjtalk-feature-bridge.ps1')

@@ -67,26 +67,9 @@ go vet ./...
 
 echo '=== Build server ==='
 go build -trimpath -o "${server_dir}/utautts-server" ./cmd/utautts-server
-cp "${server_dir}/utautts-server" "${gui_dir}/tools/utautts-server"
 
-echo '=== Build CLI and tools ==='
-declare -A tools=(
-  [utautts-cli]='./cmd/utautts-cli'
-  [oto-inspect]='./cmd/tools/oto-inspect'
-  [connection-eval]='./cmd/tools/connection-eval'
-  [connection-compare]='./cmd/tools/connection-compare'
-  [connection-dataset]='./cmd/tools/connection-dataset'
-  [connection-train]='./cmd/tools/connection-train'
-  [connection-lattice]='./cmd/tools/connection-lattice'
-  [connection-benchmark]='./cmd/tools/connection-benchmark'
-  [listening-test]='./cmd/tools/listening-test'
-  [listening-score]='./cmd/tools/listening-score'
-  [prosody-dataset]='./cmd/tools/prosody-dataset'
-  [prosody-train]='./cmd/tools/prosody-train'
-)
-for name in "${!tools[@]}"; do
-  go build -trimpath -o "${gui_dir}/tools/${name}" "${tools[$name]}"
-done
+echo '=== Build CLI ==='
+go build -trimpath -o "${gui_dir}/tools/utautts-cli" ./cmd/utautts-cli
 go build -trimpath -o "${gui_dir}/tools/utautts-updater" ./cmd/utautts-updater
 
 echo '=== Build native library and Qt GUI ==='

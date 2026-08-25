@@ -99,6 +99,16 @@ try {
     if ($unexpectedDebugFiles.Count -ne 0) {
         throw "Release package contains debug/development files: $($unexpectedDebugFiles.FullName -join ', ')"
     }
+    foreach ($developmentTool in @(
+        'connection-benchmark.exe', 'connection-compare.exe', 'connection-dataset.exe',
+        'connection-eval.exe', 'connection-lattice.exe', 'connection-train.exe',
+        'listening-score.exe', 'listening-test.exe', 'oto-inspect.exe',
+        'prosody-dataset.exe', 'prosody-train.exe', 'utautts-server.exe'
+    )) {
+        if (Test-Path -LiteralPath (Join-Path $guiRoot "tools/$developmentTool")) {
+            throw "GUI release package contains a development-only tool: $developmentTool"
+        }
+    }
     foreach ($unusedQtRuntime in @('opengl32sw.dll', 'dxcompiler.dll', 'dxil.dll', 'D3Dcompiler_47.dll')) {
         if (Test-Path -LiteralPath (Join-Path $guiRoot "app/$unusedQtRuntime")) {
             throw "Release package contains an unused Qt auxiliary runtime: $unusedQtRuntime"
