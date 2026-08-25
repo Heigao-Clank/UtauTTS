@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLocale>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -22,6 +23,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSettings>
+#include <QSysInfo>
 #include <QUuid>
 #include <QtConcurrent>
 #include <memory>
@@ -982,6 +984,133 @@ QVariantMap Backend::loadProject(const QUrl &source) {
     Q_UNUSED(utterances)
     setError({});
     return project;
+}
+
+bool Backend::exportDiagnosticReport(const QUrl &destination, const QVariantMap &context) {
+    if (!destination.isLocalFile()) {
+        setError(tr("診断情報の保存先が無効です"));
+        return false;
+    }
+
+    QVariantList voicebanks;
+    for (const QVariant &value : m_voicebanks) {
+        const QVariantMap source = value.toMap();
+        voicebanks.append(QVariantMap{
+            {"id", source.value("id")},
+            {"name", source.value("name")},
+            {"alias_counts", source.value("alias_counts")},
+            {"vcv_contexts", source.value("vcv_contexts")},
+            {"vc_contexts", source.value("vc_contexts")},
+            {"has_vc", source.value("has_vc")},
+            {"has_initial_vcv", source.value("has_initial_vcv")},
+            {"has_n_context_vcv", source.value("has_n_context_vcv")},
+        });
+    }
+
+    QVariantList models;
+    for (const QVariant &value : m_models) {
+        const QVariantMap source = value.toMap();
+        models.append(QVariantMap{
+            {"id", source.value("id")},
+            {"display_name", source.value("display_name")},
+            {"version", source.value("version")},
+            {"format", source.value("format")},
+            {"license", source.value("license")},
+            {"recommended_renderers", source.value("recommended_renderers")},
+        });
+    }
+
+    QVariantList renderers;
+    for (const QVariant &value : m_renderers) {
+        const QVariantMap source = value.toMap();
+        renderers.append(QVariantMap{
+            {"id", source.value("id")},
+            {"display_name", source.value("display_name")},
+            {"version", source.value("version")},
+            {"backend", source.value("backend")},
+            {"acceleration", source.value("acceleration")},
+            {"experimental", source.value("experimental")},
+            {"capabilities", source.value("capabilities")},
+        });
+    }
+
+    const QString homePath = QDir::toNativeSeparators(QDir::homePath());
+    const QString applicationPath = QDir::toNativeSeparators(resourceRoot().absolutePath());
+    QStringList logs;
+    const QRegularExpression synthesisText(
+        QStringLiteral("^(\\[[^\\]]+\\]\\s+音声合成を開始しました:\\s*).*$"));
+    for (QString line : m_logLines) {
+        line.replace(synthesisText, QStringLiteral("\\1<redacted>"));
+        if (!homePath.isEmpty())
+            line.replace(homePath, QStringLiteral("<home>"), Qt::CaseInsensitive);
+        if (!applicationPath.isEmpty())
+            line.replace(applicationPath, QStringLiteral("<application>"), Qt::CaseInsensitive);
+        logs.append(line);
+    }
+
+    const QStringList contextKeys{
+        QStringLiteral("voicebank_id"), QStringLiteral("model_id"), QStringLiteral("renderer"),
+        QStringLiteral("alias_policy"), QStringLiteral("tone"), QStringLiteral("color"),
+        QStringLiteral("mora_duration_ms"), QStringLiteral("pause_duration_ms"),
+        QStringLiteral("intonation_strength"), QStringLiteral("apply_pitch"),
+    };
+    QVariantMap selection;
+    for (const QString &key : contextKeys) {
+        if (context.contains(key))
+            selection.insert(key, context.value(key));
+    }
+
+    const QVariantMap report{
+        {"format", QStringLiteral("utautts-diagnostic-report")},
+        {"format_version", 1},
+        {"exported_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {"application", QVariantMap{
+            {"name", QCoreApplication::applicationName()},
+            {"version", QCoreApplication::applicationVersion()},
+        }},
+        {"environment", QVariantMap{
+            {"qt_version", QString::fromLatin1(qVersion())},
+            {"os", QSysInfo::prettyProductName()},
+            {"kernel_type", QSysInfo::kernelType()},
+            {"kernel_version", QSysInfo::kernelVersion()},
+            {"cpu_architecture", QSysInfo::currentCpuArchitecture()},
+            {"build_abi", QSysInfo::buildAbi()},
+            {"locale", QLocale::system().name()},
+            {"cuda_available", m_cudaAvailable},
+        }},
+        {"settings", QVariantMap{
+            {"language", m_language},
+            {"dark_mode", m_darkMode},
+            {"default_voicebank_id", m_defaultVoicebankId},
+            {"default_mora_duration_ms", m_defaultMoraDuration},
+            {"default_pause_duration_ms", m_defaultPauseDuration},
+            {"default_apply_pitch", m_defaultApplyPitch},
+            {"close_log_on_success", m_closeLogOnSuccess},
+            {"update_check_enabled", m_updateCheckEnabled},
+            {"developer_mode", m_developerMode},
+        }},
+        {"current_selection", selection},
+        {"catalog", QVariantMap{
+            {"default_renderer", m_defaultRenderer},
+            {"voicebanks", voicebanks},
+            {"models", models},
+            {"renderers", renderers},
+        }},
+        {"logs", logs},
+        {"privacy", QVariantMap{
+            {"includes_input_text", false},
+            {"includes_audio", false},
+            {"includes_absolute_voicebank_paths", false},
+        }},
+    };
+
+    QString writeError;
+    if (!writeJSONFile(destination.toLocalFile(), report, &writeError)) {
+        setError(tr("診断情報を書き出せませんでした: %1").arg(writeError));
+        return false;
+    }
+    setError({});
+    return true;
 }
 
 QVariantMap Backend::loadProsodyPromptSet() const {

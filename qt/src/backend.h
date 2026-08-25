@@ -99,6 +99,7 @@ public:
     Q_INVOKABLE QUrl fileInDirectory(const QUrl &directory, const QString &fileName) const;
     Q_INVOKABLE bool saveProject(const QUrl &destination, const QVariantMap &project);
     Q_INVOKABLE QVariantMap loadProject(const QUrl &source);
+    Q_INVOKABLE bool exportDiagnosticReport(const QUrl &destination, const QVariantMap &context);
     Q_INVOKABLE QVariantMap loadProsodyPromptSet() const;
     Q_INVOKABLE QVariantMap loadProsodyTrainingSession();
     Q_INVOKABLE bool saveProsodyTrainingSession(const QVariantMap &session);

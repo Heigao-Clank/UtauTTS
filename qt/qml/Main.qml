@@ -354,6 +354,28 @@ ApplicationWindow {
         onAccepted: window.loadProjectFrom(selectedFile)
     }
 
+    FileDialog {
+        id: diagnosticSaveDialog
+        fileMode: FileDialog.SaveFile
+        nameFilters: [window.translator.tr("diagnostics.filter")]
+        defaultSuffix: "json"
+        onAccepted: {
+            const success = window.appBackend.exportDiagnosticReport(
+                    selectedFile, window.diagnosticContext());
+            diagnosticResultDialog.title = window.translator.tr(
+                    success ? "diagnostics.successTitle" : "diagnostics.errorTitle");
+            diagnosticResultDialog.text = success
+                    ? window.translator.tr("diagnostics.success")
+                    : window.appBackend.error;
+            diagnosticResultDialog.open();
+        }
+    }
+
+    MessageDialog {
+        id: diagnosticResultDialog
+        buttons: MessageDialog.Ok
+    }
+
     Dialog {
         id: closeWarningDialog
         title: window.translator.tr("main.closeConfirmTitle")
@@ -556,12 +578,6 @@ ApplicationWindow {
 
         contentItem: ColumnLayout {
             spacing: 12
-
-            Label {
-                Layout.fillWidth: true
-                text: window.translator.tr("voicebank.loading")
-                wrapMode: Text.WordWrap
-            }
 
             ProgressBar {
                 Layout.fillWidth: true
@@ -920,6 +936,14 @@ window.translator.load(window.appBackend.language);
                 enabled: window.appBackend.voicebanks.length > 0
                 onTriggered: window.showVoicebankDetails()
             }
+            MenuItem {
+                text: window.translator.tr("menu.help.exportDiagnostics")
+                onTriggered: {
+                    diagnosticSaveDialog.currentFile = window.appBackend.defaultSaveFile(
+                            "utautts-diagnostics.json");
+                    diagnosticSaveDialog.open();
+                }
+            }
         }
     }
 
@@ -931,6 +955,24 @@ window.translator.load(window.appBackend.language);
 
     function current() {
         return utterances.get(selectedIndex);
+    }
+
+    function diagnosticContext() {
+        if (!utterances.count)
+            return {};
+        const item = window.current();
+        return {
+            voicebank_id: item.voicebankId || "",
+            model_id: item.modelId || "",
+            renderer: item.renderer || "",
+            alias_policy: window.normalizeAliasPolicy(item.aliasPolicy),
+            tone: item.tone || "C4",
+            color: item.color || "",
+            mora_duration_ms: item.moraDuration,
+            pause_duration_ms: item.pauseDuration,
+            intonation_strength: item.intonation,
+            apply_pitch: item.applyPitch
+        };
     }
 
     function qtShortcutSequence(sequence) {

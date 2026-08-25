@@ -113,6 +113,27 @@ int runSelfTest(Backend &backend, QObject *rootObject) {
                  QStringLiteral("project round trip failed")))
         return 1;
 
+    const QUrl diagnosticsURL = QUrl::fromLocalFile(temporary.filePath(QStringLiteral("diagnostics.json")));
+    const QVariantMap diagnosticContext{
+        {"voicebank_id", voicebankID}, {"model_id", modelID}, {"renderer", rendererID},
+        {"alias_policy", "auto"}, {"tone", "C4"}, {"mora_duration_ms", 120},
+        {"pause_duration_ms", 180}, {"intonation_strength", 1.0}, {"apply_pitch", true},
+        {"text", QStringLiteral("診断情報に含めない文章")},
+    };
+    if (!require(backend.exportDiagnosticReport(diagnosticsURL, diagnosticContext), backend.error()))
+        return 1;
+    QFile diagnosticsFile(diagnosticsURL.toLocalFile());
+    if (!require(diagnosticsFile.open(QIODevice::ReadOnly), QStringLiteral("diagnostic report could not be read")))
+        return 1;
+    const QByteArray diagnosticsData = diagnosticsFile.readAll();
+    const QJsonDocument diagnostics = QJsonDocument::fromJson(diagnosticsData);
+    if (!require(diagnostics.isObject()
+                 && diagnostics.object().value(QStringLiteral("format")).toString()
+                    == QStringLiteral("utautts-diagnostic-report")
+                 && !diagnosticsData.contains("診断情報に含めない文章"),
+                 QStringLiteral("diagnostic report is invalid or contains input text")))
+        return 1;
+
     if (!waitFor(backend, &Backend::analysisChanged,
                  [&] { backend.analyze(QStringLiteral("こんにちは"), QStringLiteral("self-test")); },
                  QStringLiteral("analysis")))
@@ -139,6 +160,16 @@ int runSelfTest(Backend &backend, QObject *rootObject) {
 
     if (!waitFor(backend, &Backend::previewReady,
                  [&] { backend.synthesize(commonRequest); }, QStringLiteral("synthesis")))
+        return 1;
+    diagnosticsFile.close();
+    if (!require(backend.exportDiagnosticReport(diagnosticsURL, diagnosticContext), backend.error()))
+        return 1;
+    if (!require(diagnosticsFile.open(QIODevice::ReadOnly), QStringLiteral("updated diagnostic report could not be read")))
+        return 1;
+    const QByteArray updatedDiagnosticsData = diagnosticsFile.readAll();
+    if (!require(!updatedDiagnosticsData.contains("こんにちは")
+                 && updatedDiagnosticsData.contains("<redacted>"),
+                 QStringLiteral("diagnostic report did not redact synthesis text")))
         return 1;
     const QUrl wavURL = QUrl::fromLocalFile(temporary.filePath(QStringLiteral("smoke.wav")));
     if (!require(backend.savePreview(wavURL), backend.error())
