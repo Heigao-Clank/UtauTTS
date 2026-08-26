@@ -356,21 +356,22 @@ func pathWithin(root, candidate string) (string, error) {
 }
 
 type SynthesisRequest struct {
-	Kana               string                   `json:"kana"`
-	Text               string                   `json:"text"`
-	VoicebankID        string                   `json:"voicebank_id"`
-	Tone               string                   `json:"tone"`
-	Color              string                   `json:"color"`
-	MoraDurationMS     float64                  `json:"mora_duration_ms"`
-	PauseDurationMS    float64                  `json:"pause_duration_ms"`
-	MoraDurationsMS    []float64                `json:"mora_durations_ms"`
-	IntonationStrength float64                  `json:"intonation_strength"`
-	ApplyPitch         bool                     `json:"apply_pitch"`
-	ManualPitch        *prosody.ManualPitchFile `json:"manual_pitch"`
-	ModelID            string                   `json:"model_id"`
-	Renderer           string                   `json:"renderer"`
-	AliasPolicy        voicebank.AliasPolicy    `json:"alias_policy"`
-	AcousticMode       string                   `json:"acoustic_mode"`
+	Kana                  string                   `json:"kana"`
+	Text                  string                   `json:"text"`
+	VoicebankID           string                   `json:"voicebank_id"`
+	Tone                  string                   `json:"tone"`
+	Color                 string                   `json:"color"`
+	MoraDurationMS        float64                  `json:"mora_duration_ms"`
+	PauseDurationMS       float64                  `json:"pause_duration_ms"`
+	LeadingPreutteranceMS float64                  `json:"leading_preutterance_ms"`
+	MoraDurationsMS       []float64                `json:"mora_durations_ms"`
+	IntonationStrength    float64                  `json:"intonation_strength"`
+	ApplyPitch            bool                     `json:"apply_pitch"`
+	ManualPitch           *prosody.ManualPitchFile `json:"manual_pitch"`
+	ModelID               string                   `json:"model_id"`
+	Renderer              string                   `json:"renderer"`
+	AliasPolicy           voicebank.AliasPolicy    `json:"alias_policy"`
+	AcousticMode          string                   `json:"acoustic_mode"`
 }
 
 func (s *Server) handleSynthesizeAudio(w http.ResponseWriter, r *http.Request) {
@@ -505,7 +506,7 @@ func (s *Server) synthesize(ctx context.Context, request SynthesisRequest) (*tts
 	if len([]rune(request.Text)) > maxTextRunes || len([]rune(request.Kana)) > maxTextRunes {
 		return nil, "", http.StatusRequestEntityTooLarge, fmt.Errorf("text and kana are limited to %d characters", maxTextRunes)
 	}
-	if request.MoraDurationMS < 0 || request.MoraDurationMS > 1000 || request.PauseDurationMS < 0 || request.PauseDurationMS > 3000 {
+	if request.MoraDurationMS < 0 || request.MoraDurationMS > 1000 || request.PauseDurationMS < 0 || request.PauseDurationMS > 3000 || request.LeadingPreutteranceMS < 0 || request.LeadingPreutteranceMS > 1000 {
 		return nil, "", http.StatusBadRequest, fmt.Errorf("duration settings are outside the supported range")
 	}
 	if len(request.MoraDurationsMS) > maxTextRunes {
@@ -527,7 +528,8 @@ func (s *Server) synthesize(ctx context.Context, request SynthesisRequest) (*tts
 		Tone: request.Tone, Color: request.Color, ModelID: request.ModelID, Renderer: request.Renderer,
 		AliasPolicy: request.AliasPolicy, AcousticMode: request.AcousticMode,
 		MoraDurationMS: request.MoraDurationMS, PauseDurationMS: request.PauseDurationMS,
-		MoraDurationsMS: request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
+		LeadingPreutteranceMS: request.LeadingPreutteranceMS,
+		MoraDurationsMS:       request.MoraDurationsMS, IntonationStrength: request.IntonationStrength,
 		ApplyPitch: request.ApplyPitch, ManualPitch: request.ManualPitch,
 	})
 	if err != nil {

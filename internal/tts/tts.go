@@ -32,6 +32,7 @@ type Config struct {
 	MoraDurationsMS         []float64
 	ReleaseMS               float64
 	ReleaseSet              bool
+	LeadingPreutteranceMS   float64
 	ProsodyModelPath        string
 	ProsodyModel            *prosody.Model
 	ManualPitchPath         string
@@ -335,6 +336,7 @@ func Synthesize(cfg Config) (*Result, error) {
 		Context:                 cfg.Context,
 		ReleaseMS:               cfg.ReleaseMS,
 		ReleaseSet:              cfg.ReleaseSet,
+		LeadingPreutteranceMS:   cfg.LeadingPreutteranceMS,
 		IntonationStrength:      intonationStrength,
 		ApplyPitch:              applyPitch,
 		Backend:                 cfg.Renderer,

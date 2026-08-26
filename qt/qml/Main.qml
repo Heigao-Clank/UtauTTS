@@ -970,6 +970,7 @@ window.translator.load(window.appBackend.language);
             color: item.color || "",
             mora_duration_ms: item.moraDuration,
             pause_duration_ms: item.pauseDuration,
+            leading_preutterance_ms: item.leadingPreutterance,
             intonation_strength: item.intonation,
             apply_pitch: item.applyPitch
         };
@@ -1393,6 +1394,7 @@ window.translator.load(window.appBackend.language);
                 color: item.color,
                 moraDuration: item.moraDuration,
                 pauseDuration: item.pauseDuration,
+                leadingPreutterance: item.leadingPreutterance,
                 intonation: item.intonation,
                 applyPitch: item.applyPitch,
                 pointsJson: item.manualPitchEdited ? item.pointsJson : "[]",
@@ -1596,6 +1598,7 @@ window.translator.load(window.appBackend.language);
                 color: item.color || "",
                 mora_duration_ms: item.moraDuration,
                 pause_duration_ms: item.pauseDuration,
+                leading_preutterance_ms: item.leadingPreutterance,
                 intonation: item.intonation,
                 apply_pitch: !!item.applyPitch,
                 pitch_points: window.decodeSequence(item.pointsJson),
@@ -1723,6 +1726,7 @@ window.translator.load(window.appBackend.language);
                 color: String(saved.color || ""),
                 moraDuration: window.projectNumber(saved.mora_duration_ms, window.appBackend.defaultMoraDuration, 20, 1000, true),
                 pauseDuration: window.projectNumber(saved.pause_duration_ms, window.appBackend.defaultPauseDuration, 0, 3000, true),
+                leadingPreutterance: window.projectNumber(saved.leading_preutterance_ms, 0, 0, 300, true),
                 intonation: window.projectNumber(saved.intonation, 1, 0, 2, false),
                 applyPitch: saved.apply_pitch === undefined ? window.appBackend.defaultApplyPitch : !!saved.apply_pitch,
                 revision: 0
@@ -1962,8 +1966,10 @@ window.translator.load(window.appBackend.language);
         editorContent.toneField.text = item.tone;
         editorContent.moraSlider.value = item.moraDuration;
         editorContent.pauseSlider.value = item.pauseDuration;
+        editorContent.leadingPreutteranceSlider.value = item.leadingPreutterance;
         editorContent.moraInput.value = item.moraDuration;
         editorContent.pauseInput.value = item.pauseDuration;
+        editorContent.leadingPreutteranceInput.value = item.leadingPreutterance;
         editorContent.intonationSlider.value = item.intonation;
         editorContent.intonationInput.value = Math.round(item.intonation * 100);
         editorContent.pitchEditor.points = window.decodeSequence(item.pointsJson);
@@ -2103,6 +2109,12 @@ window.translator.load(window.appBackend.language);
         window.updateSetting("pauseDuration", 180);
     }
 
+    function resetLeadingPreutterance() {
+        editorContent.leadingPreutteranceSlider.value = 0;
+        editorContent.leadingPreutteranceInput.value = 0;
+        window.updateSetting("leadingPreutterance", 0);
+    }
+
     function addUtterance(markDirty) {
         const voice = window.defaultVoicebank();
         utterances.append({
@@ -2127,6 +2139,7 @@ window.translator.load(window.appBackend.language);
             color: "",
             moraDuration: window.appBackend.defaultMoraDuration,
             pauseDuration: window.appBackend.defaultPauseDuration,
+            leadingPreutterance: 0,
             intonation: 1,
             applyPitch: window.appBackend.defaultApplyPitch,
             revision: 0
@@ -2267,6 +2280,7 @@ window.translator.load(window.appBackend.language);
             color: item.color || "",
             mora_duration_ms: item.moraDuration,
             pause_duration_ms: item.pauseDuration,
+            leading_preutterance_ms: item.leadingPreutterance,
             mora_durations_ms: manualDurations,
             intonation_strength: item.intonation,
             apply_pitch: item.applyPitch

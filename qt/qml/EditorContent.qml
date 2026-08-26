@@ -21,6 +21,8 @@ import QtMultimedia
         property alias moraSlider: moraSlider
         property alias pauseInput: pauseInput
         property alias pauseSlider: pauseSlider
+        property alias leadingPreutteranceInput: leadingPreutteranceInput
+        property alias leadingPreutteranceSlider: leadingPreutteranceSlider
 
         anchors.fill: parent
         orientation: Qt.Vertical
@@ -577,6 +579,79 @@ import QtMultimedia
                                     pauseSlider.value = value;
                                     pauseInput.value = value;
                                     window.updateSetting("pauseDuration", value);
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                text: window.translator.tr("main.param.leadingPreutterance")
+                                Layout.fillWidth: true
+                            }
+                            SpinBox {
+                                id: leadingPreutteranceInput
+                                Layout.preferredWidth: 96
+                                from: 0
+                                to: 300
+                                stepSize: 5
+                                editable: true
+                                value: Math.round(leadingPreutteranceSlider.value)
+                                textFromValue: value => value + " ms"
+                                Component.onCompleted: refreshTextFormatter()
+                                function refreshTextFormatter() {
+                                    const automaticText = window.translator.tr("main.aliasPolicy.auto");
+                                    textFromValue = value => value === 0
+                                            ? automaticText : value + " ms";
+                                    const currentValue = value;
+                                    value = currentValue < to ? currentValue + 1 : currentValue - 1;
+                                    value = currentValue;
+                                }
+                                valueFromText: text => {
+                                    const parsed = parseInt(text);
+                                    return isNaN(parsed) ? 0 : parsed;
+                                }
+                                onValueModified: {
+                                    leadingPreutteranceSlider.value = value;
+                                    window.updateSetting("leadingPreutterance", value);
+                                }
+                                Connections {
+                                    target: window.translator
+                                    function onTranslationsChanged() {
+                                        leadingPreutteranceInput.refreshTextFormatter();
+                                    }
+                                }
+                            }
+                        }
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: leadingPreutteranceSlider.implicitHeight
+                            Slider {
+                                id: leadingPreutteranceSlider
+                                anchors.fill: parent
+                                from: 0
+                                to: 300
+                                stepSize: 5
+                                onMoved: {
+                                    window.updateSetting("leadingPreutterance", value);
+                                    leadingPreutteranceInput.value = value;
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onPressed: mouse => updateAt(mouse.x)
+                                onPositionChanged: mouse => {
+                                    if (pressed)
+                                        updateAt(mouse.x);
+                                }
+                                onDoubleClicked: window.resetLeadingPreutterance()
+                                function updateAt(x) {
+                                    const fraction = Math.max(0, Math.min(1, x / width));
+                                    const value = Math.round((leadingPreutteranceSlider.from + fraction * (leadingPreutteranceSlider.to - leadingPreutteranceSlider.from)) / leadingPreutteranceSlider.stepSize) * leadingPreutteranceSlider.stepSize;
+                                    leadingPreutteranceSlider.value = value;
+                                    leadingPreutteranceInput.value = value;
+                                    window.updateSetting("leadingPreutterance", value);
                                 }
                             }
                         }

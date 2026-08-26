@@ -195,6 +195,18 @@ func TestOpenUtauEnvelopeUsesNextPhoneTailTiming(t *testing.T) {
 	}
 }
 
+func TestLimitLeadingPreutterance(t *testing.T) {
+	if got := limitLeadingPreutterance(120, 0); got != 120 {
+		t.Fatalf("automatic leading preutterance = %.1f, want 120", got)
+	}
+	if got := limitLeadingPreutterance(120, 45); got != 45 {
+		t.Fatalf("limited leading preutterance = %.1f, want 45", got)
+	}
+	if got := limitLeadingPreutterance(80, 120); got != 80 {
+		t.Fatalf("short leading preutterance = %.1f, want 80", got)
+	}
+}
+
 func TestOpenUtauClassicTimingsKeepMoraTimingAcrossCVVCTransition(t *testing.T) {
 	units := []plan.Unit{
 		{Position: 0, Role: "mora", NoteStartMS: 0, DurationMS: 100, PreutteranceMS: 30, OverlapMS: 5},

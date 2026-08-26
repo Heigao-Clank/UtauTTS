@@ -19,6 +19,7 @@ type Config struct {
 	Context                 context.Context
 	ReleaseMS               float64
 	ReleaseSet              bool
+	LeadingPreutteranceMS   float64
 	IntonationStrength      float64
 	ApplyPitch              bool
 	Backend                 string
@@ -181,6 +182,7 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	}
 	for name, value := range map[string]float64{
 		"release_ms":                cfg.ReleaseMS,
+		"leading_preutterance_ms":   cfg.LeadingPreutteranceMS,
 		"intonation_strength":       cfg.IntonationStrength,
 		"boundary_bridge_ms":        cfg.BoundaryBridgeMS,
 		"boundary_bridge_threshold": cfg.BoundaryBridgeThreshold,
@@ -191,6 +193,9 @@ func Render(synthesisPlan *plan.Plan, cfg Config) (*audio.PCM, error) {
 	}
 	if cfg.ReleaseMS < 0 {
 		return nil, fmt.Errorf("release_ms must be non-negative, got %v", cfg.ReleaseMS)
+	}
+	if cfg.LeadingPreutteranceMS < 0 {
+		return nil, fmt.Errorf("leading_preutterance_ms must be non-negative, got %v", cfg.LeadingPreutteranceMS)
 	}
 	if !cfg.ReleaseSet && cfg.ReleaseMS == 0 {
 		cfg.ReleaseMS = defaultReleaseMS
@@ -299,7 +304,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		unit.EffectiveOverlapMS = timings[i].preutteranceMS - fadeInDurationMS(timings[i])
 		unit.IntonationFactor = 1
 	}
-	leadingMS := leadingPreutteranceMS(synthesisPlan.Units, timings)
+	leadingMS := limitLeadingPreutterance(leadingPreutteranceMS(synthesisPlan.Units, timings), cfg.LeadingPreutteranceMS)
 	intonation := identityFactors(len(synthesisPlan.Units))
 	if cfg.ApplyPitch {
 		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
@@ -485,6 +490,14 @@ func leadingPreutteranceMS(units []plan.Unit, timings []effectiveTiming) float64
 		}
 	}
 	return leading
+}
+
+// limitLeadingPreutteranceは0を自動扱いにし、指定時だけ文頭側の保持区間を制限する。
+func limitLeadingPreutterance(required, maximum float64) float64 {
+	if maximum <= 0 {
+		return required
+	}
+	return math.Min(required, maximum)
 }
 
 func contextError(ctx context.Context) error {

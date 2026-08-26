@@ -17,22 +17,23 @@ var ErrUnavailable = errors.New("unavailable")
 
 // Requestは合成とプレビューで共有する入力。
 type Request struct {
-	Text               string
-	Kana               string
-	VoicebankID        string
-	Tone               string
-	Color              string
-	ModelID            string
-	Renderer           string
-	AliasPolicy        voicebank.AliasPolicy
-	AcousticMode       string
-	Dictionary         map[string]string
-	MoraDurationMS     float64
-	PauseDurationMS    float64
-	MoraDurationsMS    []float64
-	IntonationStrength float64
-	ApplyPitch         bool
-	ManualPitch        *prosody.ManualPitchFile
+	Text                  string
+	Kana                  string
+	VoicebankID           string
+	Tone                  string
+	Color                 string
+	ModelID               string
+	Renderer              string
+	AliasPolicy           voicebank.AliasPolicy
+	AcousticMode          string
+	Dictionary            map[string]string
+	MoraDurationMS        float64
+	PauseDurationMS       float64
+	LeadingPreutteranceMS float64
+	MoraDurationsMS       []float64
+	IntonationStrength    float64
+	ApplyPitch            bool
+	ManualPitch           *prosody.ManualPitchFile
 }
 
 // VoicebankResolverは音源IDをルートパスへ解決する。空なら既定音源を選ぶ。
@@ -106,6 +107,7 @@ func (s *Service) config(request Request, requireVoicebank bool) (tts.Config, st
 		AcousticMode:            request.AcousticMode,
 		MoraDurationMS:          request.MoraDurationMS,
 		PauseDurationMS:         request.PauseDurationMS,
+		LeadingPreutteranceMS:   request.LeadingPreutteranceMS,
 		MoraDurationsMS:         request.MoraDurationsMS,
 		ProsodyModelPath:        modelPath,
 		ManualPitch:             request.ManualPitch,
