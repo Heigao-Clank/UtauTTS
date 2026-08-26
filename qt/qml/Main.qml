@@ -14,7 +14,7 @@ ApplicationWindow {
     required property url injectedRepositoryUrl
     required property bool injectedSelfTest
     width: 1240
-    height: 800
+    height: 850
     minimumWidth: 880
     minimumHeight: 600
     visible: !injectedSelfTest
