@@ -26,6 +26,7 @@
 #include <QSysInfo>
 #include <QUuid>
 #include <QtConcurrent>
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 
@@ -126,9 +127,14 @@ Backend::Backend(QObject *parent)
       m_closeLogOnSuccess(QSettings().value("logging/closeOnSuccess", true).toBool()),
       m_updateCheckEnabled(QSettings().value("appearance/updateCheckEnabled", true).toBool()),
       m_developerMode(QSettings().value("developer/enabled", false).toBool()),
+      m_defaultRenderer(QSettings().value("synthesis/defaultRendererId",
+                                          QStringLiteral("openutau-worldline-r-faithful")).toString().trimmed()),
+      m_defaultModelId(QSettings().value("synthesis/defaultModelId",
+                                         QStringLiteral("frame-intonation-v8")).toString().trimmed()),
       m_defaultVoicebankId(QSettings().value("voicebank/defaultId", QString()).toString().trimmed()),
       m_defaultMoraDuration(QSettings().value("synthesis/defaultMoraDuration", 120).toInt()),
       m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
+      m_defaultLeadingPreutterance(QSettings().value("synthesis/defaultLeadingPreutterance", 0).toInt()),
       m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()),
       m_synthesizeShortcut(QSettings().value("shortcuts/synthesize", QStringLiteral("Ctrl+Enter")).toString()),
       m_saveProjectShortcut(QSettings().value("shortcuts/saveProject", QStringLiteral("Ctrl+S")).toString()),
@@ -140,6 +146,7 @@ Backend::Backend(QObject *parent)
       m_updateNetwork(new QNetworkAccessManager(this)) {
     m_defaultMoraDuration = qBound(20, m_defaultMoraDuration, 1000);
     m_defaultPauseDuration = qBound(0, m_defaultPauseDuration, 3000);
+    m_defaultLeadingPreutterance = qBound(0, m_defaultLeadingPreutterance, 300);
     const QByteArray dictionaryJSON = QSettings().value("dictionary/entries").toByteArray();
     QJsonParseError parseError;
     const QJsonDocument dictionaryDocument = QJsonDocument::fromJson(dictionaryJSON, &parseError);
@@ -290,21 +297,35 @@ void Backend::setDefaultVoicebank(const QString &value) {
     emit voicebankSettingsChanged();
 }
 
-void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch) {
+void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration,
+                                   int leadingPreutterance, bool applyPitch,
+                                   const QString &modelId, const QString &rendererId) {
     const int boundedMoraDuration = qBound(20, moraDuration, 1000);
     const int boundedPauseDuration = qBound(0, pauseDuration, 3000);
+    const int boundedLeadingPreutterance = qBound(0, leadingPreutterance, 300);
+    const QString normalizedModelId = modelId.trimmed();
+    const QString normalizedRendererId = rendererId.trimmed();
     if (m_defaultMoraDuration == boundedMoraDuration
             && m_defaultPauseDuration == boundedPauseDuration
-            && m_defaultApplyPitch == applyPitch) {
+            && m_defaultLeadingPreutterance == boundedLeadingPreutterance
+            && m_defaultApplyPitch == applyPitch
+            && m_defaultModelId == normalizedModelId
+            && m_defaultRenderer == normalizedRendererId) {
         return;
     }
     m_defaultMoraDuration = boundedMoraDuration;
     m_defaultPauseDuration = boundedPauseDuration;
+    m_defaultLeadingPreutterance = boundedLeadingPreutterance;
     m_defaultApplyPitch = applyPitch;
+    m_defaultModelId = normalizedModelId;
+    m_defaultRenderer = normalizedRendererId;
     QSettings settings;
     settings.setValue("synthesis/defaultMoraDuration", m_defaultMoraDuration);
     settings.setValue("synthesis/defaultPauseDuration", m_defaultPauseDuration);
+    settings.setValue("synthesis/defaultLeadingPreutterance", m_defaultLeadingPreutterance);
     settings.setValue("synthesis/defaultApplyPitch", m_defaultApplyPitch);
+    settings.setValue("synthesis/defaultModelId", m_defaultModelId);
+    settings.setValue("synthesis/defaultRendererId", m_defaultRenderer);
     settings.sync();
     emit synthesisDefaultsChanged();
 }
@@ -640,12 +661,21 @@ void Backend::refreshMetadata() {
     const QVariantMap voices = call("voicebanks");
     const QVariantMap models = call("models");
     const QVariantMap renderers = call("renderers");
-    const QVariantMap hardware = call("hardware");
     m_voicebanks = voices.value("voicebanks").toList();
     m_models = models.value("models").toList();
     m_renderers = renderers.value("renderers").toList();
-    m_defaultRenderer = renderers.value("default_renderer").toString();
-    m_cudaAvailable = hardware.value("cuda_available").toBool();
+    m_catalogDefaultRenderer = renderers.value("default_renderer").toString();
+    const auto containsId = [](const QVariantList &items, const QString &id) {
+        return std::any_of(items.cbegin(), items.cend(), [&id](const QVariant &item) {
+            return item.toMap().value(QStringLiteral("id")).toString() == id;
+        });
+    };
+    if (!containsId(m_renderers, m_defaultRenderer))
+        m_defaultRenderer = m_catalogDefaultRenderer;
+    if (m_defaultModelId != QStringLiteral("none") && !containsId(m_models, m_defaultModelId))
+        m_defaultModelId = m_models.isEmpty()
+                ? QStringLiteral("none") : m_models.constFirst().toMap().value(QStringLiteral("id")).toString();
+    emit synthesisDefaultsChanged();
     emit metadataChanged();
 }
 
@@ -1076,14 +1106,16 @@ bool Backend::exportDiagnosticReport(const QUrl &destination, const QVariantMap 
             {"cpu_architecture", QSysInfo::currentCpuArchitecture()},
             {"build_abi", QSysInfo::buildAbi()},
             {"locale", QLocale::system().name()},
-            {"cuda_available", m_cudaAvailable},
         }},
         {"settings", QVariantMap{
             {"language", m_language},
             {"dark_mode", m_darkMode},
             {"default_voicebank_id", m_defaultVoicebankId},
+            {"default_model_id", m_defaultModelId},
+            {"default_renderer_id", m_defaultRenderer},
             {"default_mora_duration_ms", m_defaultMoraDuration},
             {"default_pause_duration_ms", m_defaultPauseDuration},
+            {"default_leading_preutterance_ms", m_defaultLeadingPreutterance},
             {"default_apply_pitch", m_defaultApplyPitch},
             {"close_log_on_success", m_closeLogOnSuccess},
             {"update_check_enabled", m_updateCheckEnabled},
@@ -1091,7 +1123,7 @@ bool Backend::exportDiagnosticReport(const QUrl &destination, const QVariantMap 
         }},
         {"current_selection", selection},
         {"catalog", QVariantMap{
-            {"default_renderer", m_defaultRenderer},
+            {"default_renderer", m_catalogDefaultRenderer},
             {"voicebanks", voicebanks},
             {"models", models},
             {"renderers", renderers},

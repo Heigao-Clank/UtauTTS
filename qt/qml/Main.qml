@@ -1013,10 +1013,18 @@ window.translator.load(window.appBackend.language);
         if (utterances.count) {
             window.updateSetting("moraDuration", settingsWindow.pendingMoraDuration);
             window.updateSetting("pauseDuration", settingsWindow.pendingPauseDuration);
+            window.updateSetting("leadingPreutterance", settingsWindow.pendingLeadingPreutterance);
+            window.updateSetting("modelId", settingsWindow.pendingDefaultModelId);
+            window.updateSetting("renderer", settingsWindow.pendingDefaultRendererId);
             window.updateSetting("applyPitch", settingsWindow.pendingApplyPitch);
             window.selectUtterance(window.selectedIndex);
         }
-        window.appBackend.setSynthesisDefaults(settingsWindow.pendingMoraDuration, settingsWindow.pendingPauseDuration, settingsWindow.pendingApplyPitch);
+        window.appBackend.setSynthesisDefaults(settingsWindow.pendingMoraDuration,
+                                               settingsWindow.pendingPauseDuration,
+                                               settingsWindow.pendingLeadingPreutterance,
+                                               settingsWindow.pendingApplyPitch,
+                                               settingsWindow.pendingDefaultModelId,
+                                               settingsWindow.pendingDefaultRendererId);
         window.appBackend.setDarkMode(settingsWindow.pendingDarkMode);
         window.appBackend.setLanguage(settingsWindow.pendingLanguage);
         window.appBackend.setCloseLogOnSuccess(settingsWindow.pendingCloseLogOnSuccess);
@@ -1255,29 +1263,27 @@ window.translator.load(window.appBackend.language);
     }
 
     function defaultModelId() {
-        return window.appBackend.models.length ? window.appBackend.models[0].id : "none";
+        const configured = String(window.appBackend.defaultModelId || "none");
+        return configured === "none" || window.modelById(configured)
+                ? configured : (window.appBackend.models.length ? window.appBackend.models[0].id : "none");
     }
 
     function preferredRendererForModel(model) {
-        const preferredAcceleration = window.appBackend.cudaAvailable ? "cuda" : "cpu";
         const recommended = model && model.recommended_renderers ? model.recommended_renderers : [];
-        for (let pass = 0; pass < 2; ++pass) {
-            for (let index = 0; index < recommended.length; ++index) {
-                const renderer = window.rendererById(recommended[index]);
-                if (renderer && (pass === 1 || renderer.acceleration === preferredAcceleration))
-                    return renderer.id;
-            }
-        }
-        for (let index = 0; index < window.appBackend.renderers.length; ++index) {
-            const renderer = window.appBackend.renderers[index];
-            if (renderer.acceleration === preferredAcceleration)
+        for (let index = 0; index < recommended.length; ++index) {
+            const renderer = window.rendererById(recommended[index]);
+            if (renderer)
                 return renderer.id;
         }
-        return window.appBackend.defaultRenderer;
+        return window.defaultRendererId();
     }
 
     function defaultRendererId() {
-        return window.preferredRendererForModel(window.modelById(window.defaultModelId()));
+        const configured = String(window.appBackend.defaultRenderer || "");
+        if (window.rendererById(configured))
+            return configured;
+        const available = window.appBackend.renderers;
+        return available.length ? available[0].id : "";
     }
 
     function normalizeRendererId(id) {
@@ -2139,7 +2145,7 @@ window.translator.load(window.appBackend.language);
             color: "",
             moraDuration: window.appBackend.defaultMoraDuration,
             pauseDuration: window.appBackend.defaultPauseDuration,
-            leadingPreutterance: 0,
+            leadingPreutterance: window.appBackend.defaultLeadingPreutterance,
             intonation: 1,
             applyPitch: window.appBackend.defaultApplyPitch,
             revision: 0

@@ -983,7 +983,7 @@ def export_model(
             "training_corpus_license": "CC BY-SA 4.0",
             "source_notice": "licenses/JSUT-DATA-AND-LABELS.txt",
         },
-        "recommended_renderers": list(args.recommended_renderer or ["openutau-classic-worldline-faithful"]),
+        "recommended_renderers": list(args.recommended_renderer or ["openutau-worldline-r-faithful"]),
         "version": 8,
         "feature_version": 1,
         "mode": "intonation_frame_tcn_accent_bounded",

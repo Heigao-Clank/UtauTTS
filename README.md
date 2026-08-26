@@ -59,6 +59,7 @@ CV・VCV・CVVC、複数の`oto.ini`、UTF-8・Shift_JIS、`prefix.map`に対応
 
 ## ドキュメント
 
+- [UtauTTSが声をつなぐ仕組み](docs/how-utautts-speaks.md)
 - [インストール](docs/installation.md)
 - [GUIの使い方](docs/gui.md)
 - [コマンドライン（CLI）](docs/cli.md)

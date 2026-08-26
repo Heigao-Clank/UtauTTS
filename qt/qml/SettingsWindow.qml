@@ -26,8 +26,11 @@ ApplicationWindow {
 
     property int currentPage: 0
     property string pendingDefaultVoicebankId: ""
+    property string pendingDefaultModelId: "frame-intonation-v8"
+    property string pendingDefaultRendererId: "openutau-worldline-r-faithful"
     property int pendingMoraDuration: 120
     property int pendingPauseDuration: 180
+    property int pendingLeadingPreutterance: 0
     property bool pendingApplyPitch: true
     property bool pendingDarkMode: false
     property string pendingLanguage: "ja"
@@ -52,8 +55,12 @@ ApplicationWindow {
 
     function loadCurrent() {
         pendingDefaultVoicebankId = root.backend.defaultVoicebankId;
+        pendingDefaultModelId = root.backend.defaultModelId;
+        pendingDefaultRendererId = root.backend.defaultRenderer;
         pendingMoraDuration = root.backend.defaultMoraDuration;
         pendingPauseDuration = root.backend.defaultPauseDuration;
+        pendingLeadingPreutterance = root.backend.defaultLeadingPreutterance;
+        leadingPreutteranceSpin.value = pendingLeadingPreutterance;
         pendingApplyPitch = root.backend.defaultApplyPitch;
         pendingDarkMode = root.backend.darkMode;
         pendingLanguage = root.backend.language;
@@ -70,6 +77,8 @@ ApplicationWindow {
         themeCombo.currentIndex = pendingDarkMode ? 1 : 0;
         languageCombo.currentIndex = root.languageCodes.indexOf(pendingLanguage);
         defaultVoicebankCombo.currentIndex = root.defaultVoicebankIndex();
+        defaultModelCombo.currentIndex = root.defaultModelIndex();
+        defaultRendererCombo.currentIndex = root.defaultRendererIndex();
     }
 
     function defaultVoicebankIndex() {
@@ -80,6 +89,22 @@ ApplicationWindow {
             if (root.backend.voicebanks[index].id === id)
                 return index + 1;
         }
+        return 0;
+    }
+
+    function defaultModelIndex() {
+        if (root.pendingDefaultModelId === "none")
+            return 0;
+        for (let index = 0; index < root.backend.models.length; ++index)
+            if (root.backend.models[index].id === root.pendingDefaultModelId)
+                return index + 1;
+        return root.backend.models.length ? 1 : 0;
+    }
+
+    function defaultRendererIndex() {
+        for (let index = 0; index < root.backend.renderers.length; ++index)
+            if (root.backend.renderers[index].id === root.pendingDefaultRendererId)
+                return index;
         return 0;
     }
 
@@ -205,6 +230,41 @@ ApplicationWindow {
                                     onActivated: root.pendingDefaultVoicebankId = currentValue
                                 }
                             }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    text: root.translator.tr("settings.defaultModel")
+                                    Layout.fillWidth: true
+                                }
+                                ComboBox {
+                                    id: defaultModelCombo
+                                    Layout.preferredWidth: 240
+                                    model: [{
+                                        id: "none",
+                                        display_name: root.translator.tr("main.modelNone")
+                                    }].concat(root.backend.models)
+                                    textRole: "display_name"
+                                    valueRole: "id"
+                                    currentIndex: root.defaultModelIndex()
+                                    onActivated: root.pendingDefaultModelId = currentValue
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    text: root.translator.tr("settings.defaultRenderer")
+                                    Layout.fillWidth: true
+                                }
+                                ComboBox {
+                                    id: defaultRendererCombo
+                                    Layout.preferredWidth: 240
+                                    model: root.backend.renderers
+                                    textRole: "display_name"
+                                    valueRole: "id"
+                                    currentIndex: root.defaultRendererIndex()
+                                    onActivated: root.pendingDefaultRendererId = currentValue
+                                }
+                            }
 
                             RowLayout {
                                 Layout.fillWidth: true
@@ -251,6 +311,52 @@ ApplicationWindow {
                                         acceptedButtons: Qt.LeftButton
                                         grabPermissions: PointerHandler.CanTakeOverFromAnything
                                         onDoubleTapped: root.pendingPauseDuration = 180
+                                    }
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    text: root.translator.tr("settings.defaultLeadingPreutterance")
+                                    Layout.fillWidth: true
+                                }
+                                SpinBox {
+                                    id: leadingPreutteranceSpin
+                                    Layout.preferredWidth: 180
+                                    Layout.alignment: Qt.AlignVCenter
+                                    from: 0
+                                    to: 300
+                                    stepSize: 5
+                                    value: root.pendingLeadingPreutterance
+                                    editable: true
+                                    textFromValue: value => value + " ms"
+                                    Component.onCompleted: refreshTextFormatter()
+                                    function refreshTextFormatter() {
+                                        const automaticText = root.translator.tr("main.aliasPolicy.auto");
+                                        textFromValue = value => value === 0
+                                                ? automaticText : value + " ms";
+                                        const currentValue = value;
+                                        value = currentValue < to ? currentValue + 1 : currentValue - 1;
+                                        value = currentValue;
+                                    }
+                                    valueFromText: text => {
+                                        const parsed = parseInt(text);
+                                        return isNaN(parsed) ? 0 : parsed;
+                                    }
+                                    onValueModified: root.pendingLeadingPreutterance = value
+                                    TapHandler {
+                                        acceptedButtons: Qt.LeftButton
+                                        grabPermissions: PointerHandler.CanTakeOverFromAnything
+                                        onDoubleTapped: {
+                                            root.pendingLeadingPreutterance = 0;
+                                            leadingPreutteranceSpin.value = 0;
+                                        }
+                                    }
+                                    Connections {
+                                        target: root.translator
+                                        function onTranslationsChanged() {
+                                            leadingPreutteranceSpin.refreshTextFormatter();
+                                        }
                                     }
                                 }
                             }

@@ -306,7 +306,7 @@ def main(argv=None) -> int:
         "id": str(args.model_id or Path(args.out).stem),
         "display_name": str(args.display_name or Path(args.out).stem),
         "description": str(args.description or "Phrase-anchor intonation model"),
-        "recommended_renderers": list(args.recommended_renderer or ["openutau-classic-worldline-faithful"]),
+        "recommended_renderers": list(args.recommended_renderer or ["openutau-worldline-r-faithful"]),
         "version": 9,
         "feature_version": 1,
         "mode": "intonation_phrase_anchor_v9_1",

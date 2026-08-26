@@ -17,8 +17,8 @@ func TestRepositoryRendererPluginsAreSelfDescribing(t *testing.T) {
 	if len(items) < 2 {
 		t.Fatalf("renderer plugins = %d, want multiple independently described plugins", len(items))
 	}
-	if items[0].ID != "waveform" {
-		t.Fatalf("default renderer = %q, want manifest-priority waveform", items[0].ID)
+	if items[0].ID != "openutau-worldline-r-faithful" {
+		t.Fatalf("default renderer = %q, want manifest-priority OpenUTAU WORLDLINE-R faithful", items[0].ID)
 	}
 	for _, item := range items {
 		if item.ID == "" || item.DisplayName == "" || item.Backend == "" || item.Directory == "" {

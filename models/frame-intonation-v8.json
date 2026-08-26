@@ -9,7 +9,7 @@
     "training_corpus_license": "CC BY-SA 4.0",
     "source_notice": "licenses/JSUT-DATA-AND-LABELS.txt"
   },
-  "recommended_renderers":["openutau-classic-worldline-faithful-gpu","openutau-classic-worldline-faithful"],
+  "recommended_renderers":["openutau-worldline-r-faithful","openutau-classic-worldline-faithful","openutau-classic-worldline-faithful-gpu"],
   "default_priority":100,
   "version": 8,
   "feature_version": 1,

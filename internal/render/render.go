@@ -61,11 +61,6 @@ func IsKnownRenderer(id string) bool {
 	return ok
 }
 
-// CUDAAvailableはCUDAレンダラーと互換デバイスの利用可否を返す。
-func CUDAAvailable() bool {
-	return gpuWaveformAvailable() == nil
-}
-
 var boundaryBridgeRenderers = map[string]struct{}{
 	"": {}, "waveform": {},
 }

@@ -207,7 +207,7 @@ EOF
 {
   "manifest_version": 1, "kind": "renderer", "id": "openutau-worldline-r-faithful",
   "display_name": "OpenUTAU WORLDLINE-R faithful", "description": "OpenUTAU 0.1.565のPhraseSynthでフレーズ全体をWORLD合成します。",
-  "backend": "openutau-worldline-r-faithful", "version": "1", "acceleration": "cpu", "experimental": true, "default_priority": 25,
+  "backend": "openutau-worldline-r-faithful", "version": "1", "acceleration": "cpu", "default_priority": 200,
   "capabilities": { "frame_pitch": true },
   "assets": {
     "worldline": "../../../runtime/libworldline.so",

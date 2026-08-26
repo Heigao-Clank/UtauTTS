@@ -5,8 +5,9 @@
   "license": "CC-BY-SA-4.0",
   "license_notice": "licenses/PROSODY-MODELS.txt",
   "recommended_renderers": [
-    "openutau-classic-worldline-faithful-gpu",
-    "openutau-classic-worldline-faithful"
+    "openutau-worldline-r-faithful",
+    "openutau-classic-worldline-faithful",
+    "openutau-classic-worldline-faithful-gpu"
   ],
   "version": 10,
   "feature_version": 2,

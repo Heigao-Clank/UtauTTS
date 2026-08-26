@@ -368,12 +368,6 @@ import QtMultimedia
                         }
                         Label {
                             Layout.fillWidth: true
-                            text: window.appBackend.cudaAvailable ? window.translator.tr("main.cudaAvailable") : window.translator.tr("main.cpuMode")
-                            color: window.mutedText
-                            font.pixelSize: 11
-                        }
-                        Label {
-                            Layout.fillWidth: true
                             visible: window.appBackend.error.length > 0 || window.playbackError.length > 0
                             text: window.appBackend.error.length > 0 ? window.appBackend.error : window.playbackError
                             color: window.palette.text

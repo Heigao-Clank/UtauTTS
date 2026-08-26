@@ -23,9 +23,9 @@ class Backend final : public QObject {
     Q_PROPERTY(QVariantList models READ models NOTIFY metadataChanged)
     Q_PROPERTY(QVariantList renderers READ renderers NOTIFY metadataChanged)
     Q_PROPERTY(QVariantList dictionaryEntries READ dictionaryEntries NOTIFY dictionaryChanged)
-    Q_PROPERTY(QString defaultRenderer READ defaultRenderer NOTIFY metadataChanged)
+    Q_PROPERTY(QString defaultRenderer READ defaultRenderer NOTIFY synthesisDefaultsChanged)
+    Q_PROPERTY(QString defaultModelId READ defaultModelId NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(QString defaultVoicebankId READ defaultVoicebankId NOTIFY voicebankSettingsChanged)
-    Q_PROPERTY(bool cudaAvailable READ cudaAvailable NOTIFY metadataChanged)
     Q_PROPERTY(QString analysisRequestId READ analysisRequestId NOTIFY analysisChanged)
     Q_PROPERTY(QString analysisSourceText READ analysisSourceText NOTIFY analysisChanged)
     Q_PROPERTY(QString analysisJson READ analysisJson NOTIFY analysisChanged)
@@ -40,6 +40,7 @@ class Backend final : public QObject {
     Q_PROPERTY(bool developerMode READ developerMode NOTIFY developerModeChanged)
     Q_PROPERTY(int defaultMoraDuration READ defaultMoraDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(int defaultPauseDuration READ defaultPauseDuration NOTIFY synthesisDefaultsChanged)
+    Q_PROPERTY(int defaultLeadingPreutterance READ defaultLeadingPreutterance NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(bool defaultApplyPitch READ defaultApplyPitch NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(QString synthesizeShortcut READ synthesizeShortcut NOTIFY shortcutSettingsChanged)
     Q_PROPERTY(QString saveProjectShortcut READ saveProjectShortcut NOTIFY shortcutSettingsChanged)
@@ -60,8 +61,8 @@ public:
     QVariantList renderers() const { return m_renderers; }
     QVariantList dictionaryEntries() const { return m_dictionaryEntries; }
     QString defaultRenderer() const { return m_defaultRenderer; }
+    QString defaultModelId() const { return m_defaultModelId; }
     QString defaultVoicebankId() const { return m_defaultVoicebankId; }
-    bool cudaAvailable() const { return m_cudaAvailable; }
     QString analysisRequestId() const { return m_analysisRequestId; }
     QString analysisSourceText() const { return m_analysisSourceText; }
     QString analysisJson() const { return m_analysisJson; }
@@ -76,6 +77,7 @@ public:
     bool developerMode() const { return m_developerMode; }
     int defaultMoraDuration() const { return m_defaultMoraDuration; }
     int defaultPauseDuration() const { return m_defaultPauseDuration; }
+    int defaultLeadingPreutterance() const { return m_defaultLeadingPreutterance; }
     bool defaultApplyPitch() const { return m_defaultApplyPitch; }
     QString synthesizeShortcut() const { return m_synthesizeShortcut; }
     QString saveProjectShortcut() const { return m_saveProjectShortcut; }
@@ -122,7 +124,9 @@ public:
     Q_INVOKABLE void setCloseLogOnSuccess(bool value);
     Q_INVOKABLE void setUpdateCheckEnabled(bool value);
     Q_INVOKABLE void setDeveloperMode(bool value);
-    Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration, bool applyPitch);
+    Q_INVOKABLE void setSynthesisDefaults(int moraDuration, int pauseDuration,
+                                          int leadingPreutterance, bool applyPitch,
+                                          const QString &modelId, const QString &rendererId);
     Q_INVOKABLE void setDefaultVoicebank(const QString &value);
     Q_INVOKABLE void setShortcutSequences(const QString &synthesize,
                                           const QString &saveProject,
@@ -168,9 +172,10 @@ private:
     QFutureSynchronizer<QVariantMap> m_activeCalls;
     int m_activeCallCount = 0;
     QVariantList m_voicebanks, m_models, m_renderers, m_dictionaryEntries;
+    QString m_catalogDefaultRenderer;
     QString m_defaultRenderer;
+    QString m_defaultModelId;
     QString m_defaultVoicebankId;
-    bool m_cudaAvailable = false;
     QString m_analysisRequestId, m_analysisSourceText, m_analysisJson;
     QString m_prosodyRequestId, m_prosodyJson;
     QString m_synthesisJson;
@@ -184,6 +189,7 @@ private:
     bool m_developerMode = false;
     int m_defaultMoraDuration = 120;
     int m_defaultPauseDuration = 180;
+    int m_defaultLeadingPreutterance = 0;
     bool m_defaultApplyPitch = true;
     QString m_synthesizeShortcut;
     QString m_saveProjectShortcut;

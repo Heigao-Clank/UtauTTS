@@ -83,8 +83,6 @@ func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
 		result = map[string]any{"models": e.models()}
 	case "renderers":
 		result = map[string]any{"default_renderer": e.config.Renderer, "renderers": e.catalog.Renderers}
-	case "hardware":
-		result = map[string]any{"cuda_available": render.CUDAAvailable()}
 	case "analyze":
 		result, err = e.analyze(requestJSON)
 	case "predictProsody":

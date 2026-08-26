@@ -39,7 +39,7 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=あ,0,0,0,0,0\na.wav=a k,0,0,0,0,0\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Config{VoiceDir: root})
+	engine, err := New(Config{VoiceDir: root, Renderer: "waveform"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestEngineFallsBackToOpenJTalkForEnglish(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(openJTalkHelperEnvironment, "1")
-	engine, err := New(Config{VoiceDir: root, OpenJTalkPath: helper, OpenJTalkDictionary: root})
+	engine, err := New(Config{VoiceDir: root, Renderer: "waveform", OpenJTalkPath: helper, OpenJTalkDictionary: root})
 	if err != nil {
 		t.Fatal(err)
 	}
