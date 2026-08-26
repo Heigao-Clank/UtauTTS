@@ -300,6 +300,7 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		unit.IntonationFactor = 1
 	}
 	leadingMS := limitLeadingPreutterance(leadingPreutteranceMS(synthesisPlan.Units, timings), cfg.LeadingPreutteranceMS)
+	synthesisPlan.LeadingMarginMS = leadingMS
 	intonation := identityFactors(len(synthesisPlan.Units))
 	if cfg.ApplyPitch {
 		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)

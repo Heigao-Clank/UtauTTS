@@ -13,10 +13,12 @@ import (
 	"utautts/internal/audio"
 	"utautts/internal/aviutl"
 	"utautts/internal/frontend"
+	"utautts/internal/label"
 	"utautts/internal/openjtalk"
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
+	"utautts/internal/sidecar"
 	"utautts/internal/synth"
 	"utautts/internal/tts"
 	"utautts/internal/voicebank"
@@ -91,6 +93,8 @@ func (e *Engine) Call(method string, requestJSON []byte) ([]byte, error) {
 		result, err = e.synthesize(requestJSON)
 	case "writeExo":
 		result, err = e.writeExo(requestJSON)
+	case "writeSidecars":
+		result, err = e.writeSidecars(requestJSON)
 	default:
 		err = fmt.Errorf("unknown native method %q", method)
 	}
@@ -335,10 +339,17 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 	if err := audio.WriteWav(outputPath, result.Audio); err != nil {
 		return nil, err
 	}
+	audioDurationMS := float64(len(result.Audio.Data)) * 1000 / float64(result.Audio.SampleRate)
+	labText, err := label.HTS(result.Plan, result.MoraDurationsMS, audioDurationMS)
+	if err != nil {
+		return nil, fmt.Errorf("build phoneme label: %w", err)
+	}
 	return map[string]any{
 		"output_path":           outputPath,
 		"reading":               result.Plan.Reading,
-		"duration_ms":           float64(len(result.Audio.Data)) * 1000 / float64(result.Audio.SampleRate),
+		"duration_ms":           audioDurationMS,
+		"leading_margin_ms":     result.Plan.LeadingMarginMS,
+		"lab":                   labText,
 		"unit_count":            len(result.Plan.Units),
 		"engine":                rendererID,
 		"mora_durations_ms":     result.MoraDurationsMS,
@@ -346,6 +357,30 @@ func (e *Engine) synthesize(data []byte) (any, error) {
 		"pitch_points":          result.PitchPoints,
 		"prosody_model_applied": e.synth.ModelAvailable(request.ModelID),
 	}, nil
+}
+
+func (e *Engine) writeSidecars(data []byte) (any, error) {
+	var request struct {
+		WAVPath   string `json:"wav_path"`
+		Text      string `json:"text"`
+		Lab       string `json:"lab"`
+		Encoding  string `json:"encoding"`
+		WriteText bool   `json:"write_text"`
+		WriteLab  bool   `json:"write_lab"`
+	}
+	if err := json.Unmarshal(data, &request); err != nil {
+		return nil, fmt.Errorf("decode sidecar request: %w", err)
+	}
+	if request.WAVPath == "" {
+		return nil, fmt.Errorf("wav_path is required")
+	}
+	if err := sidecar.Write(request.WAVPath, sidecar.Options{
+		WriteText: request.WriteText, WriteLab: request.WriteLab,
+		Encoding: request.Encoding, Text: request.Text, Lab: request.Lab,
+	}); err != nil {
+		return nil, err
+	}
+	return map[string]any{"status": "ok"}, nil
 }
 
 func (e *Engine) writeExo(data []byte) (any, error) {

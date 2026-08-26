@@ -118,6 +118,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 		classicTimings, phraseStartMS = openUtauClassicTimings(synthesisPlan.Units, cfg.CVVCTiming)
 	}
 	leadingMS := limitLeadingPreutterance(math.Max(0, -phraseStartMS), cfg.LeadingPreutteranceMS)
+	synthesisPlan.LeadingMarginMS = leadingMS
 	for i := range synthesisPlan.Units {
 		unit := &synthesisPlan.Units[i]
 		timings[i] = normalizeTiming(*unit, cfg.ReleaseMS)

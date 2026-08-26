@@ -1031,6 +1031,9 @@ window.translator.load(window.appBackend.language);
         window.appBackend.setUpdateCheckEnabled(settingsWindow.pendingUpdateCheckEnabled);
         window.appBackend.setDeveloperMode(settingsWindow.pendingDeveloperMode);
         window.appBackend.setDefaultVoicebank(settingsWindow.pendingDefaultVoicebankId);
+        window.appBackend.setExportSettings(settingsWindow.pendingExportTextWithWav,
+                                            settingsWindow.pendingExportLabWithWav,
+                                            settingsWindow.pendingExportTextEncoding);
         window.appBackend.setShortcutSequences(settingsWindow.pendingSynthesizeShortcut,
                                                settingsWindow.pendingSaveProjectShortcut,
                                                settingsWindow.pendingReloadVoicebanksShortcut,

@@ -11,7 +11,7 @@ import (
 	"utautts/internal/voicebank"
 )
 
-const Version = 16
+const Version = 17
 
 type Config struct {
 	MoraDurationMS   float64
@@ -49,6 +49,7 @@ type Plan struct {
 	CVVCTiming              string                   `json:"cvvc_timing,omitempty"`
 	CVVCTransitionGain      float64                  `json:"cvvc_transition_gain,omitempty"`
 	CVVCPreBoundaryFade     bool                     `json:"cvvc_pre_boundary_fade,omitempty"`
+	LeadingMarginMS         float64                  `json:"leading_margin_ms,omitempty"`
 	DurationMS              float64                  `json:"duration_ms"`
 	Units                   []Unit                   `json:"units"`
 }

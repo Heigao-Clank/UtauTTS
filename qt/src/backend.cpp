@@ -136,6 +136,9 @@ Backend::Backend(QObject *parent)
       m_defaultPauseDuration(QSettings().value("synthesis/defaultPauseDuration", 180).toInt()),
       m_defaultLeadingPreutterance(QSettings().value("synthesis/defaultLeadingPreutterance", 0).toInt()),
       m_defaultApplyPitch(QSettings().value("synthesis/defaultApplyPitch", true).toBool()),
+      m_exportTextWithWav(QSettings().value("export/writeTextWithWav", false).toBool()),
+      m_exportLabWithWav(QSettings().value("export/writeLabWithWav", false).toBool()),
+      m_exportTextEncoding(QSettings().value("export/textEncoding", QStringLiteral("utf-8")).toString().trimmed().toLower()),
       m_synthesizeShortcut(QSettings().value("shortcuts/synthesize", QStringLiteral("Ctrl+Enter")).toString()),
       m_saveProjectShortcut(QSettings().value("shortcuts/saveProject", QStringLiteral("Ctrl+S")).toString()),
       m_reloadVoicebanksShortcut(QSettings().value("shortcuts/reloadVoicebanks", QStringLiteral("Ctrl+O")).toString()),
@@ -147,6 +150,8 @@ Backend::Backend(QObject *parent)
     m_defaultMoraDuration = qBound(20, m_defaultMoraDuration, 1000);
     m_defaultPauseDuration = qBound(0, m_defaultPauseDuration, 3000);
     m_defaultLeadingPreutterance = qBound(0, m_defaultLeadingPreutterance, 300);
+    if (m_exportTextEncoding != QStringLiteral("shift_jis"))
+        m_exportTextEncoding = QStringLiteral("utf-8");
     const QByteArray dictionaryJSON = QSettings().value("dictionary/entries").toByteArray();
     QJsonParseError parseError;
     const QJsonDocument dictionaryDocument = QJsonDocument::fromJson(dictionaryJSON, &parseError);
@@ -295,6 +300,25 @@ void Backend::setDefaultVoicebank(const QString &value) {
     settings.setValue("voicebank/defaultId", m_defaultVoicebankId);
     settings.sync();
     emit voicebankSettingsChanged();
+}
+
+void Backend::setExportSettings(bool writeText, bool writeLab, const QString &textEncoding) {
+    const QString normalizedEncoding = textEncoding.trimmed().toLower() == QStringLiteral("shift_jis")
+            ? QStringLiteral("shift_jis") : QStringLiteral("utf-8");
+    if (m_exportTextWithWav == writeText
+            && m_exportLabWithWav == writeLab
+            && m_exportTextEncoding == normalizedEncoding) {
+        return;
+    }
+    m_exportTextWithWav = writeText;
+    m_exportLabWithWav = writeLab;
+    m_exportTextEncoding = normalizedEncoding;
+    QSettings settings;
+    settings.setValue("export/writeTextWithWav", m_exportTextWithWav);
+    settings.setValue("export/writeLabWithWav", m_exportLabWithWav);
+    settings.setValue("export/textEncoding", m_exportTextEncoding);
+    settings.sync();
+    emit exportSettingsChanged();
 }
 
 void Backend::setSynthesisDefaults(int moraDuration, int pauseDuration,
@@ -820,6 +844,8 @@ void Backend::synthesize(const QVariantMap &input) {
         return;
     }
     QVariantMap request = input;
+    const QString previewText = request.value("text").toString().isEmpty()
+            ? request.value("kana").toString() : request.value("text").toString();
     const QString outputPath = m_previewDirectory.filePath(
         "utautts-" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".wav");
     request.insert("output_path", outputPath);
@@ -828,7 +854,7 @@ void Backend::synthesize(const QVariantMap &input) {
     setError({});
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
     connect(watcher, &QFutureWatcher<QVariantMap>::finished, this,
-            [this, watcher, outputPath]() {
+            [this, watcher, outputPath, previewText]() {
                 setBusy(false);
                 const QVariantMap result = watcher->result();
                 if (result.contains("_error")) {
@@ -837,6 +863,8 @@ void Backend::synthesize(const QVariantMap &input) {
                     setError(error);
                 } else {
                     m_previewPath = outputPath;
+                    m_previewText = previewText;
+                    m_previewLab = result.value("lab").toString();
                     m_previewUrl = QUrl::fromLocalFile(outputPath);
                     m_synthesisJson = QString::fromUtf8(
                         QJsonDocument::fromVariant(result).toJson(QJsonDocument::Compact));
@@ -889,6 +917,22 @@ bool Backend::savePreview(const QUrl &destination) {
     if (!target.commit()) {
         setError(tr("WAVを保存できませんでした"));
         return false;
+    }
+    if (m_exportTextWithWav || m_exportLabWithWav) {
+        try {
+            call("writeSidecars", QVariantMap{
+                {"wav_path", destination.toLocalFile()},
+                {"text", m_previewText},
+                {"lab", m_previewLab},
+                {"encoding", m_exportTextEncoding},
+                {"write_text", m_exportTextWithWav},
+                {"write_lab", m_exportLabWithWav},
+            });
+        } catch (const std::exception &exception) {
+            setError(tr("付随するTXT／LABファイルを保存できませんでした: %1")
+                         .arg(QString::fromUtf8(exception.what())));
+            return false;
+        }
     }
     setError({});
     return true;
@@ -1117,6 +1161,9 @@ bool Backend::exportDiagnosticReport(const QUrl &destination, const QVariantMap 
             {"default_pause_duration_ms", m_defaultPauseDuration},
             {"default_leading_preutterance_ms", m_defaultLeadingPreutterance},
             {"default_apply_pitch", m_defaultApplyPitch},
+            {"export_text_with_wav", m_exportTextWithWav},
+            {"export_lab_with_wav", m_exportLabWithWav},
+            {"export_text_encoding", m_exportTextEncoding},
             {"close_log_on_success", m_closeLogOnSuccess},
             {"update_check_enabled", m_updateCheckEnabled},
             {"developer_mode", m_developerMode},

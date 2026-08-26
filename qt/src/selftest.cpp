@@ -172,8 +172,24 @@ int runSelfTest(Backend &backend, QObject *rootObject) {
                  QStringLiteral("diagnostic report did not redact synthesis text")))
         return 1;
     const QUrl wavURL = QUrl::fromLocalFile(temporary.filePath(QStringLiteral("smoke.wav")));
-    if (!require(backend.savePreview(wavURL), backend.error())
-            || !require(QFileInfo(wavURL.toLocalFile()).size() > 44, QStringLiteral("saved WAV is empty")))
+    const bool previousExportText = backend.exportTextWithWav();
+    const bool previousExportLab = backend.exportLabWithWav();
+    const QString previousExportEncoding = backend.exportTextEncoding();
+    backend.setExportSettings(true, true, QStringLiteral("utf-8"));
+    const bool previewSaved = backend.savePreview(wavURL);
+    const QString previewError = backend.error();
+    const bool wavValid = QFileInfo(wavURL.toLocalFile()).size() > 44;
+    const bool textSaved = QFileInfo::exists(temporary.filePath(QStringLiteral("smoke.txt")));
+    const bool labelSaved = QFileInfo::exists(temporary.filePath(QStringLiteral("smoke.lab")));
+    QFile labelFile(temporary.filePath(QStringLiteral("smoke.lab")));
+    const bool labelValid = labelFile.open(QIODevice::ReadOnly)
+            && labelFile.readAll().contains(" ");
+    backend.setExportSettings(previousExportText, previousExportLab, previousExportEncoding);
+    if (!require(previewSaved, previewError)
+            || !require(wavValid, QStringLiteral("saved WAV is empty"))
+            || !require(textSaved, QStringLiteral("text sidecar was not saved"))
+            || !require(labelSaved, QStringLiteral("label sidecar was not saved"))
+            || !require(labelValid, QStringLiteral("label sidecar is invalid")))
         return 1;
 
     const QUrl exoURL = backend.writeDragExo(QUrl::fromLocalFile(temporary.path()), QVariantList{wavURL}, 30);

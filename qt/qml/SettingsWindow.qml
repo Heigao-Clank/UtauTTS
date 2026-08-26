@@ -32,6 +32,9 @@ ApplicationWindow {
     property int pendingPauseDuration: 180
     property int pendingLeadingPreutterance: 0
     property bool pendingApplyPitch: true
+    property bool pendingExportTextWithWav: false
+    property bool pendingExportLabWithWav: false
+    property string pendingExportTextEncoding: "utf-8"
     property bool pendingDarkMode: false
     property string pendingLanguage: "ja"
     property var languageCodes: root.backend.languageCodes()
@@ -62,6 +65,9 @@ ApplicationWindow {
         pendingLeadingPreutterance = root.backend.defaultLeadingPreutterance;
         leadingPreutteranceSpin.value = pendingLeadingPreutterance;
         pendingApplyPitch = root.backend.defaultApplyPitch;
+        pendingExportTextWithWav = root.backend.exportTextWithWav;
+        pendingExportLabWithWav = root.backend.exportLabWithWav;
+        pendingExportTextEncoding = root.backend.exportTextEncoding;
         pendingDarkMode = root.backend.darkMode;
         pendingLanguage = root.backend.language;
         pendingCloseLogOnSuccess = root.backend.closeLogOnSuccess;
@@ -168,6 +174,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             clip: true
             model: [root.translator.tr("settings.page.synthesis"),
+                root.translator.tr("settings.page.export"),
                 root.translator.tr("settings.page.appearance"),
                 root.translator.tr("settings.page.log"),
                 root.translator.tr("settings.page.shortcuts")]
@@ -372,6 +379,55 @@ ApplicationWindow {
                                     checked: root.pendingApplyPitch
                                     onToggled: root.pendingApplyPitch = checked
                                 }
+                            }
+                        }
+                    }
+                }
+
+                ScrollView {
+                    id: exportSettingsPage
+                    contentWidth: availableWidth
+
+                    ColumnLayout {
+                        width: exportSettingsPage.availableWidth
+                        spacing: 12
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.exportTextWithWav")
+                            }
+                            Switch {
+                                checked: root.pendingExportTextWithWav
+                                onToggled: root.pendingExportTextWithWav = checked
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            enabled: root.pendingExportTextWithWav
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.exportTextEncoding")
+                            }
+                            ComboBox {
+                                Layout.preferredWidth: 180
+                                model: ["UTF-8", "Shift_JIS (CP932)"]
+                                currentIndex: root.pendingExportTextEncoding === "shift_jis" ? 1 : 0
+                                onActivated: root.pendingExportTextEncoding = currentIndex === 1 ? "shift_jis" : "utf-8"
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                Layout.fillWidth: true
+                                text: root.translator.tr("settings.exportLabWithWav")
+                            }
+                            Switch {
+                                checked: root.pendingExportLabWithWav
+                                onToggled: root.pendingExportLabWithWav = checked
                             }
                         }
                     }

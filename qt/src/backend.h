@@ -42,6 +42,9 @@ class Backend final : public QObject {
     Q_PROPERTY(int defaultPauseDuration READ defaultPauseDuration NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(int defaultLeadingPreutterance READ defaultLeadingPreutterance NOTIFY synthesisDefaultsChanged)
     Q_PROPERTY(bool defaultApplyPitch READ defaultApplyPitch NOTIFY synthesisDefaultsChanged)
+    Q_PROPERTY(bool exportTextWithWav READ exportTextWithWav NOTIFY exportSettingsChanged)
+    Q_PROPERTY(bool exportLabWithWav READ exportLabWithWav NOTIFY exportSettingsChanged)
+    Q_PROPERTY(QString exportTextEncoding READ exportTextEncoding NOTIFY exportSettingsChanged)
     Q_PROPERTY(QString synthesizeShortcut READ synthesizeShortcut NOTIFY shortcutSettingsChanged)
     Q_PROPERTY(QString saveProjectShortcut READ saveProjectShortcut NOTIFY shortcutSettingsChanged)
     Q_PROPERTY(QString reloadVoicebanksShortcut READ reloadVoicebanksShortcut NOTIFY shortcutSettingsChanged)
@@ -79,6 +82,9 @@ public:
     int defaultPauseDuration() const { return m_defaultPauseDuration; }
     int defaultLeadingPreutterance() const { return m_defaultLeadingPreutterance; }
     bool defaultApplyPitch() const { return m_defaultApplyPitch; }
+    bool exportTextWithWav() const { return m_exportTextWithWav; }
+    bool exportLabWithWav() const { return m_exportLabWithWav; }
+    QString exportTextEncoding() const { return m_exportTextEncoding; }
     QString synthesizeShortcut() const { return m_synthesizeShortcut; }
     QString saveProjectShortcut() const { return m_saveProjectShortcut; }
     QString reloadVoicebanksShortcut() const { return m_reloadVoicebanksShortcut; }
@@ -128,6 +134,7 @@ public:
                                           int leadingPreutterance, bool applyPitch,
                                           const QString &modelId, const QString &rendererId);
     Q_INVOKABLE void setDefaultVoicebank(const QString &value);
+    Q_INVOKABLE void setExportSettings(bool writeText, bool writeLab, const QString &textEncoding);
     Q_INVOKABLE void setShortcutSequences(const QString &synthesize,
                                           const QString &saveProject,
                                           const QString &reloadVoicebanks,
@@ -152,6 +159,7 @@ signals:
     void updateSettingsChanged();
     void developerModeChanged();
     void synthesisDefaultsChanged();
+    void exportSettingsChanged();
     void voicebankSettingsChanged();
     void shortcutSettingsChanged();
     void dictionaryChanged();
@@ -168,6 +176,8 @@ private:
     bool m_busy = false;
     QString m_error;
     QString m_previewPath;
+    QString m_previewText;
+    QString m_previewLab;
     QTemporaryDir m_previewDirectory;
     QFutureSynchronizer<QVariantMap> m_activeCalls;
     int m_activeCallCount = 0;
@@ -191,6 +201,9 @@ private:
     int m_defaultPauseDuration = 180;
     int m_defaultLeadingPreutterance = 0;
     bool m_defaultApplyPitch = true;
+    bool m_exportTextWithWav = false;
+    bool m_exportLabWithWav = false;
+    QString m_exportTextEncoding = QStringLiteral("utf-8");
     QString m_synthesizeShortcut;
     QString m_saveProjectShortcut;
     QString m_reloadVoicebanksShortcut;

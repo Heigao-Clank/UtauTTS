@@ -87,11 +87,31 @@ func TestEngineListsAnalyzesAndSynthesizes(t *testing.T) {
 	}
 	output := filepath.Join(root, "preview.wav")
 	request, _ := json.Marshal(map[string]any{"kana": "あ", "voicebank_id": "bank", "mora_duration_ms": 100, "output_path": output})
-	if _, err := engine.Call("synthesize", request); err != nil {
+	synthesis, err := engine.Call("synthesize", request)
+	if err != nil {
 		t.Fatal(err)
+	}
+	var synthesisResult struct {
+		Lab string `json:"lab"`
+	}
+	if err := json.Unmarshal(synthesis, &synthesisResult); err != nil || !strings.Contains(synthesisResult.Lab, " a\n") {
+		t.Fatalf("synthesis label=%q err=%v", synthesisResult.Lab, err)
 	}
 	if info, err := os.Stat(output); err != nil || info.Size() < 44 {
 		t.Fatalf("output info=%v err=%v", info, err)
+	}
+	sidecarRequest, _ := json.Marshal(map[string]any{
+		"wav_path": output, "text": "あ", "lab": synthesisResult.Lab,
+		"encoding": "utf-8", "write_text": true, "write_lab": true,
+	})
+	if _, err := engine.Call("writeSidecars", sidecarRequest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(strings.TrimSuffix(output, ".wav") + ".txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(strings.TrimSuffix(output, ".wav") + ".lab"); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(bankDir, "oto.ini"), []byte("a.wav=い,0,0,0,0,0\n"), 0644); err != nil {
 		t.Fatal(err)
