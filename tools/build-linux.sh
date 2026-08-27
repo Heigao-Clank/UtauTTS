@@ -70,6 +70,7 @@ go build -trimpath -o "${server_dir}/utautts-server" ./cmd/utautts-server
 
 echo '=== Build CLI ==='
 go build -trimpath -o "${gui_dir}/tools/utautts-cli" ./cmd/utautts-cli
+go build -trimpath -o "${gui_dir}/tools/utautts-ustx" ./cmd/tools/utautts-ustx
 go build -trimpath -o "${gui_dir}/tools/utautts-updater" ./cmd/utautts-updater
 
 echo '=== Build native library and Qt GUI ==='
