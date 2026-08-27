@@ -72,6 +72,27 @@ func ustxProjectFromSynthesis(cfg tts.Config, p *plan.Plan, voicebankID string) 
 		cents[unit.Position] = 1200 * math.Log2(factor)
 	}
 	utterance.AutomaticPitchPoints = cents
+	// Actual synthesized timing: prosody predictions and duration overrides
+	// replace the uniform mora duration during planning, so the exported
+	// notes must land where the synthesis really placed them instead of on
+	// the fixed MoraDurationMS grid.
+	morae := utterance.AnalysisCache.Morae
+	durationsMS := make([]float64, len(morae))
+	positionsMS := make([]float64, len(morae))
+	for _, unit := range p.Units {
+		if unit.Silent || unit.Role == "transition" {
+			continue
+		}
+		if unit.Position < 0 || unit.Position >= len(morae) {
+			continue
+		}
+		positionsMS[unit.Position] = unit.NoteStartMS
+		if unit.DurationMS > 0 {
+			durationsMS[unit.Position] = unit.DurationMS
+		}
+	}
+	utterance.AutomaticMoraDurMS = durationsMS
+	utterance.AutomaticMoraPosMS = positionsMS
 	return &openutau.UtauTTSProject{
 		Format:        "utautts-project",
 		FormatVersion: 5,
