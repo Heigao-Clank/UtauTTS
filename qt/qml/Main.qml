@@ -1937,8 +1937,9 @@ window.translator.load(window.appBackend.language);
             window.audioRevision = item.revision;
             player.source = cached.source;
         } else {
-            if (window.audioUtteranceId)
-                delete window.audioCache[window.audioUtteranceId];
+            // Leaving a card must NOT invalidate its cached audio; only reset
+            // the loaded pointers. Cache entries are dropped by
+            // markUtteranceDirty / clearPlayback / wholesale resets.
             window.audioUtteranceId = "";
             window.audioRevision = -1;
             player.source = "";
