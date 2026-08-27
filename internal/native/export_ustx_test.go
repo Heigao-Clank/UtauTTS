@@ -31,7 +31,25 @@ func exportProject(t *testing.T, engine *Engine, project map[string]any) string 
 		t.Fatal(err)
 	}
 	outputPath := filepath.Join(t.TempDir(), "out.ustx")
-	request := []byte(`{"output_path":"` + outputPath + `","project":` + string(projectData) + `}`)
+	return exportProjectTo(t, engine, outputPath, projectData)
+}
+
+// exportRequest mirrors the native exportUstx request envelope.
+type exportRequest struct {
+	OutputPath string          `json:"output_path"`
+	Project    json.RawMessage `json:"project"`
+}
+
+// exportProjectTo runs one export request against the engine and returns the
+// exported USTX text. The request is always serialized with encoding/json so
+// platform-specific output paths (Windows backslashes under t.TempDir())
+// cannot produce invalid JSON escapes.
+func exportProjectTo(t *testing.T, engine *Engine, outputPath string, projectData []byte) string {
+	t.Helper()
+	request, err := json.Marshal(exportRequest{OutputPath: outputPath, Project: projectData})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := engine.exportUstx(request); err != nil {
 		t.Fatalf("exportUstx error: %v", err)
 	}
@@ -243,36 +261,51 @@ func TestExportUstxSkipsEmptyCardsButKeepsTheRest(t *testing.T) {
 // synthesizable content fails loudly instead of writing an empty file.
 func TestExportUstxRejectsEmptyProject(t *testing.T) {
 	engine := exportEngine(t)
-	projectData := []byte(`{"output_path":"unused.ustx","project":{"format":"utautts-project","format_version":5,"utterances":[{"text":"","voicebank_id":"bank","tone":"C4"}]}}`)
-	request := struct {
-		OutputPath string          `json:"output_path"`
-		Project    json.RawMessage `json:"project"`
-	}{OutputPath: "unused.ustx"}
-	_ = request
-	var payload struct {
-		OutputPath string          `json:"output_path"`
-		Project    json.RawMessage `json:"project"`
-	}
-	if err := json.Unmarshal(projectData, &payload); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile("export_ustx_test.go")
+	projectData, err := json.Marshal(map[string]any{
+		"format":         "utautts-project",
+		"format_version": 5,
+		"utterances": []any{
+			map[string]any{"text": "", "voicebank_id": "bank", "tone": "C4"},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = raw
-	if _, err := engine.exportUstx(buildExportRequest(payload.OutputPath, payload.Project)); err == nil {
+	request, err := json.Marshal(exportRequest{OutputPath: "unused.ustx", Project: projectData})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.exportUstx(request); err == nil {
 		t.Fatal("expected an error when no utterance has notes")
 	}
 }
 
-// buildExportRequest assembles the native export request JSON.
-func buildExportRequest(outputPath string, project json.RawMessage) []byte {
-	builder := &strings.Builder{}
-	builder.WriteString(`{"output_path":"`)
-	builder.WriteString(strings.ReplaceAll(strings.ReplaceAll(outputPath, `\`, `\\`), `"`, `\"`))
-	builder.WriteString(`","project":`)
-	builder.Write(project)
-	builder.WriteString(`}`)
-	return []byte(builder.String())
+// TestExportUstxOutputPathWithBackslashes guards the request serialization on
+// Windows, where t.TempDir() returns backslash paths (C:\Users\...). Raw
+// string concatenation would embed them as invalid JSON escapes (\U, \A, ...);
+// serializing the whole request with encoding/json keeps them intact.
+func TestExportUstxOutputPathWithBackslashes(t *testing.T) {
+	engine := exportEngine(t)
+	outputPath := filepath.Join(t.TempDir(), `win\out.ustx`)
+	projectData, err := json.Marshal(map[string]any{
+		"format":         "utautts-project",
+		"format_version": 5,
+		"utterances": []any{
+			map[string]any{
+				"text":              "こんにちは",
+				"voicebank_id":      "bank",
+				"tone":              "C4",
+				"mora_duration_ms":  140,
+				"pause_duration_ms": 180,
+				"analysis_cache": map[string]any{
+					"reading": "コンニチハ",
+					"morae":   []any{map[string]any{"position": 0, "mora": "こ", "vowel": "o"}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exportProjectTo(t, engine, outputPath, projectData)
 }
