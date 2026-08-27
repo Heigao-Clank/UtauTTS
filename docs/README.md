@@ -24,7 +24,7 @@
 
 ## 仕組みを知る
 
-- [UtauTTSはどうやってしゃべっているのか](how-utautts-speaks.md): 原音の選択、接続、長さ、イントネーションを図と式を交えて説明
+- [UtauTTSはどうやって音声を作るのか](how-utautts-speaks.md): 原音の選択、接続、長さ、イントネーションを図と式を交えて説明
 - [構成](architecture.md): 合成パイプラインと配布Rendererの概要
 - [技術設計ガイド](technical-design.md): 内部データ、アルゴリズム、Renderer、モデルの実装
 
