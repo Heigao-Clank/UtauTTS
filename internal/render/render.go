@@ -305,6 +305,14 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 	if cfg.ApplyPitch {
 		intonation = analyzeIntonation(synthesisPlan, timings, &cache, cfg.IntonationStrength)
 	}
+	// The requested base tone must move the output register the same way the
+	// USTX export promises OpenUtau (notes at the requested tone), so
+	// voicebanks recorded at different pitches (C3 / C4) synthesize at the
+	// tone set in the GUI.
+	baseShift := 1.0
+	if pitches, _, err := measureWorldlinePitches(synthesisPlan, &cache); err == nil {
+		baseShift = basePitchFactor(medianFloat(nonzeroFloats(pitches)), synthesisPlan.Tone)
+	}
 	prepared := make([]preparedWaveformUnit, 0, len(synthesisPlan.Units))
 	for unitIndex := range synthesisPlan.Units {
 		if err := contextError(cfg.Context); err != nil {
@@ -338,9 +346,9 @@ func renderWaveformWithStretch(synthesisPlan *plan.Plan, cfg Config, parallelRet
 		sourceConsonantFrames := msToFrames(unit.ConsonantMS, sampleRate)
 		effectiveConsonantFrames := msToFrames(timing.consonantMS, sampleRate)
 		wave := pcmFloats(trimmed.Data)
-		appliedPitch := 1.0
+		appliedPitch := baseShift
 		if cfg.ApplyPitch {
-			appliedPitch = unit.PitchFactor * intonation[unitIndex]
+			appliedPitch = baseShift * unit.PitchFactor * intonation[unitIndex]
 		}
 		if cfg.PitchCurve != nil {
 			positionMS := unit.NoteStartMS - timing.preutteranceMS

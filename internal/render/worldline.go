@@ -146,11 +146,16 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 	if reference <= 0 {
 		reference = 220
 	}
+	// Carry the requested base tone into the rendered register: the F0 curve
+	// targets and the per-unit Tone both move together so the resample ratio
+	// against the source recordings equals baseShift.
+	baseShift := basePitchFactor(reference, synthesisPlan.Tone)
 
 	pitchFactors := make([]float64, len(synthesisPlan.Units))
 	for i, unit := range synthesisPlan.Units {
 		pitchFactors[i] = intonation[i]
 		pitchFactors[i] *= effectiveUnitPitchFactor(unit, cfg.ApplyPitch)
+		pitchFactors[i] *= baseShift
 	}
 	frameMS := worldlineFrameMS
 	curveStartMS := 0.0
@@ -282,7 +287,7 @@ func renderWorldlineEngine(synthesisPlan *plan.Plan, cfg Config, engine string, 
 			LengthMS: lengthMS, FadeInMS: fadeInMS,
 			FadeOutMS: fadeOutMS, OffsetMS: unit.OffsetMS, RequiredLengthMS: requiredLength,
 			ConsonantMS: unit.ConsonantMS, CutoffMS: unit.CutoffMS,
-			Tone: int(math.Round(69 + 12*math.Log2(unitPitch/440))), ConsonantVelocity: consonantVelocity,
+			Tone: int(math.Round(69 + 12*math.Log2(unitPitch*baseShift/440))), ConsonantVelocity: consonantVelocity,
 			PitchStartMS: pitchStartMS, Volume: volume, Modulation: modulation, Tempo: tempo,
 			PitchLengthMS: pitchLengthMS, Envelope: envelopePoints,
 		})
