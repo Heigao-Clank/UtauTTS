@@ -6,19 +6,6 @@ UTAUボイスバンクに収録された原音を選んで配置し、必要に�
 
 > ボイスバンクを使う前に各ボイスバンクの利用規約・ガイドラインを確認してください。UtauTTSおよびその作者はボイスバンクの利用で生じた問題について責任を負いません。
 
-## デモ
-
-- 足立レイ：
-
-<audio controls src="./docs/assets/demo_Rei1.wav"></audio>
-
-- 重音テト 通常：
-
-<audio controls src="./docs/assets/demo_Teto1.wav"></audio>
-
-- 重音テト 叫び：
-
-<audio controls src="./docs/assets/demo_Teto2.wav"></audio>
 ## はじめる
 
 [リリース](https://github.com/yh2237/UtauTTS/releases)から環境に合うZIPをダウンロードしてください。
