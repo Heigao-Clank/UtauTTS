@@ -114,3 +114,16 @@ wrote out.wav (4.81s, 44100 Hz, 34 units)
 ```
 
 合成の失敗や引数エラーは`log.Fatal`で終了コード1を返します。モデル・Rendererが見つからない場合も同じです。原音の明瞭度を先に確認したいなら`--renderer waveform`を使うのが分かりやすいと思います。
+
+## USTXへの一括変換（utautts-ustx）
+
+合成を再度実行しなくても、保存済みの`.utautts`プロジェクトをOpenUtauのUSTXファイルへ変換できます。GUIと同じ`exportUstx`処理を使い、解析キャッシュがないカードはその場で再解析します。
+
+配布物ではWindowsの`tools/utautts-ustx.exe`、Linuxの`tools/utautts-ustx`にあります。開発時は`go run ./cmd/tools/utautts-ustx`でも実行できます。
+
+```console
+$ utautts-ustx project.utautts project.ustx
+wrote project.ustx (1 utterances, 3412 bytes)
+```
+
+出力パスを省略すると、プロジェクトファイルと同じ場所の`<名前>.ustx`へ書き出します。
