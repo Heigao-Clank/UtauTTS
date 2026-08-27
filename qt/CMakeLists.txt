@@ -140,6 +140,8 @@ qt_add_resources(utautts "data"
 
 if(WIN32)
     target_link_libraries(utautts PRIVATE "${UTAUTTS_NATIVE_DIR}/utautts_native.dll.a")
+elseif(APPLE)
+    target_link_libraries(utautts PRIVATE "${UTAUTTS_NATIVE_DIR}/libutautts_native.dylib")
 else()
     target_link_libraries(utautts PRIVATE "${UTAUTTS_NATIVE_DIR}/libutautts_native.so")
 endif()

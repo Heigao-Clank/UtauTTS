@@ -107,6 +107,36 @@ QDir resourceRoot() {
         return application;
     }
 
+    // Standard macOS bundle resource location (Contents/Resources). The
+    // bundle ships symlinks to the project's voice/models/plugins/runtime
+    // directories, so the app also works when copied to /Applications.
+    QDir resources(QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources"));
+    if (hasResourceLayout(resources)) {
+        return resources;
+    }
+
+    // Explicit override via environment variable.
+    const QByteArray override = qgetenv("UTAUTTS_RESOURCE_ROOT");
+    if (!override.isEmpty()) {
+        QDir configured(QString::fromUtf8(override));
+        if (hasResourceLayout(configured)) {
+            return configured;
+        }
+    }
+
+    // Walk up from the executable location as well, so an app bundle placed
+    // inside the project directory finds voice/models/plugins/runtime even
+    // when launched from Finder (where the working directory is "/").
+    QDir bundle(application);
+    for (int depth = 0; depth < 8; ++depth) {
+        if (hasResourceLayout(bundle)) {
+            return bundle;
+        }
+        if (!bundle.cdUp()) {
+            break;
+        }
+    }
+
     QDir candidate(QDir::current());
     for (int depth = 0; depth < 8; ++depth) {
         if (hasResourceLayout(candidate)) {
@@ -1030,6 +1060,47 @@ bool Backend::saveProject(const QUrl &destination, const QVariantMap &project) {
     }
     setError({});
     return true;
+}
+
+void Backend::exportUstx(const QUrl &destination, const QVariantMap &project) {
+    if (!destination.isLocalFile()) {
+        emit ustxExportFinished(false, tr("USTXの保存先が無効です"));
+        return;
+    }
+    if (m_busy) {
+        return;
+    }
+    setBusy(true);
+    setError({});
+    const QString outputPath = QDir::toNativeSeparators(destination.toLocalFile());
+    const QVariantMap request{{"output_path", outputPath}, {"project", project}};
+    auto *watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcher<QVariantMap>::finished, this, [this, watcher, outputPath]() {
+        setBusy(false);
+        const QVariantMap result = watcher->result();
+        if (result.contains("_error")) {
+            const QString error = result.value("_error").toString();
+            setError(error);
+            emit ustxExportFinished(false, error);
+        } else {
+            emit ustxExportFinished(true, outputPath);
+        }
+        watcher->deleteLater();
+        if (--m_activeCallCount == 0) {
+            m_activeCalls.clearFutures();
+        }
+    });
+    const auto future = QtConcurrent::run([this, request]() {
+        try {
+            call("exportUstx", request);
+            return QVariantMap();
+        } catch (const std::exception &exception) {
+            return QVariantMap{{"_error", QString::fromUtf8(exception.what())}};
+        }
+    });
+    ++m_activeCallCount;
+    m_activeCalls.addFuture(future);
+    watcher->setFuture(future);
 }
 
 QVariantMap Backend::loadProject(const QUrl &source) {

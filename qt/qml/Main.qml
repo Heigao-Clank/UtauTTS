@@ -348,6 +348,14 @@ ApplicationWindow {
     }
 
     FileDialog {
+        id: ustxExportFileDialog
+        fileMode: FileDialog.SaveFile
+        nameFilters: [window.translator.tr("main.ustxFilter")]
+        defaultSuffix: "ustx"
+        onAccepted: window.exportUstxTo(selectedFile)
+    }
+
+    FileDialog {
         id: projectOpenDialog
         fileMode: FileDialog.OpenFile
         nameFilters: [window.translator.tr("main.projectFilter")]
@@ -439,6 +447,12 @@ ApplicationWindow {
     MessageDialog {
         id: projectLoadErrorDialog
         title: window.translator.tr("main.projectOpenErrorTitle")
+        buttons: MessageDialog.Ok
+    }
+
+    MessageDialog {
+        id: ustxExportMessageDialog
+        title: window.translator.tr("main.ustxExportTitle")
         buttons: MessageDialog.Ok
     }
 
@@ -600,6 +614,15 @@ ApplicationWindow {
 
         function onLanguageChanged() {
 window.translator.load(window.appBackend.language);
+        }
+
+        function onUstxExportFinished(success, detail) {
+            if (success) {
+                ustxExportMessageDialog.text = window.translator.tr("main.ustxExportSuccess", detail);
+            } else {
+                ustxExportMessageDialog.text = window.translator.tr("main.ustxExportFailed", detail);
+            }
+            ustxExportMessageDialog.open();
         }
 
         function onUpdateDownloadProgress(bytesReceived, bytesTotal) {
@@ -812,6 +835,11 @@ window.translator.load(window.appBackend.language);
                 text: window.translator.tr("menu.file.save")
                 enabled: !window.appBackend.busy && !window.batchExportActive
                 onTriggered: window.openProjectSaveDialog()
+            }
+            MenuItem {
+                text: window.translator.tr("menu.file.exportUstx")
+                enabled: utterances.count > 0 && !window.appBackend.busy && !window.batchExportActive
+                onTriggered: window.openUstxExportDialog()
             }
             MenuSeparator {}
             MenuItem {
@@ -1651,6 +1679,19 @@ window.translator.load(window.appBackend.language);
             return;
         projectSaveDialog.currentFile = window.appBackend.defaultSaveFile("untitled.utautts");
         projectSaveDialog.open();
+    }
+
+    function openUstxExportDialog() {
+        if (window.appBackend.busy || window.batchExportActive)
+            return;
+        ustxExportFileDialog.currentFile = window.appBackend.defaultSaveFile("untitled.ustx");
+        ustxExportFileDialog.open();
+    }
+
+    function exportUstxTo(destination) {
+        if (!destination || !destination.toString().length)
+            return;
+        window.appBackend.exportUstx(destination, window.projectData());
     }
 
     function saveProjectTo(destination) {
