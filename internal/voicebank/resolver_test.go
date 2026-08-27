@@ -224,6 +224,37 @@ func TestAliasCandidatesHandleSpecialMoraContexts(t *testing.T) {
 	if !contains(aliasCandidatesWithPolicy("ー", "u", false, AliasPolicyAuto), "u う") {
 		t.Fatal("long-vowel candidate did not use the preceding vowel")
 	}
+	// Phonetically identical fallbacks: を falls back to お, ぢ to じ, etc.
+	for mora, equivalent := range map[string]string{"を": "お", "ぢ": "じ", "づ": "ず", "ゐ": "い", "ゑ": "え"} {
+		candidates := aliasCandidatesWithPolicy(mora, "", true, AliasPolicyAuto)
+		if !contains(candidates, mora) {
+			t.Fatalf("mora %q candidate was not generated", mora)
+		}
+		if !contains(candidates, equivalent) {
+			t.Fatalf("mora %q did not fall back to equivalent %q", mora, equivalent)
+		}
+		if !contains(candidates, toKatakana(equivalent)) {
+			t.Fatalf("mora %q did not fall back to katakana %q", mora, toKatakana(equivalent))
+		}
+	}
+	// The original form must come before the equivalent fallback.
+	wo := aliasCandidatesWithPolicy("を", "", true, AliasPolicyAuto)
+	originalIndex, fallbackIndex := -1, -1
+	for index, candidate := range wo {
+		if candidate.name == "を" {
+			originalIndex = index
+		}
+		if candidate.name == "お" {
+			fallbackIndex = index
+		}
+	}
+	if originalIndex < 0 || fallbackIndex < 0 || originalIndex > fallbackIndex {
+		t.Fatalf("を must precede お in candidates: %v", wo)
+	}
+	// Small-kana combinations must NOT fall back (different sounds).
+	if contains(aliasCandidatesWithPolicy("てぃ", "", true, AliasPolicyAuto), "ち") {
+		t.Fatal("てぃ must not fall back to ち")
+	}
 }
 
 func TestAuditLatticeReportsAliasKindsAndSelection(t *testing.T) {
