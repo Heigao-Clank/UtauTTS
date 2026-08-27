@@ -1,6 +1,7 @@
 package openutau
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -428,6 +429,72 @@ func TestExportUSTXDurationsAndPauses(t *testing.T) {
 	for _, want := range []string{"position: 0", "duration: 77", "position: 269", "duration: 115"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("export missing %q\n%s", want, text)
+		}
+	}
+}
+
+// TestExportUSTXUsesAutomaticMoraTiming makes sure notes land on the
+// synthesized timing (automatic_mora_durations_ms / automatic_mora_positions_ms)
+// instead of the uniform mora_duration_ms grid. The CLI export restores these
+// arrays from the synthesis plan, so prosody-predicted durations survive the
+// trip to OpenUtau.
+func TestExportUSTXUsesAutomaticMoraTiming(t *testing.T) {
+	project := &UtauTTSProject{
+		Format:        "utautts-project",
+		FormatVersion: 5,
+		Utterances: []UtauTTSUtterance{{
+			Text: "カキ", VoicebankID: "bank", Tone: "C4",
+			MoraDurationMS:  140,
+			PauseDurationMS: 180,
+			// Plan-derived timing that differs from the fixed 140ms grid.
+			AutomaticMoraDurMS: []float64{100, 120},
+			AutomaticMoraPosMS: []float64{0, 130},
+			AnalysisCache: UtauTTSAnalysisCache{
+				Reading: "カキ",
+				Morae: []UtauTTSMora{
+					{Position: 0, Mora: "か", Vowel: "a"},
+					{Position: 1, Mora: "き", Vowel: "i"},
+				},
+			},
+		}},
+	}
+	data, err := ExportUSTX(project, ExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		VoiceParts []struct {
+			Notes []struct {
+				Position int    `yaml:"position"`
+				Duration int    `yaml:"duration"`
+				Lyric    string `yaml:"lyric"`
+			} `yaml:"notes"`
+		} `yaml:"voice_parts"`
+	}
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	notes := parsed.VoiceParts[0].Notes
+	if len(notes) != 2 {
+		t.Fatalf("notes = %d, want 2", len(notes))
+	}
+	// Same conversion as the exporter: round(ms * 480 / (60000 / bpm)).
+	ticks := func(ms float64) int {
+		return int(math.Round(ms * 480.0 / (60000.0 / 120.0)))
+	}
+	want := []struct {
+		lyric    string
+		position int
+		duration int
+	}{
+		{"か", ticks(0), ticks(100)},
+		{"き", ticks(130), ticks(120)},
+	}
+	for index, expectation := range want {
+		note := notes[index]
+		if note.Lyric != expectation.lyric || note.Position != expectation.position || note.Duration != expectation.duration {
+			t.Fatalf("note[%d] = {lyric:%s position:%d duration:%d}, want {lyric:%s position:%d duration:%d}",
+				index, note.Lyric, note.Position, note.Duration, expectation.lyric, expectation.position, expectation.duration)
 		}
 	}
 }
