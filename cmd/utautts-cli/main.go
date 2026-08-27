@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"utautts/internal/appinfo"
 	"utautts/internal/audio"
+	"utautts/internal/openutau"
 	"utautts/internal/plugin"
 	"utautts/internal/prosody"
 	"utautts/internal/render"
@@ -26,6 +28,7 @@ func main() {
 		color                   string
 		outPath                 string
 		planPath                string
+		ustxOut                 string
 		moraMS                  float64
 		pauseMS                 float64
 		releaseMS               float64
@@ -66,6 +69,7 @@ func main() {
 	flag.StringVar(&color, "color", "", "voicebank subbank/color (character.yaml)")
 	flag.StringVar(&outPath, "out", "", "output WAV path")
 	flag.StringVar(&planPath, "plan-out", "", "optional synthesis plan JSON path")
+	flag.StringVar(&ustxOut, "ustx-out", "", "optional OpenUtau USTX project path to export the synthesis parameters to")
 	flag.Float64Var(&moraMS, "mora-ms", 140, "base mora duration in milliseconds")
 	flag.Float64Var(&pauseMS, "pause-ms", 180, "punctuation pause in milliseconds")
 	flag.Float64Var(&releaseMS, "release-ms", 20, "unit release envelope in milliseconds")
@@ -175,6 +179,18 @@ func main() {
 		}
 		data = append(data, '\n')
 		if err := os.WriteFile(planPath, data, 0o644); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if ustxOut != "" {
+		project := ustxProjectFromSynthesis(synthConfig, result.Plan, filepath.Base(filepath.Clean(voicebankPath)))
+		data, err := openutau.ExportUSTX(project, openutau.ExportOptions{
+			Curves: ustxFrameCurves(synthConfig, 1),
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := os.WriteFile(ustxOut, data, 0o644); err != nil {
 			log.Fatal(err)
 		}
 	}

@@ -63,6 +63,7 @@
 | `--color <name>` | | `character.yaml`で定義された音源タイプ／サブバンク |
 | `--out <path>` | | 出力WAVのパス（必須） |
 | `--plan-out <path>` | | 合成計画JSONを保存するパス |
+| `--ustx-out <path>` | | OpenUtauのUSTXプロジェクトファイルとして合成パラメータを出力するパス |
 | `--mora-ms` | `140` | 基本モーラ長（ms） |
 | `--pause-ms` | `180` | 句読点の休止長（ms） |
 | `--release-ms` | `20` | ユニット末尾のrelease envelope（ms） |
