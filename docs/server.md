@@ -1,8 +1,8 @@
 # UtauTTS Server
 
-GUIを含まないWindows／Linux x64向けHTTPサーバーです。Worldline bridgeは自己完結形式で同梱されるため、配布物の実行時に.NET 8ランタイムを別途インストールする必要はありません。
+GUIを含まないWindows／Linux x64向けHTTPサーバーです。Worldline bridgeは自己完結形式で同梱されるので配布物を動かすために.NET 8ランタイムを別途入れる必要はありません。
 
-サーバーは初期状態で `127.0.0.1:8080` のみを待ち受けます。LANや外部から接続できるアドレスで起動する場合は、必ず `--auth-token` を設定してください。
+サーバーは初期状態で`127.0.0.1:8080`だけを待ち受けます。LANや外部から接続できるアドレスで起動する場合は必ず`--auth-token`を設定してください。
 
 ```powershell
 .\utautts-server.exe `
@@ -16,18 +16,18 @@ Linuxでは次のように起動します。
 ./utautts-server --voice-dir voice --renderer waveform
 ```
 
-標準では実行ファイルと同じ場所の `voice` ディレクトリを読み込みます。音源はフォルダごとに配置し、`voicebank_id` には `/api/voicebanks` で取得したIDを指定します。省略した場合はID順で最初の音源が使われます。
+標準では実行ファイルと同じ場所の`voice`ディレクトリを読み込みます。音源はフォルダごとに配置して`voicebank_id`には`/api/voicebanks`で取得したIDを指定します。省略するとID順で最初の音源が使われます。
 
 起動すると `UTAUTTS_READY=http://127.0.0.1:8080` の形式で待受URLを標準出力へ書き出します。
 
 ## コンソールUI
 
-ブラウザで `http://127.0.0.1:8080/` を開くと、`/api/*` を直接呼び出せる簡易クライアントと、エンドポイント・制限の簡単なドキュメントが見れるhtmlを返します
+ブラウザで`http://127.0.0.1:8080/`を開くと`/api/*`を直接呼び出せる簡易クライアントと、エンドポイントや制限をまとめたhtmlが表示されます。
 
 - 稼働状況・音源・モデル・Rendererの一覧表示
-- 文章の解析（`/api/analyze`）と、読み・モーラ列の表示
-- 文章・音源・モデル・Renderer・duration等を指定した合成（`/api/synthesize/audio`）。結果の再生とWAVダウンロード、使用した読み・engineヘッダーの表示
-- `--auth-token` 使用時は、ページ内のトークン入力に保存すると以降のAPI呼び出しへ `Authorization: Bearer <token>` を付加します
+- 文章の解析（`/api/analyze`）と読み・モーラ列の表示
+- 文章・音源・モデル・Renderer・durationなどを指定した合成（`/api/synthesize/audio`）。結果の再生、WAVダウンロード、使用した読みとengineヘッダーの表示
+- `--auth-token`使用時はページ内のトークン入力へ保存すると以降のAPI呼び出しに`Authorization: Bearer <token>`を付加します
 
 コンソールUI（`/` と `/ui`）は公開されます。認証・Origin検査は `/api/*` にのみ適用されます。
 
@@ -47,7 +47,7 @@ Linuxでは次のように起動します。
 
 ## 共通仕様
 
-- エラーは `{"error":"説明"}` のJSONで、対応するHTTPステータスコードとともに返ります。
+- エラーは`{"error":"説明"}`のJSONと対応するHTTPステータスコードで返ります。
 - JSON本文は1 MiBまでです。未知のJSON fieldは入力ミスとして拒否されます（400）。
 - ボディは単一のJSONオブジェクトでなければなりません。
 - 1発話の `text` と `kana` はそれぞれ500文字までです（413）。
@@ -57,18 +57,18 @@ Linuxでは次のように起動します。
 
 ### 認証
 
-`--auth-token` を設定すると、全エンドポイントで `Authorization: Bearer <token>` ヘッダーが必要になります。無い場合は401を返します。トークンは定数時間比較で検証されます。
+`--auth-token`を設定すると全エンドポイントで`Authorization: Bearer <token>`ヘッダーが必要になります。無い場合は401です。トークンは定数時間比較で検証します。
 
-GET以外のリクエストに `Origin` ヘッダーがあり、それが待受ホストのorigin（`http://<host>` / `https://<host>`）と一致しない場合は403で拒否されます。
+GET以外のリクエストに`Origin`ヘッダーがあり待受ホストのorigin（`http://<host>` / `https://<host>`）と一致しない場合は403で拒否します。
 
-非ループバックアドレス（例 `0.0.0.0`）で認証トークンなしに起動すると、起動時に警告が出力されます。
+非ループバックアドレス（例`0.0.0.0`）で認証トークンなしに起動すると警告が出ます。
 
 ## 各エンドポイント
 
 ### `GET /api/health`
 
 ```json
-{"status":"ok","engine":"waveform"}
+{"status":"ok","engine":"openutau-worldline-r-faithful"}
 ```
 
 `engine` には既定RendererのIDが入ります。
@@ -98,14 +98,14 @@ ID順にソートされた音源一覧です。
 }
 ```
 
-`id` は `voicebank_id` に指定する値で、音源フォルダ名です。`phoneme_count` は全 `oto.ini` のエントリ数、`diagnostic_count` はoto.iniの診断で問題があるエントリ数です。
-`alias_counts`、`vcv_contexts`、`vc_contexts`は音源のalias能力を表す診断情報で、実際の各モーラではaliasの存在と`oto.ini`設定が最終的な選択を決めます。
+`id`は`voicebank_id`に指定する値で音源フォルダ名です。`phoneme_count`は全`oto.ini`のエントリ数、`diagnostic_count`はoto.iniの診断で問題があるエントリ数です。
+`alias_counts`、`vcv_contexts`、`vc_contexts`は音源のalias能力を表す診断情報です。実際の各モーラではaliasの存在と`oto.ini`設定が最終的な選択を決めます。
 
-`types` に `character.yaml` の全サブバンク（カラー、接頭辞・接尾辞、音域）が宣言順で含まれます。合成時はその `color` をリクエストの `color` に指定できます。
+`types`には`character.yaml`の全サブバンク（カラー、接頭辞・接尾辞、音域）が宣言順で入ります。合成するときはその`color`をリクエストの`color`へ指定できます。
 
 ### `POST /api/voicebanks`
 
-音源パスを動的に登録します。既定では無効で、`--allow-voicebank-registration` を指定した場合のみ使えます。登録先は `--voice-dir` 以下に制限され、シンボリックリンク解決後に範囲外なら400で拒否されます。
+音源パスを動的に登録します。既定では無効で`--allow-voicebank-registration`を指定した場合だけ使えます。登録先は`--voice-dir`以下に制限されてシンボリックリンク解決後に範囲外なら400で拒否します。
 
 ```json
 {"name": "My Bank", "path": "voice/my-bank"}
@@ -115,7 +115,7 @@ ID順にソートされた音源一覧です。
 
 ### `POST /api/voicebanks/reload`
 
-`--voice-dir` を再走査し、音源一覧を置き換えます。レスポンスは `GET /api/voicebanks` と同じ形式です。失敗時は500です。
+`--voice-dir`を再走査して音源一覧を置き換えます。レスポンスは`GET /api/voicebanks`と同じ形式で失敗時は500です。
 
 ### `GET /api/models`
 
@@ -132,7 +132,7 @@ ID順にソートされた音源一覧です。
       "version": 8,
       "mode": "intonation_frame_tcn_accent_bounded",
       "outputs": {"pitch": true},
-      "recommended_renderers": ["openutau-classic-worldline-faithful-gpu", "openutau-classic-worldline-faithful"],
+      "recommended_renderers": ["openutau-worldline-r-faithful", "openutau-classic-worldline-faithful"],
       "default_priority": 100,
       "requires_features": true,
       "frame_contour": true
@@ -147,9 +147,9 @@ ID順にソートされた音源一覧です。
 
 ```json
 {
-  "default_renderer": "waveform",
+  "default_renderer": "openutau-worldline-r-faithful",
   "renderers": [
-    {"id": "waveform", "display_name": "Waveform", "description": "...", "backend": "waveform", "capabilities": {"frame_pitch": true, "boundary_bridge": true}, "default_priority": 100}
+    {"id": "openutau-worldline-r-faithful", "display_name": "OpenUTAU WORLDLINE-R faithful", "description": "...", "backend": "openutau-worldline-r-faithful", "capabilities": {"frame_pitch": true}, "default_priority": 200}
   ]
 }
 ```
@@ -177,25 +177,25 @@ ID順にソートされた音源一覧です。
 }
 ```
 
-`consonant` と `vowel` はCVVC候補生成に使う文脈です。`pause` が `true` のモーラは休止です。`text` が空なら400、500文字超なら413、変換に失敗すると422です。
+`consonant`と`vowel`はCVVC候補生成に使う文脈です。`pause`が`true`のモーラは休止になります。`text`が空なら400、500文字を超えたら413、変換に失敗すると422です。
 
 ### `POST /api/synthesize/audio`
 
-単一発話を合成し、`audio/wav` を返します。
+一つの発話を合成して`audio/wav`を返します。
 
 ```json
 {
   "text": "こんにちは、今日はいい天気です。",
   "voicebank_id": "足立レイver3.5.0",
   "model_id": "frame-intonation-v8",
-  "renderer": "openutau-classic-worldline-faithful",
+  "renderer": "openutau-worldline-r-faithful",
   "alias_policy": "auto",
   "intonation_strength": 1,
   "apply_pitch": true
 }
 ```
 
-レスポンスヘッダー `X-UtauTTS-Reading` に使用した読み、`X-UtauTTS-Engine` にRenderer IDが入ります。
+レスポンスヘッダーの`X-UtauTTS-Reading`に使用した読み、`X-UtauTTS-Engine`にRenderer IDが入ります。
 
 リクエストフィールド：
 
@@ -205,15 +205,18 @@ ID順にソートされた音源一覧です。
 | `kana` | string | | 読み仮名の直接指定 |
 | `voicebank_id` | string | ID順先頭 | `GET /api/voicebanks` の `id` |
 | `tone` | string | `C4` | `prefix.map` 使用時の音階 |
+| `color` | string | なし | `character.yaml`で定義された音源タイプ／サブバンク |
 | `model_id` | string | なし | `GET /api/models` の `id` |
 | `renderer` | string | 既定Renderer | `GET /api/renderers` の `id` |
 | `alias_policy` | string | `auto` | `auto`（VC/VCV収録比から自動選択）、`legacy`（v0.0.9互換）、`cvvc-enhanced`（CVVC優先・sequential timing・VC音量35%）、`vcv-prefer`、`cvvc-prefer`、`cv-only` |
 | `mora_duration_ms` | number | `140` | 基本モーラ長（0〜1000） |
 | `pause_duration_ms` | number | `180` | 句読点の休止長（0〜3000） |
+| `leading_preutterance_ms` | number | `0`（自動） | 文頭に確保する先行発声（0〜1000）。0では先頭原音の`oto.ini`から決定 |
 | `mora_durations_ms` | number[] | | モーラごとの長さ。値は0〜1000 |
 | `intonation_strength` | number | `0` | 音源ピッチ安定化と句曲線の強さ（0〜2） |
 | `apply_pitch` | boolean | `false` | 波形ピッチ再サンプリング |
 | `manual_pitch` | object | なし | 手動ピッチ編集（[manual-pitch.md](manual-pitch.md) のJSON） |
+| `acoustic_mode` | string | なし | 音響特徴による候補選択の診断。`dry-run`または`apply` |
 
 ステータスコード：
 
@@ -224,7 +227,7 @@ ID順にソートされた音源一覧です。
 
 ### `POST /api/synthesize/batch`
 
-複数発話を単一のZIPとして取得します。レスポンスは `application/zip` で、`Content-Disposition: attachment; filename="utautts-audio.zip"` が付きます。
+複数発話を一つのZIPとして取得します。レスポンスは`application/zip`で`Content-Disposition: attachment; filename="utautts-audio.zip"`が付きます。
 
 ```json
 {
@@ -241,14 +244,14 @@ ID順にソートされた音源一覧です。
 }
 ```
 
-`name` はパス部分が除去され、空や `..` の場合は `utterance-N.wav` に置き換えられます。重複するファイル名は400です。途中のアイテムで合成に失敗すると、そのエラーが `item N: <error>` 形式で返ります（後続は合成されません）。
+`name`はパス部分が除去されて空や`..`なら`utterance-N.wav`に置き換えられます。重複するファイル名は400です。途中のアイテムで合成に失敗すると`item N: <error>`形式でエラーを返し、それより後ろは合成しません。
 
 ## 起動オプション
 
 - `--voice-dir`: ボイスバンクを格納したディレクトリ
 - `--renderer`: Renderer plugin ID。省略時はmanifestの`default_priority`が最も高いものを使う
 - `--renderer-dir`: Renderer pluginの検索directory。複数回指定できる
-- `--model-dir`: 自己記述モデルJSONの検索directory。複数回指定でき、リクエストの`model_id`で選択する
+- `--model-dir`: 自己記述モデルJSONの検索directory。複数回指定できてリクエストの`model_id`で選択する
 - `--host`: 待受アドレス。初期値は`127.0.0.1`
 - `--port`: ポート。初期値は`8080`
 - `--auth-token`: 認証トークン。設定すると`Authorization: Bearer <token>`が必須になる
@@ -258,8 +261,8 @@ ID順にソートされた音源一覧です。
 
 ## 注意事項
 
-`intonation_strength`は`0`〜`2`で、初期値は`0`です。`apply_pitch`の初期値は`false`です。自動イントネーションを適用するには、モデル、frame pitch対応Renderer、`apply_pitch: true`を指定します。直接ピッチ加工は声質と明瞭度を損なう場合があるため、結果を確認しながら使用してください。WORLD系Rendererを使う場合、必要assetはRenderer manifestから解決します。第三者ライセンスは`THIRD_PARTY_NOTICES.txt`を参照してください。
+`intonation_strength`は`0`〜`2`で初期値は`0`です。`apply_pitch`の初期値は`false`です。自動イントネーションを使うにはモデル、frame pitch対応Renderer、`apply_pitch: true`を指定します。直接のピッチ加工は声質と明瞭度を損なう場合があるので結果を確認しながら使ってください。WORLD系Rendererの必要assetはRenderer manifestから解決します。第三者ライセンスは`THIRD_PARTY_NOTICES.txt`にあります。
 
-APIは`/api/*`だけを公開し、コンソールUI（`/`）のみ公開です。GUIはHTTPサーバーを使用せず、同梱GUIの音源・辞書設定がServerへ送信されることもありません。
+APIとして公開するのは`/api/*`でコンソールUIは`/`だけです。GUIはHTTPサーバーを使わないので同梱GUIの音源・辞書設定がServerへ送られることもありません。
 
-利用できるRendererは `waveform`、`openutau-classic-worldline-faithful`、CUDA対応時の `openutau-classic-worldline-faithful-gpu` です。実際の一覧とモデルの詳細は、それぞれ `/api/renderers` と `/api/models` で確認してください。
+利用できるRendererは`openutau-worldline-r-faithful`、`waveform`、`openutau-classic-worldline-faithful`、CUDA対応時の`openutau-classic-worldline-faithful-gpu`です。実際の一覧とモデルの詳細は`/api/renderers`と`/api/models`で確認できます。

@@ -1,16 +1,16 @@
 # リリーステスト
 
-正式リリースでは、ソース上の単体テストだけでなく、配布ZIPを展開した状態で機能を確認します。
+正式リリースではソース上の単体テストだけでなく配布ZIPを展開した状態でも機能を確認します。
 
 ## 一括実行
 
-Windows版をビルドして全テストを実行する場合は、リポジトリ直下で次を実行します。
+Windows版をビルドして全テストを実行する場合はリポジトリ直下で次を実行します。
 
 ```powershell
 ./tools/build-release.ps1
 ```
 
-この処理はGoの全テスト、GUI・CLI・serverのビルド、ライセンス収集、ZIP作成、配布物スモークテストを順番に実行します。途中で一つでも失敗するとリリースビルド全体が失敗します。
+この処理はGoの全テスト、GUI・CLI・Serverのビルド、ライセンス収集、ZIP作成、配布物スモークテストを順番に実行します。途中で一つでも失敗すればリリースビルド全体が失敗します。
 
 作成済みのZIPだけを再検査する場合は次を実行します。
 
@@ -24,13 +24,13 @@ Linux版はWSL2のDebian／Ubuntu環境から一括実行できます。
 .\build.bat linux
 ```
 
-作成済みのLinux ZIPだけを再検査する場合は、Linux環境で次を実行します。
+作成済みのLinux ZIPだけを再検査する場合はLinux環境で次を実行します。
 
 ```bash
 ./tools/test-linux-package.sh
 ```
 
-Linux検査ではZIPを一時ディレクトリへ展開し、日本語フォント、共有ライブラリ解決、実行権限、QtオフスクリーンGUI自己診断、CLI合成、serverの解析・合成・batch APIを確認します。
+Linux検査ではZIPを一時ディレクトリへ展開して日本語フォント、共有ライブラリ解決、実行権限、QtオフスクリーンGUI自己診断、CLI合成、Serverの解析・合成・batch APIを確認します。
 
 ## 自動確認する機能
 
@@ -42,7 +42,7 @@ Linux検査ではZIPを一時ディレクトリへ展開し、日本語フォン
 | GUI編集基盤 | プロジェクト保存・読込、辞書と設定の保存 |
 | GUI音声処理 | 文章解析、抑揚予測、実運用Rendererでの合成、WAV保存 |
 | GUI出力 | exo出力、抑揚教師データの途中保存・読込・書出し |
-| CLI | `waveform`による最小合成、v8モデルとClassic faithfulによる実運用合成、不正数値の拒否 |
-| HTTP server | コンソール、health、音源・モデル・Renderer一覧、解析、`waveform`／Classic faithful合成、batch ZIP、音源再読込 |
+| CLI | `waveform`による最小合成、v8モデルと既定Rendererによる実運用合成、不正数値の拒否 |
+| HTTP server | コンソール、health、音源・モデル・Renderer一覧、解析、`waveform`／既定Renderer合成、batch ZIP、音源再読込 |
 
-GUIの検査には、Windowsでは配布された `app/utautts-gui.exe --self-test`、Linuxでは `QT_QPA_PLATFORM=offscreen ./utautts --self-test` を使用します。画面や更新確認は開かず、テスト専用の一時設定と一時ファイルだけを使います。
+GUIの検査にはWindowsなら配布された`app/utautts-gui.exe --self-test`、Linuxなら`QT_QPA_PLATFORM=offscreen ./utautts --self-test`を使います。画面や更新確認は開かずテスト専用の一時設定と一時ファイルだけを使うようになっています。

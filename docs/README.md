@@ -1,11 +1,12 @@
 # UtauTTS ドキュメント
 
-初めて使う場合は、[インストール](installation.md)から[GUIの使い方](gui.md)の順に進んでください。
+初めて使うなら[インストール](installation.md)から[GUIの使い方](gui.md)の順に読むと分かりやすいと思います。
 
 ## 導入と基本操作
 
 - [インストール](installation.md): パッケージの選択、Windows／Linuxでの起動、ボイスバンクの追加
 - [GUIの使い方](gui.md): 文章入力、再生、保存、ショートカット、動画編集ソフトとの連携
+- [設定](settings.md): 音声合成の初期値、TXT／LAB書き出し、表示、ログ、ショートカット、保存範囲
 - [トラブルシューティング](troubleshooting.md): 起動、runtime、Open JTalk、Renderer、Linuxフォントの問題
 - [ボイスバンクの利用条件](voicebank.md): 同梱音源の出所、利用条件、ハッシュ
 
@@ -21,11 +22,15 @@
 - [モデル／Rendererプラグイン](plugins.md): 検出、互換性、追加方法
 - [手動調整から抑揚モデルを作る](prosody-model-training.md): 教師データの収集、監査、学習、評価、追加
 
+## 仕組みを知る
+
+- [UtauTTSはどうやってしゃべっているのか](how-utautts-speaks.md): 原音の選択、接続、長さ、イントネーションを図と式を交えて説明
+- [構成](architecture.md): 合成パイプラインと配布Rendererの概要
+- [技術設計ガイド](technical-design.md): 内部データ、アルゴリズム、Renderer、モデルの実装
+
 ## 開発者向け
 
 - [開発環境とビルド](building.md): Windows／Linux版のビルド要件と実行方法
-- [技術設計ガイド](technical-design.md): 合成パイプライン、原音選択、韻律モデル、Renderer、研究上の判断
-- [構成](architecture.md): 合成パイプラインと標準構成
 - [リリーステスト](release-testing.md): 配布物の自動スモークテストと手動確認項目
 
-プロジェクトの概要と最短手順はrootの[README](../README.md)を参照してください。`docs/`はリリース成果物にも収録されます。研究途中の記録は`notes/`に分離しています。
+プロジェクトの概要と最短手順はrootの[README](../README.md)にあります。`docs/`はリリース成果物にも収録して研究途中の記録は`notes/`に分けています。

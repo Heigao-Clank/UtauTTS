@@ -2,30 +2,32 @@
 
 ## 音源が一覧に表示されない
 
-- 音源が実行ファイルと同じ階層の `voice/<音源名>/` に置かれているか確認します。
-- `oto.ini` が音源フォルダ内にあるか確認します。
-- ZIP展開後に `voice/音源名/音源名/oto.ini` のような二重フォルダになっていても、再読込時に1階層内側まで自動検出します。
+- 音源が実行ファイルと同じ階層の`voice/<音源名>/`に置かれているか確認します。
+- `oto.ini`が音源フォルダ内にあるか確認します。
+- ZIP展開後に`voice/音源名/音源名/oto.ini`のような二重フォルダになっていても再読込時に1階層内側まで自動検出します。
 - 配置後に「ファイル」→「音源を再読込」を実行します。
-- 音源に付属する利用条件と、対応している音源形式（CV・VCV・CVVCなど）を確認します。CVVCは現在試験対応です。
+- 音源に付属する利用条件と対応している音源形式（CV・VCV・CVVCなど）を確認します。CVVCは現在試験対応です。
 
 ## `utautts-openjtalk-features not found` と表示される
 
-Open JTalkの解析helperが見つかっていません。配布版では、実行ファイルの隣にある `runtime` ディレクトリへ次のファイルが含まれます。
+Open JTalkの解析helperが見つかっていません。配布版では実行ファイルの隣にある`runtime`ディレクトリへ次のファイルが含まれます。
 
 ```text
 runtime/utautts-openjtalk-features.exe
 runtime/open_jtalk_dic_utf_8-1.11/
 ```
 
-Linux版のファイル名には `.exe` が付きません。`runtime/utautts-openjtalk-features` に実行権限があることも確認してください。
+Linux版では`runtime/utautts-openjtalk-features`に実行権限があることも確認してください。
 
-ファイルが存在しない場合は、配布ZIPを再展開して確認してください。別のマシンでだけ消える場合は、Windows Defenderなどのセキュリティソフトを確認してください。
+ファイルが存在しない場合は配布ZIPを再展開して確認してください。
+
+セキュリティソフトが実行ファイルを消しやがることがあります。スキャンの対象外にする場合はUtauTTS.exeだけでなくフォルダごとスキャン対象外にしてください。
 
 ## `Open JTalk frontend failed` が表示される
 
-helper、Open JTalk辞書、音源の読み込みに問題がないか確認します。入力文章の読みが特殊な場合は、「設定」→「辞書設定...」で表記と読みを登録してから、文章を再解析してください。
+helper、Open JTalk辞書、音源の読み込みに問題がないか確認します。入力文章の読みが特殊な場合は「設定」→「辞書設定...」で表記と読みを登録してから文章を再解析してください。
 
-CLIやServerで個別にruntimeの場所を指定する場合は、`--openjtalk-features` と `--openjtalk-dictionary` を使用できます。
+CLIやServerで個別にruntimeの場所を指定する場合は`--openjtalk-features`と`--openjtalk-dictionary`を使えます。
 
 ## モーラ数や読みが一致しないエラーが表示される
 
@@ -33,25 +35,31 @@ UtauTTS側の読みとOpen JTalk側の解析結果が一致していない可能
 
 - 固有名詞や略語などを辞書へ登録します。
 - 長音、促音、拗音を含む読みを確認します。
-- 文章を変更して再解析し、表示された読みとモーラ列を確認します。
-- それでも解決しない場合は、エラーログと入力文章を添えて報告してください。
+- 文章を変更して再解析し表示された読みとモーラ列を確認します。
+- それでも解決しない場合はエラーログと入力文章を添えて報告してください。
 
 ## Rendererやruntime assetが見つからない
 
-まず `waveform` Rendererで合成できるか確認してください。OpenUTAU Classic faithful系を使う場合は、Windowsでは `runtime/worldline.dll`、Linuxでは `runtime/libworldline.so` と、それぞれのWorldline bridgeが必要です。CUDA版はCUDA対応のWindows配布物にだけ含まれます。
+まず`waveform` Rendererで合成できるか確認してください。OpenUTAU WORLDLINE-R faithfulまたはClassic faithfulを使う場合、Windowsでは`runtime/worldline.dll`、Linuxでは`runtime/libworldline.so`とそれぞれのWorldline bridgeが必要です。CUDA版はCUDA対応のWindows配布物にだけ含まれます。
 
 ## LinuxでGUIが起動しない
 
-端末から `./utautts` を実行して不足しているライブラリ名を確認します。`ldd ./utautts | grep 'not found'` でも共有ライブラリを確認できます。Qt Quick、Qt Quick Controls、Qt Multimediaの実行パッケージが必要です。ZIP展開後に実行権限が失われた場合は、READMEに記載した `chmod +x` を実行してください。
+端末から`./utautts`を実行して不足しているライブラリ名を確認します。`ldd ./utautts | grep 'not found'`でも共有ライブラリを確認できます。Qt Quick、Qt Quick Controls、Qt Multimediaの実行パッケージが必要です。ZIP展開後に実行権限が失われた場合はREADMEに記載した`chmod +x`を実行してください。
 
 ## Linuxで日本語が四角い記号（豆腐）になる
 
-日本語グリフを含むフォントがインストールされていません。Debian／Ubuntuでは `sudo apt-get install fontconfig fonts-noto-cjk` を実行してからGUIを起動し直してください。`fc-list :lang=ja` で利用可能な日本語フォントを確認できます。
+日本語グリフを含むフォントがインストールされていません。Debian／Ubuntuでは`sudo apt-get install fontconfig fonts-noto-cjk`を実行してからGUIを起動し直してください。`fc-list :lang=ja`で利用可能な日本語フォントを確認できます。
 
-RendererのIDや必要なassetは [モデル／Rendererプラグイン](plugins.md) と、配布物の `../plugins/renderers/*/plugin.json` で確認できます。
+RendererのIDや必要なassetは[モデル／Rendererプラグイン](plugins.md)と配布物の`../plugins/renderers/*/plugin.json`で確認できます。
 
 ## 音声が生成されない、または合成が遅い
 
-合成中はログウィンドウに処理内容が表示されます。入力文章、音源、Renderer、モデル、runtimeの組み合わせを確認してください。まずは `waveform`、抑揚モデルなし、短い文章で試すと原因を切り分けやすくなります。
+合成中はログウィンドウに処理内容が表示されます。入力文章、音源、Renderer、モデル、runtimeの組み合わせを確認してください。まずは`waveform`、抑揚モデルなし、短い文章で試すと原因を切り分けやすいです。
 
-音源やモデルを使用する際は、それぞれの配布条件とライセンスを確認してください。UtauTTSは第三者の音源・モデル・runtimeの利用結果について保証しません。
+音源やモデルを使うときはそれぞれの配布条件とライセンスを確認してください。UtauTTSは第三者の音源・モデル・runtimeの利用結果について保証しません。
+
+## 問題を報告する
+
+「ヘルプ」→「診断情報を書き出す...」からJSONを保存して起きた操作と画面に出たエラーを添えて報告してください。診断情報にはOS、UtauTTSのバージョン、設定、利用可能な音源・モデル・Renderer、アプリのログが入ります。入力文章、音声、ボイスバンクの絶対パスは記録しません。
+
+音声品質の問題では使用したボイスバンク、Renderer、抑揚モデル、原音形式と問題が分かる文章もあると嬉しいです。ボイスバンクの利用規約で音声の共有が認められているなら生成されたWAVがあると比較しやすくなります。
