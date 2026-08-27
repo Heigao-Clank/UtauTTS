@@ -66,6 +66,10 @@ ApplicationWindow {
     property int draggedUtteranceIndex: -1
     property string audioUtteranceId: ""
     property int audioRevision: -1
+    // Per-card cache of synthesized audio references: utteranceId ->
+    // { source: url, revision: int }. Synthesized audio stays replayable when
+    // the user switches cards and comes back, until the card is edited again.
+    property var audioCache: ({})
     property string pendingUtteranceId: ""
     property int pendingRevision: -1
     property string pendingProsodyRequestId: ""
@@ -729,6 +733,7 @@ window.translator.load(window.appBackend.language);
                     window.stopPlaybackQueue();
                     return;
                 }
+                window.audioCache[window.pendingUtteranceId] = { source: audio, revision: window.pendingRevision };
                 window.audioUtteranceId = window.pendingUtteranceId;
                 window.audioRevision = window.pendingRevision;
                 window.pendingUtteranceId = "";
@@ -745,6 +750,7 @@ window.translator.load(window.appBackend.language);
                 window.pendingRevision = -1;
                 return;
             }
+            window.audioCache[window.pendingUtteranceId] = { source: audio, revision: window.pendingRevision };
             window.audioUtteranceId = window.pendingUtteranceId;
             window.audioRevision = window.pendingRevision;
             window.pendingUtteranceId = "";
@@ -1472,6 +1478,7 @@ window.translator.load(window.appBackend.language);
 
         window.historyRestoring = true;
         window.clearPlayback();
+        window.audioCache = ({});
         window.pendingProsodyRequestId = "";
         window.pendingProsodyUtteranceId = "";
         window.pendingProsodyRevision = -1;
@@ -1635,6 +1642,7 @@ window.translator.load(window.appBackend.language);
 
     function reanalyzeAll() {
         window.clearPlayback();
+        window.audioCache = ({});
         for (let index = 0; index < utterances.count; ++index) {
             const item = utterances.get(index);
             utterances.setProperty(index, "reading", "");
@@ -1689,6 +1697,7 @@ window.translator.load(window.appBackend.language);
 
         window.projectDirty = false;
         window.clearPlayback();
+        window.audioCache = ({});
         utterances.clear();
         window.nextUtteranceId = 1;
         let migratedRenderer = false;
@@ -1861,6 +1870,7 @@ window.translator.load(window.appBackend.language);
         utterances.setProperty(index, "revision", item.revision + 1);
         if (markProject !== false)
             window.projectDirty = true;
+        delete window.audioCache[item.utteranceId];
         if (window.audioUtteranceId === item.utteranceId)
             clearPlayback();
     }
@@ -1906,8 +1916,33 @@ window.translator.load(window.appBackend.language);
         window.playbackError = "";
         player.stop();
         player.source = "";
+        if (window.audioUtteranceId)
+            delete window.audioCache[window.audioUtteranceId];
         window.audioUtteranceId = "";
         window.audioRevision = -1;
+    }
+
+    // switchPlaybackTo stops the current playback and loads the cached audio
+    // of the newly selected card, if any. Unlike clearPlayback it keeps every
+    // other card's cached audio, so switching cards and coming back does not
+    // force a re-synthesis.
+    function switchPlaybackTo(index) {
+        window.playbackRequested = false;
+        window.playbackError = "";
+        player.stop();
+        const item = index >= 0 && index < utterances.count ? utterances.get(index) : null;
+        const cached = item ? window.audioCache[item.utteranceId] : null;
+        if (item && cached && cached.revision === item.revision) {
+            window.audioUtteranceId = item.utteranceId;
+            window.audioRevision = item.revision;
+            player.source = cached.source;
+        } else {
+            if (window.audioUtteranceId)
+                delete window.audioCache[window.audioUtteranceId];
+            window.audioUtteranceId = "";
+            window.audioRevision = -1;
+            player.source = "";
+        }
     }
 
     function assignDefaultVoicebank(suppressDirty) {
@@ -1966,9 +2001,11 @@ window.translator.load(window.appBackend.language);
         const changed = index !== selectedIndex;
         if (changed) {
             if (preservePlaybackQueue === true)
-                clearPlayback(false);
-            else
-                clearPlayback();
+                switchPlaybackTo(index);
+            else {
+                window.stopPlaybackQueue();
+                switchPlaybackTo(index);
+            }
         }
         selectedIndex = index;
         const item = current();
@@ -2188,7 +2225,11 @@ window.translator.load(window.appBackend.language);
         const target = selectedIndex + delta;
         if (target < 0 || target >= utterances.count)
             return;
-        window.clearPlayback();
+        // Moving a card does not invalidate its synthesized audio; just stop
+        // the current playback and keep the per-card cache.
+        window.stopPlaybackQueue();
+        window.playbackRequested = false;
+        player.stop();
         utterances.move(selectedIndex, target, 1);
         window.projectDirty = true;
         selectedIndex = target;
@@ -2372,6 +2413,7 @@ window.translator.load(window.appBackend.language);
         window.dragExportFiles = [];
         window.batchExportActive = true;
         window.clearPlayback();
+        window.audioCache = ({});
         window.pendingUtteranceId = "";
         window.pendingRevision = -1;
         window.pendingProsodyRequestId = "";
